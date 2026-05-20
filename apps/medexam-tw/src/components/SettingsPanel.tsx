@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { getSupabase } from '../lib/auth/client'
 import { getBackendConfig } from '../lib/sync/backend-config'
 import type { MigrationGateState } from '../lib/sync/migration'
+import { requestR2Cleanup } from '../lib/sync/r2/account-lifecycle'
 import { exportAllBundlesFromR2 } from '../lib/sync/r2/export'
 import type { SyncStatus } from '../lib/sync/types'
 import { BugReportModal } from './BugReportModal'
@@ -176,6 +177,12 @@ export function SettingsPanel({
       async () => {
         const supabase = getSupabase()
         if (!supabase) throw new Error('Supabase 未啟用')
+        // R2 cleanup FIRST — Supabase delete_my_account drops auth.users,
+        // which immediately invalidates the JWT and breaks any subsequent
+        // R2 cleanup attempt. Skip when writeR2 is off.
+        if (getBackendConfig().writeR2) {
+          await requestR2Cleanup(supabase, 'delete-account')
+        }
         const { error } = await supabase.rpc('delete_my_account')
         if (error) throw error
         await onSignOut()

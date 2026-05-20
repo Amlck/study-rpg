@@ -75,10 +75,11 @@
 ## 6. Phase 4 — Drop Supabase writes (week 7)
 
 - [ ] 6.1 Flip `VITE_CLOUD_SYNC_BACKEND=r2`; deploy
-- [ ] 6.2 Verify no client code path writes to Supabase sync tables (grep for `upsert_lww` callsites; should all be inside `if (backend !== 'r2')` branch)
+- [x] 6.2 Verified no client code path writes to Supabase sync tables outside the `backendConfig.writeSupabase` gate. Grep audit: `upsert_lww` callsites in `apps/medexam-tw/src/lib/sync/engine.ts:252` and `apps/medexam2-hospital-tw/src/lib/sync/engine.ts:276` both inside `if (backendConfig.writeSupabase)` blocks (lines 191 + 218 + 370). `pullNow` SELECTs also gated by `!readR2` else-branch post-5.1. Audit also surfaced an account-lifecycle gap → see new task 6.6.
 - [ ] 6.3 Keep Supabase rows in place; they freeze (no more updates) but remain queryable
 - [ ] 6.4 Update `docs/CLOUD_SYNC.md` to mark Supabase sync tables as "read-only, archived"
 - [ ] 6.5 Monitor 14 days for any "missing data" reports
+- [x] 6.6 (added 2026-05-20 from 6.2 audit) Wired Worker `/reset` + `/delete-account` to client account-lifecycle. Without this, Phase 4 cutover would leave R2 blobs orphaned when user triggers "重置進度" or "刪除帳號" (Supabase rows cleaned but R2 blobs persist → next pull restores stale data → user thinks reset failed). New helper `apps/<app>/src/lib/sync/r2/account-lifecycle.ts` (mirrored in 一階 + 二階) calls Worker endpoint with current JWT, clears local ETag + presign caches on success. Wired into `useSync.safeResetAccountData` (both apps) + 一階 `SettingsPanel.handleDeleteAccount`. Order: R2 cleanup FIRST (JWT still valid) → Supabase RPC → local wipe / sign out. R2 cleanup skipped when `writeR2 === false`. Both apps typecheck clean. 二階 has no delete-account UI surface so no further wiring needed.
 
 ## 7. Phase 5 — Cleanup (week 8+, separate change boundary)
 
