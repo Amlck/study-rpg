@@ -70,7 +70,8 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     icon: '⬆️',
     title: '醫師進修（消耗營收升 rarity）',
     body: [
-      '在「進修」頁面消耗營收升 rarity（P5→P4 50% / P4→P3 30% / P3→P2 15% / P2→P1 5%）。',
+      '在「進修」頁面先打同科 10 題進修戰；每答對 1 題，本次成功率增加基礎值的 5%。滿分時 P4→P3 會從 30% 變 45%。',
+      '進修戰後消耗營收升 rarity（P5→P4 50% / P4→P3 30% / P3→P2 15% / P2→P1 5%，再套用答題加成）。',
       '失敗只損營收，醫師 rarity 不變；連續失敗 5 次後下次必中（保底）。pity counter 每位醫師獨立追蹤。',
     ],
   },
