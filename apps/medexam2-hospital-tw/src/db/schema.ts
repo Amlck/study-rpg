@@ -606,6 +606,32 @@ export class HospitalDB extends Dexie {
             if (r.assignedDoctorId !== null) r.assignedDoctorId = null
           })
       })
+    // v13: add-medexam2-year-filter — marks the version that introduces the
+    // `quiz.yearFilter` KV in the existing `meta` table. Stores unchanged
+    // (KV row is additive); no upgrade hook needed.
+    this.version(13).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+    })
   }
 }
 

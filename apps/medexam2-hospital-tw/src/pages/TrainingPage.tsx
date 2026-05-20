@@ -29,6 +29,11 @@ import { retireDoctor, type RetireResult } from '../services/retire'
 import type { TrainingAttemptResult } from '@study-rpg/content-medexam2-tw'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { pickRandomQuestion } from '../lib/quiz'
+import {
+  effectivePoolSize,
+  effectiveYearSet,
+  getYearFilter,
+} from '../services/year-filter'
 import { ExplanationMarkdown } from '../components/ExplanationMarkdown'
 
 type Confirming = { doctor: DoctorRow }
@@ -96,6 +101,16 @@ export function TrainingPage() {
   const [pityFilters, setPityFilters] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
 
+  const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
+  const yearFilter = useMemo(() => effectiveYearSet(persistedYearFilter), [persistedYearFilter])
+  // Year-filtered pool size for the doctor pending confirmation (drives the
+  // 「開始進修戰」 disabled gate). Recomputes when the player toggles year chips
+  // on HomePage while the confirm modal is open.
+  const confirmingPoolSize = useLiveQuery(async () => {
+    if (!confirming) return null
+    return await effectivePoolSize(confirming.doctor.subjectId, yearFilter)
+  }, [confirming, yearFilter])
+
   const sortedDoctors = useMemo(
     () =>
       [...doctors]
@@ -133,7 +148,9 @@ export function TrainingPage() {
     setBusy(true)
     try {
       const seenIds = new Set<string>()
-      const question = await pickRandomQuestion(confirming.doctor.subjectId, seenIds)
+      const question = await pickRandomQuestion(confirming.doctor.subjectId, seenIds, {
+        yearFilter,
+      })
       setTrainingBattle({
         doctor: confirming.doctor,
         question,
@@ -195,7 +212,11 @@ export function TrainingPage() {
   async function handleBattleNext(): Promise<void> {
     if (!trainingBattle || !trainingBattle.revealed || trainingBattle.finished) return
     setTrainingBattle((current) => current ? { ...current, loading: true } : current)
-    const question = await pickRandomQuestion(trainingBattle.doctor.subjectId, trainingBattle.seenIds)
+    const question = await pickRandomQuestion(
+      trainingBattle.doctor.subjectId,
+      trainingBattle.seenIds,
+      { yearFilter },
+    )
     setTrainingBattle((current) => {
       if (!current) return current
       return {
@@ -450,11 +471,20 @@ export function TrainingPage() {
                 </p>
               </>
             )}
+            {confirmingPoolSize === 0 && (
+              <p className="banner-quiz-disabled-note">
+                目前年份篩選下，{confirming.doctor.subjectId} 0 題可用，請至首頁放寬篩選。
+              </p>
+            )}
             <div className="modal__actions">
               <button className="ghost-btn" onClick={() => setConfirming(null)} disabled={busy}>
                 取消
               </button>
-              <button className="primary-btn" onClick={handleConfirm} disabled={busy}>
+              <button
+                className="primary-btn"
+                onClick={handleConfirm}
+                disabled={busy || confirmingPoolSize === 0}
+              >
                 {busy ? '準備中…' : '開始進修戰'}
               </button>
             </div>
