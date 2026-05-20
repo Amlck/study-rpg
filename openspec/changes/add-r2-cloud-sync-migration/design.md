@@ -177,6 +177,20 @@ Phase 3 dogfood session 2 in `~/coding-scratch/study-rpg-m2` (track-m2 worktree)
 
 **Other findings (session 2)**: (1) The 1-byte garbage blob means the R2 inventory has not been audited — there could be similar leftovers from other smoke tests (worker dev tests, JWT verify trials). Worth running `wrangler r2 object list study-rpg-saves --prefix users/` once and inspecting object sizes; anything < 1KB is suspect. (2) `__sync.getDiagnosticSnapshot()` returned `{}` empty — that handle exists but isn't populated yet; logging hook to fill it would help future debug. (3) `window.__sync.resume()` after status went `offline` does NOT trigger a retry push — engine stays offline until next dirty-mark or manual `pushAllNow()`. May want a separate `__sync.reset()` to clear offline state. (4) Working tree this session: 0 tracked-file changes (only this design.md edit + tasks.md 4.7 marker). Other dirty paths (`content/medexam2-tw/*.json`, archive tasks.md, `supabase/functions/`) still belong to sibling sessions per prior handoff — left untouched.
 
+### 2026-05-20 08:25 — Bug 4 fix shipped & archived (`fix-r2-engine-recovery-and-cleanup-phase-0-smoke`)
+
+Follow-up change opened, applied, verified, and archived in the same Phase 3 session 2 window. Highlights:
+
+- `apps/medexam-tw/src/lib/sync/r2/engine-r2.ts` + `apps/medexam2-hospital-tw/src/lib/sync/r2/engine-r2.ts` (identical mirror) — `pullBundle` now catches `gunzipBundle` decode errors and still extracts ETag from response headers; `pushBundle`'s 412/409/428 recovery branch logs a grep-able `[sync:pushR2:<bundle>] recovered from corrupt blob via overwrite` via `console.info`; exhausted-error message split into `r2_blob_concurrent_writer_exhausted` (last-attempt was 412 with valid etag) vs `r2_push_exhausted: <orig>` (real network/CORS fail).
+- 3 vitest unit tests cover all three recovery paths (corrupt-blob → If-Match overwrite / concurrent writer exhaust / real network fail message preservation). Vitest scaffolded for the first time in this monorepo at `apps/medexam-tw/{vitest.config.ts,src/lib/sync/r2/__tests__/engine-r2.test.ts}`.
+- `openspec/specs/cloud-sync/spec.md` gained 1 new requirement: «R2 pushBundle SHALL recover from a corrupt existing blob via overwrite» (4 BDD scenarios). Requirement count: 20 → 21. `openspec validate --all` 48/48 ✓.
+- `tasks.md` line 2.11 corrected; new task 1.11 added formalizing «any R2 smoke task creating an object MUST include an explicit delete step verified via `wrangler r2 object list`».
+- Section 4 R2 inventory audit deferred (wrangler v4.92.0 lacks `r2 object list`); engine fix makes the audit preventive rather than urgent. Filed as housekeeping for the future S3-client setup.
+
+**Phase 3 startup status update**: Task 4.7 PASS-with-caveats (this design.md note + the new requirement). Task 4.8 14-day bake is **unblocked** and can start whenever owner is ready to flip prod GH Secret `VITE_CLOUD_SYNC_READ_BACKEND=r2`. Corrupt-blob class of sync failures is no longer silent — engine auto-recovers in production and operator can grep `recovered from corrupt blob via overwrite` if it triggers.
+
+Archive: `openspec/changes/archive/2026-05-20-fix-r2-engine-recovery-and-cleanup-phase-0-smoke/`. Commits `e27f796` (implementation) + `6bb534a` (archive).
+
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
