@@ -384,6 +384,224 @@ body:has(.modal-backdrop) {
   box-shadow: 2px 2px 0 var(--frame-dark);
 }
 
+/* ── Recruitment reveal ceremony ───────────────────────── */
+
+.recruit-ceremony {
+  /* backdrop is already position:fixed via .modal-backdrop */
+}
+
+/* ── Phone sprite (entry step) ──────────────────────── */
+
+.phone-sprite {
+  width: 230px;
+  background: #1c1816;
+  border-radius: 28px;
+  border: 3px solid var(--frame-dark);
+  padding: 10px 10px 18px;
+  box-shadow:
+    5px 5px 0 var(--frame-dark),
+    inset 0 1px 0 rgba(255,255,255,0.07);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Speaker grille at top */
+.phone-sprite__notch {
+  width: 52px;
+  height: 6px;
+  background: #3a3330;
+  border-radius: 3px;
+}
+
+/* Screen bezel */
+.phone-sprite__screen {
+  width: 100%;
+  background: #0d1520;
+  border-radius: 12px;
+  padding: 20px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Pulsing rings + caller icon */
+.phone-sprite__rings {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phone-sprite__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(106, 155, 196, 0.5);
+  animation: ring-pulse 1.8s ease-out infinite;
+}
+
+.phone-sprite__ring:nth-child(2) { animation-delay: 0.6s; }
+.phone-sprite__ring:nth-child(3) { animation-delay: 1.2s; }
+
+@keyframes ring-pulse {
+  0%   { transform: scale(0.55); opacity: 0.9; }
+  100% { transform: scale(2.2);  opacity: 0;   }
+}
+
+.phone-sprite__caller-icon {
+  position: relative;
+  z-index: 1;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.phone-sprite__caller-name {
+  margin: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  color: #e8e0d0;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.phone-sprite__caller-sub {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(232, 224, 208, 0.55);
+  text-align: center;
+}
+
+/* Home button pill at bottom */
+.phone-sprite__home {
+  width: 48px;
+  height: 6px;
+  background: #3a3330;
+  border-radius: 3px;
+  margin-top: 2px;
+}
+
+/* ── Swipe-to-answer track ──────────────────────────── */
+
+.swipe-track {
+  position: relative;
+  width: 200px;  /* must match TRACK_INNER_W in tsx */
+  height: 48px;
+  background: rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  margin-top: 4px;
+  touch-action: none; /* prevent page scroll interfering with drag */
+}
+
+.swipe-track__label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.55);
+  pointer-events: none;
+  user-select: none;
+  padding-left: 48px; /* don't overlap handle start */
+}
+
+/* 48px handle — must match HANDLE_W in tsx */
+.swipe-handle {
+  position: absolute;
+  left: 4px;
+  width: 48px;
+  height: 40px;
+  border-radius: 20px;
+  background: var(--accent-leaf);
+  border: 2px solid var(--frame-dark);
+  font-size: 20px;
+  line-height: 1;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  touch-action: none;
+  z-index: 1;
+}
+
+.swipe-handle:active { cursor: grabbing; }
+.swipe-handle:focus-visible {
+  outline: 2px solid var(--accent-sky);
+  outline-offset: 2px;
+}
+
+.recruit-ceremony__flash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 1;
+}
+
+.recruit-ceremony__rarity-text {
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(64px, 18vw, 112px);
+  color: #fff;
+  text-shadow:
+    0 0 24px rgba(255,255,255,0.9),
+    0 0 60px rgba(255,255,255,0.45);
+  line-height: 1;
+}
+
+.recruit-ceremony__rarity-label {
+  font-size: clamp(16px, 4vw, 24px);
+  color: rgba(255,255,255,0.92);
+  letter-spacing: 0;
+}
+
+/* Silhouette effect — black cutout of the sprite */
+.recruit-ceremony__sprite--silhouette {
+  filter: brightness(0) saturate(0);
+  transition: filter 0.5s ease;
+}
+
+/* Specialty tease line shown from step 2 onward */
+.recruit-ceremony__specialty {
+  margin: 4px 0 8px;
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--rarity-color);
+  letter-spacing: 0;
+}
+
+/* Blinking "tap to continue" hint */
+.recruit-ceremony__tap-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  opacity: 0.45;
+  animation: ceremony-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes ceremony-blink {
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 0.12; }
+}
+
+/* Reduced-motion: freeze rings, skip flash, remove blink */
+@media (prefers-reduced-motion: reduce) {
+  .phone-sprite__ring          { animation: none; opacity: 0.3; }
+  .recruit-ceremony__flash     { display: none; }
+  .recruit-ceremony__sprite--silhouette { filter: none; }
+  .recruit-ceremony__tap-hint  { animation: none; }
+}
+
 /* ── Dev panel ─────────────────────────────────────────── */
 
 .dev-panel {
