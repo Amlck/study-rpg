@@ -63,11 +63,11 @@
 
 ## 5. Phase 3 — Cut over reads to R2 (week 6)
 
-- [ ] 5.1 Update both apps' engine `pullNow()` and `pullAllNow()` to read from R2 when `READ_BACKEND=r2`
-- [ ] 5.2 Update `SyncStatusChip` last-synced timestamp source: read from `engine.lastPullAt` regardless of backend
-- [ ] 5.3 Update `MigrationUploadPrompt` and `ConflictChooserModal` to operate on bundles instead of per-table rows: keep the same 3 user-facing choices ("Upload local", "Keep separate", "Decide later")
-- [ ] 5.4 Update `SettingsPanel` export action to call new R2-aware export (downloads combined JSON of all 3 bundles)
-- [ ] 5.5 Update 二階 `HelpMenu` account section similarly
+- [x] 5.1 Wired both apps' engine `pullNow()` to branch on `backendConfig.readR2`. Under R2-read path, iterates `r2Bundles` calling `pullBundle({ conditional: !force, force })` so 304 short-circuits when local ETag matches cloud; under Supabase-read path, the original per-table `updated_at > sinceIso` SELECT loop is preserved. `_lastPullAt` + offline detection + error recording + status state stay shared. `pullAllNow` automatically inherits via `pullNow({ force })`. Imports `pullBundle` (already exported from `engine-r2.ts`). Symmetric edit in 一階 + 二階 engines; 二階's `onPullComplete` invariant-repair hook untouched. Both apps typecheck clean.
+- [x] 5.2 No code change needed. `SyncStatusChip` already takes `lastPullAt` as prop; `useSync` reads `engine.lastPullAt()` which returns `_lastPullAt`; post-5.1 the engine sets `_lastPullAt = Date.now()` in both Supabase and R2 branches. Chip displays correctly regardless of backend.
+- [x] 5.3 No code change needed. `MigrationUploadPrompt` + `ConflictChooserModal` in both apps are pure UI — take `onChoose` callbacks; zero backend coupling (verified via grep for supabase/writeR2/readR2 across all 4 files). Backend routing lives in `useSync` + `engine.pushAllNow`/`pullAllNow` which already branch on `backendConfig` post-5.1. The same 3 user-facing choices ("Upload local"/"Keep separate"/"Decide later") work for bundles too because the choice is semantic (intent) not data-shape.
+- [x] 5.4 Updated 一階 `SettingsPanel.handleExport` to branch on `getBackendConfig().readR2`. R2-read path uses new helper `apps/medexam-tw/src/lib/sync/r2/export.ts` → `exportAllBundlesFromR2(supabase, userId)` which fetches all 3 R2 bundles via Worker presign + gunzips + assembles into `{schema_version, exported_at, user_id, bundles: {m1, m2, bookmarks}}` JSON envelope mirroring the Supabase RPC shape. Supabase-read path unchanged (calls `export_my_data` RPC). Same download blob+anchor flow either way. Missing bundles reported as `null` (graceful).
+- [x] 5.5 No-op for now. 二階 `HelpMenu` has account-reset + reset-progress but NO cloud-export action (verified). If owner adds 二階 export later, lift the same `r2/export.ts` + `getBackendConfig().readR2` branch from 一階 SettingsPanel — pattern is generic.
 - [ ] 5.6 Deploy with `VITE_CLOUD_SYNC_BACKEND=dual`, `VITE_CLOUD_SYNC_READ_BACKEND=r2`
 - [ ] 5.7 Monitor `bug_reports` for new submissions categorized `cloud-sync` for 7 days; investigate any
 - [ ] 5.8 If zero rollback-worthy issues after 7 days, proceed to Phase 4
