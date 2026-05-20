@@ -4,8 +4,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   RARITY_LABELS,
   RARITY_ORDER,
+  ROOM_TYPE_LABELS,
+  SUBJECT_TO_ROOM,
   getRoomHintForSubject,
   type Rarity,
+  type RoomType,
 } from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
@@ -13,19 +16,25 @@ import { lookupSprite } from '../lib/sprite-lookup'
 import { formatMasteryPercent } from '../lib/mastery'
 import { RenameDoctorModal } from '../components/RenameDoctorModal'
 
-const RARITY_FILTER_OPTIONS: ('all' | Rarity)[] = ['all', ...[...RARITY_ORDER].reverse()]
+const RARITY_FILTER_OPTIONS: Rarity[] = [...RARITY_ORDER].reverse()
 
 export function DoctorRoster() {
   const db = getHospitalDB()
   const doctors = useLiveQuery(() => db.doctors.orderBy('obtainedAt').reverse().toArray(), []) ?? []
+  const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
   const masteryMap = useMemo(() => {
     const m: Record<string, { subjectId: string; correct: number; total: number }> = {}
     for (const r of masteryRows) m[r.subjectId] = r
     return m
   }, [masteryRows])
+  const roomInfoMap = useMemo(() => {
+    const m = new Map<string, { type: RoomType; slot: number }>()
+    for (const r of rooms) m.set(r.id, { type: r.type, slot: r.slot })
+    return m
+  }, [rooms])
   const [subjectFilter, setSubjectFilter] = useState<string>('all')
-  const [rarityFilter, setRarityFilter] = useState<'all' | Rarity>('all')
+  const [rarityFilters, setRarityFilters] = useState<Rarity[]>([])
   const [renaming, setRenaming] = useState<DoctorRow | null>(null)
 
   const subjects = useMemo(() => {
@@ -36,9 +45,17 @@ export function DoctorRoster() {
 
   const filtered = doctors.filter((d) => {
     if (subjectFilter !== 'all' && d.subjectId !== subjectFilter) return false
-    if (rarityFilter !== 'all' && d.rarity !== rarityFilter) return false
+    if (rarityFilters.length > 0 && !rarityFilters.includes(d.rarity)) return false
     return true
   })
+
+  function toggleRarityFilter(rarity: Rarity) {
+    setRarityFilters((current) =>
+      current.includes(rarity)
+        ? current.filter((r) => r !== rarity)
+        : [...current, rarity],
+    )
+  }
 
   return (
     <main className="app-shell">
@@ -69,19 +86,30 @@ export function DoctorRoster() {
                 ))}
               </select>
             </label>
-            <label>
-              稀有度
-              <select
-                value={rarityFilter}
-                onChange={(e) => setRarityFilter(e.target.value as 'all' | Rarity)}
-              >
+            <div className="filter-bar__group">
+              <span className="filter-bar__label">稀有度</span>
+              <span className="filter-chip-group" role="group" aria-label="稀有度篩選">
+                <button
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={rarityFilters.length === 0}
+                  onClick={() => setRarityFilters([])}
+                >
+                  全部
+                </button>
                 {RARITY_FILTER_OPTIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r === 'all' ? '全部' : `${r} ${RARITY_LABELS[r]}`}
-                  </option>
+                  <button
+                    key={r}
+                    type="button"
+                    className="filter-chip"
+                    aria-pressed={rarityFilters.includes(r)}
+                    onClick={() => toggleRarityFilter(r)}
+                  >
+                    {r} {RARITY_LABELS[r]}
+                  </button>
                 ))}
-              </select>
-            </label>
+              </span>
+            </div>
             <span className="filter-bar__count">
               {filtered.length} / {doctors.length}
             </span>
@@ -119,6 +147,29 @@ export function DoctorRoster() {
                     ✏️
                   </button>
                 </h3>
+                {(() => {
+                  if (!d.assignedRoom) {
+                    return (
+                      <span className="doctor-card__assignment doctor-card__assignment--unassigned">
+                        未指派
+                      </span>
+                    )
+                  }
+
+                  const info = roomInfoMap.get(d.assignedRoom)
+                  if (!info) return null
+
+                  const preferredType = SUBJECT_TO_ROOM[d.subjectId as keyof typeof SUBJECT_TO_ROOM]
+                  const isMatch = preferredType === info.type
+                  return (
+                    <span
+                      className={`doctor-card__assignment doctor-card__assignment--assigned${isMatch ? ' doctor-card__assignment--match' : ''}`}
+                      title={isMatch ? '適性科別相符，有加成' : undefined}
+                    >
+                      {ROOM_TYPE_LABELS[info.type]} #{info.slot}{isMatch ? ' ✦' : ''}
+                    </span>
+                  )
+                })()}
                 <dl className="doctor-card__meta">
                   <div>
                     <dt>科別</dt>

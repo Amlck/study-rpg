@@ -11,6 +11,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  RARITY_LABELS,
+  RARITY_ORDER,
   TRAINING_BASE_SUCCESS_RATES,
   TRAINING_COSTS,
   TRAINING_NEXT_RARITY,
@@ -29,6 +31,12 @@ type RetireConfirming = { doctor: DoctorRow }
 type Outcome = { doctorId: string; result: TrainingAttemptResult }
 type RetireOutcome = { result: RetireResult; doctorName: string; doctorRarity: string }
 
+const RARITY_FILTER_OPTIONS: Rarity[] = [...RARITY_ORDER].reverse()
+const PITY_FILTER_OPTIONS = Array.from(
+  { length: TRAINING_PITY_THRESHOLD + 1 },
+  (_, idx) => idx,
+)
+
 function isTrainable(r: Rarity): r is TrainableRarity {
   return r !== 'P1'
 }
@@ -46,12 +54,41 @@ export function TrainingPage() {
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const [retireConfirming, setRetireConfirming] = useState<RetireConfirming | null>(null)
   const [retireOutcome, setRetireOutcome] = useState<RetireOutcome | null>(null)
+  const [rarityFilters, setRarityFilters] = useState<Rarity[]>([])
+  const [pityFilters, setPityFilters] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
 
   const sortedDoctors = useMemo(
-    () => [...doctors].sort((a, b) => a.obtainedAt - b.obtainedAt),
-    [doctors],
+    () =>
+      [...doctors]
+        .filter((d) => {
+          if (rarityFilters.length > 0 && !rarityFilters.includes(d.rarity)) return false
+          if (pityFilters.length === 0) return true
+          return pityFilters.some((pity) =>
+            pity >= TRAINING_PITY_THRESHOLD
+              ? d.pityCounter >= TRAINING_PITY_THRESHOLD
+              : d.pityCounter === pity,
+          )
+        })
+        .sort((a, b) => a.obtainedAt - b.obtainedAt),
+    [doctors, pityFilters, rarityFilters],
   )
+
+  function toggleRarityFilter(rarity: Rarity) {
+    setRarityFilters((current) =>
+      current.includes(rarity)
+        ? current.filter((r) => r !== rarity)
+        : [...current, rarity],
+    )
+  }
+
+  function togglePityFilter(pity: number) {
+    setPityFilters((current) =>
+      current.includes(pity)
+        ? current.filter((p) => p !== pity)
+        : [...current, pity],
+    )
+  }
 
   async function handleConfirm() {
     if (!confirming) return
@@ -108,9 +145,67 @@ export function TrainingPage() {
         </p>
       </section>
 
+      {doctors.length > 0 && (
+        <section className="filter-bar" aria-label="進修篩選">
+          <div className="filter-bar__group">
+            <span className="filter-bar__label">稀有度</span>
+            <span className="filter-chip-group" role="group" aria-label="進修稀有度篩選">
+              <button
+                type="button"
+                className="filter-chip"
+                aria-pressed={rarityFilters.length === 0}
+                onClick={() => setRarityFilters([])}
+              >
+                全部
+              </button>
+              {RARITY_FILTER_OPTIONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={rarityFilters.includes(r)}
+                  onClick={() => toggleRarityFilter(r)}
+                >
+                  {r} {RARITY_LABELS[r]}
+                </button>
+              ))}
+            </span>
+          </div>
+          <div className="filter-bar__group">
+            <span className="filter-bar__label">保底</span>
+            <span className="filter-chip-group" role="group" aria-label="保底進度篩選">
+              <button
+                type="button"
+                className="filter-chip"
+                aria-pressed={pityFilters.length === 0}
+                onClick={() => setPityFilters([])}
+              >
+                全部
+              </button>
+              {PITY_FILTER_OPTIONS.map((pity) => (
+                <button
+                  key={pity}
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={pityFilters.includes(pity)}
+                  onClick={() => togglePityFilter(pity)}
+                >
+                  {pity >= TRAINING_PITY_THRESHOLD ? `${pity}+ 必中` : `${pity}`}
+                </button>
+              ))}
+            </span>
+          </div>
+          <span className="filter-bar__count">
+            {sortedDoctors.length} / {doctors.length}
+          </span>
+        </section>
+      )}
+
       <section className="training-doctor-list" aria-label="醫師清單">
-        {sortedDoctors.length === 0 ? (
+        {doctors.length === 0 ? (
           <p className="study-session__empty">尚未招募任何醫師。</p>
+        ) : sortedDoctors.length === 0 ? (
+          <p className="study-session__empty">沒有符合目前篩選條件的醫師。</p>
         ) : (
           <ul className="training-doctor-list__items">
             {sortedDoctors.map((d) => {
