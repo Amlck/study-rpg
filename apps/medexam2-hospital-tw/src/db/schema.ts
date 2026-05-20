@@ -12,10 +12,21 @@ import {
   type Rarity,
   type Room,
 } from '@study-rpg/content-medexam2-tw'
+import {
+  EQUIPMENT_PITY_RULES,
+  EQUIPMENT_WEIGHTS,
+  INITIAL_EQUIPMENT_TICKETS,
+  type EquipmentCategory,
+} from '../data/equipment'
 
 const RECRUITMENT_GACHA_CONFIG = {
   tiers: RECRUITMENT_WEIGHTS,
   pityRules: RECRUITMENT_PITY_RULES,
+}
+
+const EQUIPMENT_GACHA_CONFIG = {
+  tiers: EQUIPMENT_WEIGHTS,
+  pityRules: EQUIPMENT_PITY_RULES,
 }
 
 export const ALL_SUBJECT_IDS = [
@@ -55,6 +66,20 @@ export interface TicketsRow {
   id: 'global'
   available: number
   lastRefreshDay: number
+}
+
+export interface EquipmentTicketsRow {
+  id: 'global'
+  available: number
+}
+
+export interface EquipmentRow {
+  id: string
+  definitionId: string
+  category: EquipmentCategory
+  rarity: Rarity
+  obtainedAt: number
+  equippedDoctorId: string | null
 }
 
 export type RoomRow = Room
@@ -289,6 +314,10 @@ export interface HospitalLocalBackupRecord {
   targetedTickets?: TargetedTicketRow[]
   /** Optional — present on backups taken post-v9. */
   targetedTicketHistory?: TargetedTicketHistoryRow[]
+  /** Optional local-only equipment state (added v13). */
+  equipment?: EquipmentRow[]
+  equipmentTickets?: EquipmentTicketsRow | null
+  equipmentGachaStats?: GachaStatsRow | null
   /**
    * Optional — present on backups taken post add-monotonic-counters-to-sync
    * (2026-05-19). Older snapshots (taken before this field shipped) MAY omit
@@ -319,6 +348,9 @@ export class HospitalDB extends Dexie {
   targetedTickets!: EntityTable<TargetedTicketRow, 'id'>
   targetedTicketHistory!: EntityTable<TargetedTicketHistoryRow, 'id'>
   erConsultLog!: EntityTable<ERConsultLogRow, 'id'>
+  equipment!: EntityTable<EquipmentRow, 'id'>
+  equipmentTickets!: EntityTable<EquipmentTicketsRow, 'id'>
+  equipmentGachaStats!: EntityTable<GachaStatsRow, 'id'>
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -632,6 +664,49 @@ export class HospitalDB extends Dexie {
       targetedTicketHistory: '++id, ticketId, at, event',
       erConsultLog: '++id, triggeredAt, subjectId',
     })
+
+    // v14: first-pass equipment inventory. Local-only for now: equipment,
+    // equipment tickets, and equipment-specific pity stats are not cloud-synced
+    // until a follow-up migration adds server tables.
+    this.version(14)
+      .stores({
+        affinity: '&subjectId',
+        doctors: '&id, subjectId, rarity, obtainedAt',
+        gachaStats: '&id',
+        tickets: '&id',
+        rooms: '&id, type, slot',
+        gameCounters: '&id',
+        mastery: '&subjectId',
+        questionHistory:
+          '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+        meta: '&key',
+        localBackup: '&key, takenAt',
+        monotonicCounters: '&id',
+        trainingHistory: '++id, doctorId, attemptedAt',
+        eventLog: '++id, triggeredAt',
+        fateCardHistory: '++id, drawnAt',
+        retirementLog: '++id, retiredAt, doctorId',
+        bookmarks: '&questionId, addedAt',
+        bannerUnlockBonusLog: '&subjectId',
+        targetedTickets: '&id, status, subjectId, obtainedAt',
+        targetedTicketHistory: '++id, ticketId, at, event',
+        erConsultLog: '++id, triggeredAt, subjectId',
+        equipment: '&id, rarity, category, obtainedAt, equippedDoctorId',
+        equipmentTickets: '&id',
+        equipmentGachaStats: '&id',
+      })
+      .upgrade(async (tx) => {
+        const ticketsTable = tx.table<EquipmentTicketsRow, 'global'>('equipmentTickets')
+        if (!(await ticketsTable.get('global'))) {
+          await ticketsTable.put({ id: 'global', available: INITIAL_EQUIPMENT_TICKETS })
+        }
+
+        const statsTable = tx.table<GachaStatsRow, 'global'>('equipmentGachaStats')
+        if (!(await statsTable.get('global'))) {
+          const init = initialGachaStats(EQUIPMENT_GACHA_CONFIG)
+          await statsTable.put({ id: 'global', ...init })
+        }
+      })
   }
 }
 
@@ -667,7 +742,17 @@ export async function ensureSeed(): Promise<void> {
   const db = getHospitalDB()
   await db.transaction(
     'rw',
-    [db.tickets, db.gachaStats, db.rooms, db.gameCounters, db.doctors, db.mastery, db.monotonicCounters],
+    [
+      db.tickets,
+      db.gachaStats,
+      db.equipmentTickets,
+      db.equipmentGachaStats,
+      db.rooms,
+      db.gameCounters,
+      db.doctors,
+      db.mastery,
+      db.monotonicCounters,
+    ],
     async () => {
       // Always ensure monotonicCounters singleton exists (covers both fresh save
       // and the rare case where v6 upgrade didn't run before ensureSeed)
@@ -693,6 +778,15 @@ export async function ensureSeed(): Promise<void> {
       if (!s) {
         const init = initialGachaStats(RECRUITMENT_GACHA_CONFIG)
         await db.gachaStats.put({ id: 'global', ...init })
+      }
+      const equipmentTickets = await db.equipmentTickets.get('global')
+      if (!equipmentTickets) {
+        await db.equipmentTickets.put({ id: 'global', available: INITIAL_EQUIPMENT_TICKETS })
+      }
+      const equipmentStats = await db.equipmentGachaStats.get('global')
+      if (!equipmentStats) {
+        const init = initialGachaStats(EQUIPMENT_GACHA_CONFIG)
+        await db.equipmentGachaStats.put({ id: 'global', ...init })
       }
       const roomCount = await db.rooms.count()
       if (roomCount === 0) {

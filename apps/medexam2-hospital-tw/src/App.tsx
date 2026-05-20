@@ -13,6 +13,7 @@ import { StudySessionPage } from './pages/StudySessionPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { FateCardPage } from './pages/FateCardPage'
 import { BookmarksPage } from './pages/BookmarksPage'
+import { EquipmentPage } from './pages/EquipmentPage'
 import { useStudySessionTick } from './lib/tick'
 import { checkAssignmentInvariants } from './lib/assignment'
 import { useSync } from './lib/sync/useSync'
@@ -276,6 +277,7 @@ function App() {
         <Route path="/study" element={<StudySessionPage />} />
         <Route path="/training" element={<TrainingPage />} />
         <Route path="/fate-cards" element={<FateCardPage />} />
+        <Route path="/equipment" element={<EquipmentPage />} />
         <Route path="/bookmarks" element={<BookmarksPage />} />
       </Routes>
     </HashRouter>

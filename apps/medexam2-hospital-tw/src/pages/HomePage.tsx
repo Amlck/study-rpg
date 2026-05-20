@@ -41,6 +41,7 @@ import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
 import { TargetedTicketSection } from '../components/TargetedTicketSection'
+import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
 
@@ -62,6 +63,7 @@ export function HomePage() {
   const affinityRows = useLiveQuery(() => db.affinity.toArray(), []) ?? []
   const ticketsRow = useLiveQuery(() => db.tickets.get('global'), [])
   const ticketsAvailable = ticketsRow?.available ?? 0
+  const equipmentTicketsRow = useLiveQuery(() => db.equipmentTickets.get('global'), [])
   const refreshLabel = getNextDailyRefreshLabel(new Date(), ticketsAvailable, TICKET_CAP)
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const mono = useLiveQuery(() => db.monotonicCounters.get('singleton'), [])
@@ -153,6 +155,9 @@ export function HomePage() {
           <Link to="/fate-cards" className="nav-link">
             命運 →
           </Link>
+          <Link to="/equipment" className="nav-link">
+            器材 →
+          </Link>
           <Link to="/roster" className="nav-link">
             醫師 →
           </Link>
@@ -169,6 +174,9 @@ export function HomePage() {
         >
           🎟️ {ticketsAvailable} / {TICKET_CAP}
           <span className="ticket-counter__refill"> · {refreshLabel}</span>
+        </span>
+        <span className="ticket-counter" title="器材補給池使用的器材券">
+          🧰 {equipmentTicketsRow?.available ?? 0} / {EQUIPMENT_TICKET_CAP}
         </span>
       </div>
 
