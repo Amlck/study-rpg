@@ -40,6 +40,12 @@ export const TRAINING_BASE_SUCCESS_RATES: Record<TrainableRarity, number> = {
  */
 export const TRAINING_PITY_THRESHOLD = 5
 
+/** Number of same-specialty questions answered before a training attempt. */
+export const TRAINING_BATTLE_QUESTION_COUNT = 10
+
+/** Per-correct multiplier bonus applied to the base success rate. */
+export const TRAINING_BATTLE_SUCCESS_RATE_BONUS_PER_CORRECT = 0.05
+
 /** Maps a current rarity to the rarity reached on success (P1 is terminal). */
 export const TRAINING_NEXT_RARITY: Record<TrainableRarity, Rarity> = {
   P5: 'P4',
@@ -86,6 +92,12 @@ export type TrainingAttemptResult =
 export interface AttemptTrainingOptions {
   /** Current `gameCounters.revenue` value (read-only — caller mutates). */
   currentRevenue: number
+  /**
+   * Multiplier applied to the base success rate for this attempt. Training
+   * battle currently passes `1 + 0.05 × correctAnswers`, so 10/10 means
+   * `baseRate × 1.5`. Defaults to 1.0 for legacy/direct callers.
+   */
+  successRateMultiplier?: number
   /** RNG provider returning a float in `[0, 1)`. Caller wires Math.random
    *  (or a seeded RNG for tests / deterministic replay). */
   rng: () => number
@@ -131,7 +143,11 @@ export function attemptTraining(
 
   const toRarity = TRAINING_NEXT_RARITY[fromRarity]
   const pityTriggered = doctor.pityCounter >= TRAINING_PITY_THRESHOLD
-  const succeeded = pityTriggered || opts.rng() < TRAINING_BASE_SUCCESS_RATES[fromRarity]
+  const effectiveSuccessRate = Math.min(
+    1,
+    TRAINING_BASE_SUCCESS_RATES[fromRarity] * (opts.successRateMultiplier ?? 1),
+  )
+  const succeeded = pityTriggered || opts.rng() < effectiveSuccessRate
 
   if (succeeded) {
     return {
