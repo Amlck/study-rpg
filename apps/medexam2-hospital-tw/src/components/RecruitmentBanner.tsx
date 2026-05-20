@@ -12,6 +12,10 @@ interface Props {
   dueCount?: number
   /** Answered vs total question counts for completion tracking. */
   completion?: { answered: number; total: number }
+  /** When true, the 「📚 學習」 button is disabled and the disabled-reason caption renders. */
+  quizDisabled?: boolean
+  /** Caption text rendered below the actions row when `quizDisabled === true`. */
+  quizDisabledReason?: string
   onRoll: () => void
   onStartQuiz: () => void
 }
@@ -24,6 +28,8 @@ export function RecruitmentBanner({
   mastery,
   dueCount = 0,
   completion,
+  quizDisabled = false,
+  quizDisabledReason,
   onRoll,
   onStartQuiz,
 }: Props) {
@@ -69,7 +75,13 @@ export function RecruitmentBanner({
       </div>
 
       <div className="banner__actions">
-        <button type="button" className="banner__study" onClick={onStartQuiz}>
+        <button
+          type="button"
+          className="banner__study"
+          onClick={onStartQuiz}
+          disabled={quizDisabled}
+          title={quizDisabled ? quizDisabledReason : undefined}
+        >
           📚 學習
         </button>
         <button
@@ -88,6 +100,9 @@ export function RecruitmentBanner({
           🎫 招募
         </button>
       </div>
+      {quizDisabled && quizDisabledReason && (
+        <p className="banner-quiz-disabled-note">📷 {quizDisabledReason}</p>
+      )}
       {!unlocked && (
         <p className="banner__locked-msg">
           再答對 <strong>{missing}</strong> 題{subject.displayName}解鎖招募

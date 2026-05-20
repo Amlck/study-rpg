@@ -25,6 +25,13 @@ import { attemptRoll, type RollOutcome } from '../services/recruitment'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
 import { getNextDailyRefreshLabel } from '../lib/daily-ticket'
+import {
+  ALL_YEARS,
+  effectivePoolSize,
+  effectiveYearSet,
+  getYearFilter,
+} from '../services/year-filter'
+import { YearFilterBar } from '../components/YearFilterBar'
 import { RecruitmentBanner } from '../components/RecruitmentBanner'
 import { RecruitmentResultModal } from '../components/RecruitmentResultModal'
 import { DevAffinityControls } from '../components/DevAffinityControls'
@@ -62,19 +69,31 @@ export function HomePage() {
   const allDoctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
+  const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
+  const yearFilter = useMemo(() => effectiveYearSet(persistedYearFilter), [persistedYearFilter])
   const dueCountMap = useLiveQuery(async () => {
     // useLiveQuery re-runs whenever questionHistory changes (Dexie observes
     // the tables touched inside the query function). One pass per quiz answer
     // is acceptable — full table read is <10ms even at 6066Q corpus dogfood
     // scale because questionHistory only contains rows the user has answered.
-    const grouped = await getDueQueueAllSubjects()
+    const grouped = await getDueQueueAllSubjects(Date.now(), { yearFilter })
     const allocated = allocateDailyCap(grouped)
     const m: Record<string, number> = {}
     for (const [subject, rows] of allocated.entries()) {
       m[subject] = rows.length
     }
     return m
-  }, []) ?? {}
+  }, [yearFilter]) ?? {}
+  // Per-subject year-filtered pool size for the「📚 學習」 disabled gate.
+  // Computed off the loaded content pack (in-memory, ~6066 questions); each
+  // chip click triggers 14 × O(pool) ≈ 9k ops — far below render budget.
+  const poolSizeMap = useLiveQuery(async () => {
+    const m: Record<string, number> = {}
+    for (const s of subjects) {
+      m[s.id] = await effectivePoolSize(s.id, yearFilter)
+    }
+    return m
+  }, [subjects, yearFilter]) ?? {}
 
   const affinityMap = useMemo(() => {
     const m: Record<string, number> = {}
@@ -274,21 +293,35 @@ export function HomePage() {
         onError={(msg) => pushToast(msg, 'error')}
       />
 
+      <YearFilterBar />
+
       <section className="banners">
-        {subjects.map((s) => (
-          <RecruitmentBanner
-            key={s.id}
-            subject={s}
-            affinity={affinityMap[s.id] ?? 0}
-            threshold={RECRUITMENT_THRESHOLDS[s.id] ?? 0}
-            ticketsAvailable={ticketsAvailable}
-            mastery={masteryMap[s.id]}
-            dueCount={dueCountMap[s.id] ?? 0}
-            completion={completionMap?.get(s.id as SubjectId)}
-            onRoll={() => void handleRoll(s)}
-            onStartQuiz={() => setActiveQuizSubject(s.id as SubjectId)}
-          />
-        ))}
+        {subjects.map((s) => {
+          const subjectPool = poolSizeMap[s.id]
+          const isPoolEmpty = typeof subjectPool === 'number' && subjectPool === 0
+          return (
+            <RecruitmentBanner
+              key={s.id}
+              subject={s}
+              affinity={affinityMap[s.id] ?? 0}
+              threshold={RECRUITMENT_THRESHOLDS[s.id] ?? 0}
+              ticketsAvailable={ticketsAvailable}
+              mastery={masteryMap[s.id]}
+              dueCount={dueCountMap[s.id] ?? 0}
+              completion={completionMap?.get(s.id as SubjectId)}
+              quizDisabled={isPoolEmpty}
+              quizDisabledReason={
+                isPoolEmpty
+                  ? yearFilter.size === ALL_YEARS.length
+                    ? `此科目目前無可用題目`
+                    : `此組合 0 題，請放寬年份篩選`
+                  : undefined
+              }
+              onRoll={() => void handleRoll(s)}
+              onStartQuiz={() => setActiveQuizSubject(s.id as SubjectId)}
+            />
+          )
+        })}
       </section>
 
       <DevAffinityControls subjects={subjects} onAffinityIncrement={(id) => void handleAffinityIncrement(id)} />

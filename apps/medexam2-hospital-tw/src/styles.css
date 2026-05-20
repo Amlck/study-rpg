@@ -800,6 +800,56 @@ body:has(.modal-backdrop) {
   color: var(--frame-light);
 }
 
+.filter-bar__pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-bar__pager-btn {
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0 8px;
+  color: var(--frame-dark);
+  background: var(--bg-cream);
+  border: 2px solid var(--frame-light);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.filter-bar__pager-btn:hover,
+.filter-bar__pager-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.7);
+  outline: none;
+}
+
+.filter-bar__pager-btn[aria-disabled='true'] {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.filter-bar__pager-indicator {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  min-width: 32px;
+  text-align: center;
+  color: var(--frame-light);
+}
+
+.banner-quiz-disabled-note {
+  margin-top: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--frame-light);
+  background: rgba(0, 0, 0, 0.04);
+  border-left: 3px solid var(--frame-light);
+  border-radius: 2px;
+}
+
 .roster-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
