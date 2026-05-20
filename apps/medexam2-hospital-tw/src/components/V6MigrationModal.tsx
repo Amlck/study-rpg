@@ -69,8 +69,8 @@ export function V6MigrationModal({ counters, onDismiss }: V6MigrationModalProps)
           <li>
             <strong>⬆️ 醫師進修</strong>
             <p>
-              到「進修」頁面消耗營收升 rarity（P5→P4→...→P1）。失敗只損營收，
-              連續 5 次失敗的下次必中（保底）。
+              到「進修」頁面先完成同科 10 題進修戰，每答對 1 題會讓本次成功率增加基礎值的 5%。
+              挑戰後消耗營收升 rarity（P5→P4→...→P1）。失敗只損營收，連續 5 次失敗的下次必中（保底）。
             </p>
           </li>
           <li>

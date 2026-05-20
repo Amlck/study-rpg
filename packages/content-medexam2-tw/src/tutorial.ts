@@ -116,7 +116,7 @@ export const SURFACE_HINTS: ReadonlyArray<SurfaceHint> = Object.freeze([
   {
     id: 'training',
     title: '醫師進修怎麼用',
-    body: '消耗營收提升醫師 rarity。失敗只損營收、不掉等級。同一位醫師連續失敗 5 次後第 6 次必中（pity 保底）。',
+    body: '進修前先打同科 10 題進修戰；每答對 1 題，本次成功率增加基礎值的 5%。挑戰後消耗營收做升級判定；失敗只損營收、不掉等級。同一位醫師連續失敗 5 次後第 6 次必中（pity 保底）。',
   },
   {
     id: 'hospital',

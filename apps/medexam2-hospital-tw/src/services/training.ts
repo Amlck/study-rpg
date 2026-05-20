@@ -14,7 +14,10 @@
 import { attemptTraining, type TrainingAttemptResult } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB, type DoctorRow, type TrainingHistoryRow } from '../db/schema'
 
-export async function trainDoctor(doctorId: string): Promise<TrainingAttemptResult> {
+export async function trainDoctor(
+  doctorId: string,
+  opts: { successRateMultiplier?: number } = {},
+): Promise<TrainingAttemptResult> {
   const db = getHospitalDB()
   return db.transaction(
     'rw',
@@ -34,7 +37,7 @@ export async function trainDoctor(doctorId: string): Promise<TrainingAttemptResu
 
       const result = attemptTraining(
         { id: doctor.id, rarity: doctor.rarity, pityCounter: doctor.pityCounter },
-        { currentRevenue, rng: Math.random },
+        { currentRevenue, rng: Math.random, successRateMultiplier: opts.successRateMultiplier },
       )
 
       if (result.kind === 'aborted') return result
