@@ -71,10 +71,10 @@
 
 ## 9. Documentation & release notes
 
-- [ ] 9.1 更新 `apps/medexam2-hospital-tw/src/components/HelpMenu.tsx` 加「排名」accordion section — opt-in 流程、隱私、改名、停用排行
-- [ ] 9.2 在 root `CLAUDE.md` 的 hospital app 區段補 leaderboard endpoints / D1 / KV reference + Worker module pointer
-- [ ] 9.3 在 `openspec/project.md` Roadmap 加新 row「M_2nd ext — 排名 leaderboard」並標記 shipped 日期（archive 時填）
-- [ ] 9.4 在 `docs/` 加 `LEADERBOARD.md`（類似 `BUG_REPORTING.md` 範本）：data model / endpoints / migration apply / monitoring
+- [x] 9.1 更新 `apps/medexam2-hospital-tw/src/components/HelpMenu.tsx` 加「排名」accordion section — opt-in 流程、隱私、改名、停用排行（新 `leaderboard-info` 4-paragraph doc section 插在 fate-cards 之後、leaderboard-settings 之前；後者 icon 改 ⚙️ + title 標「（設定）」以區隔）
+- [x] 9.2 在 root `CLAUDE.md` 的 hospital app 區段補 leaderboard endpoints / D1 / KV reference + Worker module pointer（新 section「Hospital leaderboard (M_2nd ext)」插在 Bug reporting 之後、Source data path 之前，含 5 endpoint table + resource IDs + migration apply 指令）
+- [x] 9.3 在 `openspec/project.md` Roadmap 加新 row「M_2nd ext — 排名 leaderboard」（插在 M4.5 之後、M5 之前，狀態標 🔄 in-progress，shipped 日期 archive 時改）
+- [x] 9.4 在 `docs/` 加 `LEADERBOARD.md`（類似 `BUG_REPORTING.md` 範本）：data model / endpoints / migration apply / monitoring（含 D1 schema + IDB v14 schema + 5 endpoint 詳解 + nickname 規則 + sync engine integration + owner read flow + monitoring + 4 known warts + 4 follow-up changes）
 
 ## 10. Pre-archive verification
 
