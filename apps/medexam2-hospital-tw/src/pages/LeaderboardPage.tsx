@@ -28,6 +28,7 @@ import {
 } from '@study-rpg/core'
 import { useAuth } from '../lib/auth/AuthContext'
 import { fetchLeaderboardSnapshot, upsertLeaderboard } from '../lib/leaderboard/api'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { LeaderboardOptInModal } from '../components/LeaderboardOptInModal'
 import {
   getLeaderboardProfile,
@@ -143,7 +144,7 @@ export function LeaderboardPage() {
   return (
     <main className="app-shell leaderboard-page">
       <header className="app-header">
-        <h1>🏆 排名</h1>
+        <h1><EmojiIcon char="🏆" size={28} /> 排名</h1>
         <div className="app-header__meta">
           <Link to="/" className="nav-link">
             ← 回首頁
