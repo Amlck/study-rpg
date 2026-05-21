@@ -204,6 +204,26 @@ Archive: `openspec/changes/archive/2026-05-20-fix-r2-engine-recovery-and-cleanup
 
 **7-day monitor window** (task 5.7) opens 2026-05-22; proceed to 5.8 (Phase 4 readiness) on or after 2026-05-29 if zero `cloud-sync`-category `bug_reports` and no rollback-worthy issues. Owner can flip back to Supabase reads at any time during the window via `gh secret delete VITE_CLOUD_SYNC_READ_BACKEND` (preserves dual-write).
 
+### 2026-05-22 (later) — Bulk migration rescue (tasks 10.1–10.7)
+
+R2 inventory audit immediately post-cutover surfaced a **27-user migration gap**: `auth.users` had 29 rows, `hospital_state` had 29 distinct user_ids, but R2 had only 2 user folders (owner + `f1c76ce9` aka `wenhsien1203@gmail.com`). All 29 were recent active dogfooders (updated_at within the last 4 days; activity range 2026-05-18 — pre-Phase 1 — through 2026-05-21 16:32 UTC).
+
+Root cause analysis: Phase 1 client-side migration banner triggers when `supabaseHasRows && !r2HasBlob` but only fires migration when the user returns AND clicks 「立即遷移」. 27 users had Supabase rows but had not yet hit the banner click. Without intervention, Phase 5 (drop Supabase sync tables, ~1 month from cutover) would have permanently lost their saves.
+
+**Mitigation**: built `scripts/bulk-migrate.ts` — a one-shot Node script that uses Supabase service-role + R2 S3 sigv4 direct PUT to rebuild any user's bundles from their Supabase rows. Mirrors `migrate-from-supabase.ts` BUNDLE_SPECS so semantics are identical to the client-side path. Idempotent (`If-None-Match: *` → 412 = already-present). Owner-only, run from local terminal with service-role key loaded from `.env.local`.
+
+**Run outcome** (2026-05-22 ~00:50 local):
+- 1st run: uploaded=34 / already-present=9 / no-rows=44 / failed=0
+- 2nd run (idempotency check): uploaded=0 / already-present=43 / no-rows=44 / failed=0
+- All 29 dogfood players now have complete R2 backup; safe to proceed to Phase 4 → 5 without data loss
+
+**Sideband validations**:
+1. `26de1eb3` (`bcaptainx@gmail.com`) reported all bundles `already-present` even though they were not in R2 at the pre-run dashboard check — confirms client-side dual-write IS auto-filling R2 for active users on the new Phase 3 build (this user was active 16:31 UTC, after deploy `26237383912` at 15:57 UTC).
+2. `f1c76ce9`'s m1 bundle is a 0-byte placeholder pushed by the client's `migrateAllBundlesFromSupabase` ALL-bundles path even though that user has no `player_state` row — confirmed by HEAD probe returning 200 and bulk-migrate logging it as `already-present` (no-rows logic only fires when blob doesn't exist).
+3. Largest single bundle: `817a2f39` (`seerdecade@gmail.com`) m2 = 19,398 B with 522 `hospital_question_history` rows — well within R2 free-tier capacity.
+
+**Follow-ups still open**: rotate `SUPABASE_SERVICE_ROLE_KEY` (defense-in-depth, task 10.8); document the tool in `docs/CLOUD_SYNC.md` (task 10.9).
+
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
