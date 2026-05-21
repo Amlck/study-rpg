@@ -12,7 +12,7 @@ export function corsHeaders(origin: string, allowed: boolean): Record<string, st
   }
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "3600",
     "Vary": "Origin",

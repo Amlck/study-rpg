@@ -8,16 +8,16 @@
 
 ## 2. Worker endpoints
 
-- [ ] 2.1 新增 `cloudflare/sync-worker/src/leaderboard.ts` module（從既有 worker 抽 JWT verify helper 共用）
-- [ ] 2.2 實作 `POST /leaderboard/upsert` — JWT verify → sanity bounds check（tier ∈ [1,3], rep ≥ 0, doctor ∈ [0,50], study_min ≥ 0）→ D1 UPSERT with LWW on `updated_at`
-- [ ] 2.3 實作 `GET /leaderboard/:filter`（4 filters: composite / reputation / doctor / study）— 讀 KV key `leaderboard:m2:top100:<filter>` + 回 `last_updated_at` timestamp
-- [ ] 2.4 實作 `GET /leaderboard/nickname-check?n=<candidate>` — JWT verify（防 enumeration）→ D1 `SELECT 1 FROM leaderboard_m2 WHERE nickname_lower = ? LIMIT 1` → 回 `{available: boolean}`
-- [ ] 2.5 實作 `POST /leaderboard/opt-out` — JWT verify → UPDATE `is_public = 0`
-- [ ] 2.6 實作 `DELETE /leaderboard/me` — JWT verify → DELETE D1 row
-- [ ] 2.7 在 `cloudflare/sync-worker/src/index.ts` 既有 `scheduled()` handler 加 dispatch 邏輯：依 `event.cron` 字串判斷是 `"0 0 * * *"`（daily R2 backup）還是 `"0 * * * *"`（hourly leaderboard pre-compute），分流呼叫 `runBackupCron` 或 `runLeaderboardCron`
-- [ ] 2.8 在 `wrangler.jsonc` 把 `triggers.crons` 從 `["0 0 * * *"]` 擴成 `["0 0 * * *", "0 * * * *"]`，**注意**：先確認 2.7 dispatch 邏輯已寫好否則新 cron 會錯誤觸發 backup
-- [ ] 2.9 實作 leaderboard `scheduled` cron handler — 4 個 D1 query (`ORDER BY ... LIMIT 100 WHERE is_public = 1`) → 寫 4 個 KV keys + 一行 structured console log
-- [ ] 2.10 加 leaderboard module router 進 `cloudflare/sync-worker/src/index.ts` `fetch()` switch（不影響既有 `/presign` `/delete-account` `/reset` `/health` routes）
+- [x] 2.1 新增 `cloudflare/sync-worker/src/leaderboard.ts` module（重用 `auth.ts` 的 `extractBearer` + `verifyJWT`，並把 `Env` 從 `./index` import）
+- [x] 2.2 實作 `POST /leaderboard/upsert` — JWT verify → sanity bounds（tier ∈ [1,3], rep ≥ 0, doctor ∈ [0,50], study_min ≥ 0）→ pre-check unique conflict（409 if taken by another user_id）→ D1 UPSERT with `WHERE updated_at < excluded.updated_at` (LWW)
+- [x] 2.3 實作 `GET /leaderboard/:filter`（regex match composite / reputation / doctor / study）— 讀 KV `leaderboard:m2:top100:<filter>`；KV miss 回 `{rows: [], last_updated_at: null, total_count: 0}`
+- [x] 2.4 實作 `GET /leaderboard/nickname-check?n=<candidate>` — JWT verify（防 enumeration）→ NFKC + toLowerCase → D1 `SELECT 1 WHERE nickname_lower = ? LIMIT 1` → `{available: boolean}`
+- [x] 2.5 實作 `POST /leaderboard/opt-out` — JWT verify → `UPDATE is_public = 0, updated_at = Date.now() WHERE user_id = ?`（bump updated_at 防 client 舊 cache 還原 is_public=1）
+- [x] 2.6 實作 `DELETE /leaderboard/me` — JWT verify → `DELETE WHERE user_id = ?` → 回 `{ok: true, deleted: <changes>}`
+- [x] 2.7 在 `src/index.ts` `scheduled()` 加 dispatch by `event.cron`，分流到 `runBackupCron`（daily）或 `runLeaderboardCron`（hourly）；未知 cron 印 warn 不執行
+- [x] 2.8 在 `wrangler.jsonc` 把 `triggers.crons` 擴成 `["0 0 * * *", "0 * * * *"]`（2.7 dispatch 已就位後才加）
+- [x] 2.9 實作 `runLeaderboardCron` — 4 個 D1 query (`ORDER BY ... LIMIT 100 WHERE is_public = 1`) + 1 個 COUNT → 寫 4 個 KV keys + 一行 `console.log [leaderboard cron] computed snapshots`
+- [x] 2.10 加 `/leaderboard/*` startsWith match 進 `fetch()`，dispatch 給 `handleLeaderboard`（不影響既有 `/presign` `/delete-account` `/reset` `/health` routes）；`cors.ts` Allow-Methods 擴成 `GET, POST, DELETE, OPTIONS`
 - [ ] 2.11 deploy Worker 到 production（不含 client UI，先讓 backend 站穩）
 
 ## 3. Shared types (@study-rpg/core)
