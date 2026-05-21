@@ -78,8 +78,8 @@
 
 ## 10. Pre-archive verification
 
-- [ ] 10.1 跑 `openspec validate add-hospital-leaderboard` — 三維檢查 completeness / correctness / coherence
-- [ ] 10.2 跑 `/verify` — Chrome MCP end-to-end smoke（含 SPA route F5 三件套）+ visual QA
-- [ ] 10.3 確認 `pnpm -r typecheck` 全綠（含 worker package）
-- [ ] 10.4 確認 D1 production 已 migrate；KV namespace production 已 bind；cron `0 * * * *` 在 production 已啟用
-- [ ] 10.5 跑 `/simplify` 對本 change 觸碰的程式碼做 final pass
+- [x] 10.1 跑 `openspec validate add-hospital-leaderboard` — 三維檢查 completeness / correctness / coherence（"Change 'add-hospital-leaderboard' is valid" ✓ on 2026-05-22 evening, post-simplify）
+- [ ] 10.2 跑 `/verify` — Chrome MCP end-to-end smoke（含 SPA route F5 三件套）+ visual QA（blocked: localhost vite 5174/5175 被 R2 parallel session 老進程佔用 + OAuth 過期）
+- [x] 10.3 確認 `pnpm -r typecheck` 全綠（含 worker package）（all 8 packages clean post-simplify ✓）
+- [x] 10.4 確認 D1 production 已 migrate；KV namespace production 已 bind；cron `0 * * * *` 在 production 已啟用（curl probes 2026-05-22 evening：`/health` 200 / `/leaderboard/composite` 200 with `last_updated_at: 1779386448416` = 38 min stale = cron OK / `/leaderboard/nickname-check` 401 JWT-gated / unknown filter 404）
+- [x] 10.5 跑 `/simplify` 對本 change 觸碰的程式碼做 final pass（commit `6a0d139` — 2 P1 bugs fixed + 5 P2 wins + 1 P3 doc; deferred follow-ups: workerFetch DRY / lazy snapshot fetch / JSX nesting）
