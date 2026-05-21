@@ -440,14 +440,30 @@ function buildQuestion(parsed: ParsedQuestion, fm: Frontmatter, sourcePath: stri
   if (exp?.oeHitRate !== undefined) meta.oeHitRate = exp.oeHitRate
   if (exp?.confidence) meta.explanationConfidence = exp.confidence
 
-  // Only attach imagePath when the question genuinely needs an image (hasImage
-  // true). Files for false-positive PNGs may exist on disk from earlier
-  // extraction runs against a looser regex — ignore them.
+  // imagePath: file presence is the source of truth. If an image is on disk
+  // (extracted from moex PDF in moex_原始題目_pdf/_images/ → ingested via
+  // /tmp/ingest_to_medexam2.py), treat the question as having an image even
+  // if `parsed.hasImage` (the .md stem-text regex match) was false. This
+  // catches Case A: 45 questions where the stem says e.g. "眼振圖" /
+  // "所附影像檢查圖" — image-bearing phrasings the regex above doesn't enumerate.
+  // Trust the ingest pipeline's PDF-driven attribution over the stem-text
+  // regex.
   const imageFilename = `${id}.png`
-  const imagePath =
-    parsed.hasImage && existsSync(join(APP_IMAGE_DIR, imageFilename))
-      ? `${APP_IMAGE_REL}/${imageFilename}`
-      : null
+  const imageExists = existsSync(join(APP_IMAGE_DIR, imageFilename))
+  const imagePath = imageExists ? `${APP_IMAGE_REL}/${imageFilename}` : null
+  // Override: hasImage regex false-positives where stem references a figure
+  // concept but no image actually exists in the PDF. Without this override,
+  // QuizModal would render a misleading "（題目有附圖，但目前圖片缺失）"
+  // banner for these pure-text questions.
+  //   113-1-醫學五-外科-Q54: stem option ④ describes "膽道攝影 (cholangiogram) 圖像"
+  //     as a procedure concept, not a referenced figure in the question.
+  //   112-1-醫學三-內科-Q3:  stem says "心電圖為竇性頻脈" describing patient finding
+  //     (not "心電圖如下圖").
+  const KNOWN_NO_IMAGE = new Set<string>([
+    '113-1-醫學五-外科-Q54',
+    '112-1-醫學三-內科-Q3',
+  ])
+  const hasImage = KNOWN_NO_IMAGE.has(id) ? false : (parsed.hasImage || imageExists)
 
   return {
     id,
@@ -456,7 +472,7 @@ function buildQuestion(parsed: ParsedQuestion, fm: Frontmatter, sourcePath: stri
     options: parsed.options,
     answer: parsed.answer,
     explanation,
-    hasImage: parsed.hasImage,
+    hasImage,
     imagePath,
     hasOptionImages: parsed.hasOptionImages,
     disputed: parsed.disputed || undefined,
