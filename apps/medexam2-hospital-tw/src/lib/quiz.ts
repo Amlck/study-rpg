@@ -61,20 +61,35 @@ export async function loadQuestionsByIdMap(): Promise<ReadonlyMap<string, Questi
 }
 
 /**
+ * Return the full playable pool for a subject. Exposed for the year-filter
+ * service (`services/year-filter.ts:effectivePoolSize`) to count year-filtered
+ * pool sizes without re-walking the whole corpus. Returns `[]` for unknown
+ * subjects (mirrors picker null-tolerance).
+ */
+export async function loadPlayablePoolFor(subjectId: SubjectId): Promise<Question[]> {
+  const { bySubject } = await loadPack()
+  return bySubject.get(subjectId) ?? []
+}
+
+/**
  * Pick a random question from the given subject's pool. Re-rolls up to 3 times
  * if the candidate id is in `seenIds`; accepts on the 3rd repeat to prevent
  * infinite loops on small subject pools.
  *
- * Returns `null` if the subject has no questions (corpus fetch failed or
- * subject filter empty).
+ * When `opts.yearFilter` is provided AND partially constrains the pool (size
+ * > 0 AND < 10), the pool is narrowed to questions whose `meta.year` is in
+ * the filter before random selection. Empty / full / undefined filter is a
+ * no-op.
+ *
+ * Returns `null` if the (possibly year-filtered) subject pool is empty.
  */
 export async function pickRandomQuestion(
   subjectId: SubjectId,
   seenIds: Set<string>,
+  opts?: { yearFilter?: Set<number> },
 ): Promise<Question | null> {
-  const { bySubject } = await loadPack()
-  const pool = bySubject.get(subjectId)
-  if (!pool || pool.length === 0) return null
+  const pool = applyYearFilter(await loadPlayablePoolFor(subjectId), opts?.yearFilter)
+  if (pool.length === 0) return null
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const candidate = pool[Math.floor(Math.random() * pool.length)]
@@ -87,11 +102,24 @@ export async function pickRandomQuestion(
 /**
  * Return the list of playable question IDs for a subject. Used by ER consult
  * picker (services/er-consultation) to feed `pickERConsultQuestion`.
+ *
+ * `opts.yearFilter` narrows the returned id list with the same no-op semantics
+ * as `pickRandomQuestion`. ER consult intentionally does NOT pass a year
+ * filter (see services/er-consultation.ts inline comment).
  */
-export async function loadSubjectQuestionIds(subjectId: SubjectId): Promise<string[]> {
-  const { bySubject } = await loadPack()
-  const pool = bySubject.get(subjectId)
-  return pool ? pool.map((q) => q.id) : []
+export async function loadSubjectQuestionIds(
+  subjectId: SubjectId,
+  opts?: { yearFilter?: Set<number> },
+): Promise<string[]> {
+  const pool = applyYearFilter(await loadPlayablePoolFor(subjectId), opts?.yearFilter)
+  return pool.map((q) => q.id)
+}
+
+const ALL_YEARS_COUNT = 10
+
+function applyYearFilter(pool: Question[], yearFilter?: Set<number>): Question[] {
+  if (!yearFilter || yearFilter.size === 0 || yearFilter.size >= ALL_YEARS_COUNT) return pool
+  return pool.filter((q) => yearFilter.has(q.meta?.year as number))
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   getQuizCompanionDoctorId,
   setQuizCompanionDoctorId,
 } from '../services/quiz-companion'
+import { effectiveYearSet, getYearFilter } from '../services/year-filter'
 import { BugReportModal } from './BugReportModal'
 import { ExplanationMarkdown } from './ExplanationMarkdown'
 import { QuizBugReportSheet } from './QuizBugReportSheet'
@@ -62,6 +63,15 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
   // Persisted per-device companion choice. `undefined` while the query is still
   // resolving; `null` once we know no row exists; string once a doctor is pinned.
   const persistedCompanionIdLive = useLiveQuery(() => getQuizCompanionDoctorId(), [])
+
+  // Persisted year-filter preference; reactive so HomePage chip toggles take
+  // effect on the next pick without remounting the modal.
+  const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
+  const yearFilter = useMemo(() => effectiveYearSet(persistedYearFilter), [persistedYearFilter])
+  const yearFilterRef = useRef<Set<number>>(yearFilter)
+  useEffect(() => {
+    yearFilterRef.current = yearFilter
+  }, [yearFilter])
 
   // Resolve initial bound doctor only after BOTH queries have completed at least
   // one load (avoid the one-frame "newest then swap to remembered" flicker).
@@ -117,12 +127,21 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
       consumedDueIdsRef.current = new Set()
     }
 
+    // Use the latest persisted year-filter snapshot (ref avoids closing over a
+    // stale value when the player toggles chips between renders).
+    const activeYearFilter = yearFilterRef.current
+
     // Due-first: walk the cap-allocated due queue for this subject, skipping
     // orphans (questionHistory rows whose questionId no longer exists in the
     // content pack).
     // Skip this entire block if `skipSrs` is enabled.
     if (!skipSrs) {
-      let dueRow = await getNextDueCardForSubject(forSubject, consumedDueIdsRef.current)
+      let dueRow = await getNextDueCardForSubject(
+        forSubject,
+        consumedDueIdsRef.current,
+        Date.now(),
+        { yearFilter: activeYearFilter },
+      )
       while (dueRow) {
         const dueQuestion = await pickQuestionById(dueRow.questionId)
         if (dueQuestion) {
@@ -135,13 +154,20 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
         }
         // Orphan: mark consumed and try next due row.
         consumedDueIdsRef.current.add(dueRow.questionId)
-        dueRow = await getNextDueCardForSubject(forSubject, consumedDueIdsRef.current)
+        dueRow = await getNextDueCardForSubject(
+          forSubject,
+          consumedDueIdsRef.current,
+          Date.now(),
+          { yearFilter: activeYearFilter },
+        )
       }
     }
 
     // No due card available → fall back to random new question.
     wasFromDueRef.current = false
-    const q = await pickRandomQuestion(forSubject, seenIdsRef.current)
+    const q = await pickRandomQuestion(forSubject, seenIdsRef.current, {
+      yearFilter: activeYearFilter,
+    })
     if (!q) {
       setPoolEmpty(true)
       setQuestion(null)
@@ -352,7 +378,11 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
         <div className="quiz-modal__body">
           {loading && <p className="quiz-modal__loading">載入題目中…</p>}
           {!loading && poolEmpty && (
-            <p className="quiz-modal__empty">這個科別目前沒有題目可抽。換一科試試。</p>
+            <p className="quiz-modal__empty">
+              {yearFilter.size < 10
+                ? '此組合 0 題，請放寬年份篩選或切換科目。'
+                : '這個科別目前沒有題目可抽。換一科試試。'}
+            </p>
           )}
           {!loading && question && (
             <>

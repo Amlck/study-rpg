@@ -163,6 +163,11 @@ export async function rollNewERConsult(now: number): Promise<ERConsultActiveStat
     .toArray()
   const recentlyAnsweredQuestionIds = new Set(recentForSubject.map((r) => r.questionId))
 
+  // Intentional: ER consult spawn pool is NOT year-filtered. A narrow player
+  // year preference (e.g. only 115 selected) would silently starve the ER
+  // spawn pool and make the feature appear broken — ER consult is event-driven,
+  // not a player-initiated quiz action. See `er-consultation` spec MODIFIED
+  // 2026-05-21 (`add-medexam2-year-filter`).
   const questionPool = await loadSubjectQuestionIds(subjectId)
   if (questionPool.length === 0) return null
 

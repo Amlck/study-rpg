@@ -18,13 +18,22 @@ function isSrsDisabled(): boolean {
  * Reads all due `questionHistory` rows, groups by subjectId, sorts each group
  * by overdue days descending (oldest overdue first). Subjects without any due
  * card are omitted.
+ *
+ * When `opts.yearFilter` is provided AND partially constrains the pool (size
+ * > 0 AND < 10), due rows whose hydrated `Question.meta.year` falls outside
+ * the filter are dropped. Empty / full / undefined filter is a no-op. Orphan
+ * rows (questionId not in current pack at all) keep the pass-through
+ * behavior — year filtering can only narrow, never resurrect orphans.
  */
 export async function getDueQueueAllSubjects(
   now: number = Date.now(),
+  opts?: { yearFilter?: Set<number> },
 ): Promise<Map<SubjectId, QuestionHistoryRow[]>> {
   if (isSrsDisabled()) return new Map()
   const db = getHospitalDB()
   const [all, byId] = await Promise.all([db.questionHistory.toArray(), loadQuestionsByIdMap()])
+  const yearFilter = opts?.yearFilter
+  const filterActive = !!yearFilter && yearFilter.size > 0 && yearFilter.size < 10
   const grouped = new Map<SubjectId, QuestionHistoryRow[]>()
   for (const row of all) {
     if (row.nextDueAt === null) continue
@@ -36,6 +45,10 @@ export async function getDueQueueAllSubjects(
     // before this filter.
     const q = byId.get(row.questionId)
     if (q && q.hasOptionImages === true) continue
+    if (filterActive && q) {
+      const y = q.meta?.year as number | undefined
+      if (typeof y !== 'number' || !yearFilter!.has(y)) continue
+    }
     const list = grouped.get(row.subjectId) ?? []
     list.push(row)
     grouped.set(row.subjectId, list)
@@ -97,8 +110,9 @@ export async function getNextDueCardForSubject(
   subjectId: SubjectId,
   consumedIds: ReadonlySet<string>,
   now: number = Date.now(),
+  opts?: { yearFilter?: Set<number> },
 ): Promise<QuestionHistoryRow | null> {
-  const grouped = await getDueQueueAllSubjects(now)
+  const grouped = await getDueQueueAllSubjects(now, opts)
   const allocated = allocateDailyCap(grouped)
   const queue = allocated.get(subjectId) ?? []
   for (const row of queue) {
