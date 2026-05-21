@@ -18,7 +18,7 @@
 - [x] 2.8 在 `wrangler.jsonc` 把 `triggers.crons` 擴成 `["0 0 * * *", "0 * * * *"]`（2.7 dispatch 已就位後才加）
 - [x] 2.9 實作 `runLeaderboardCron` — 4 個 D1 query (`ORDER BY ... LIMIT 100 WHERE is_public = 1`) + 1 個 COUNT → 寫 4 個 KV keys + 一行 `console.log [leaderboard cron] computed snapshots`
 - [x] 2.10 加 `/leaderboard/*` startsWith match 進 `fetch()`，dispatch 給 `handleLeaderboard`（不影響既有 `/presign` `/delete-account` `/reset` `/health` routes）；`cors.ts` Allow-Methods 擴成 `GET, POST, DELETE, OPTIONS`
-- [ ] 2.11 deploy Worker 到 production（不含 client UI，先讓 backend 站穩）
+- [x] 2.11 deploy Worker 到 production（version `3be17865-1d80-4110-aa03-913c3fc28e81`，77.12 KiB / 17.87 KiB gzip、2 cron schedules active）；smoke test 3 endpoints 全綠（composite snapshot cold-start / health regression-free / nickname-check 401 JWT-gated）
 
 ## 3. Shared types (@study-rpg/core)
 
@@ -50,7 +50,7 @@
 - [x] 6.4 Mount 時 `Promise.all` parallel fetch 4 個 filter snapshots、cache to local state；Tab 切換 = local state 切，不打網路。URL `?tab=` 同 `BookmarksPage` 模式
 - [x] 6.5 `total_count === 0` 時顯示「期待第一個上榜的玩家！」+ 上方 timestamp 行永遠顯示「目前 N 位玩家加入排行」counter
 - [x] 6.7（新加 task）`lib/leaderboard/api.ts` 加 `fetchLeaderboardSnapshot(filter)` — public read 不需 JWT，GET KV cache
-- [ ] 6.6 把「排名」加進 home page 主導覽（HelpMenu 也加說明 entry）
+- [x] 6.6 HomePage `app-header__meta` 加「排名 →」`<Link to="/leaderboard">`，純 `.nav-link` 跟 唸書/醫院/進修/命運/醫師/收藏 同 convention（無 emoji、2 字標籤）。HelpMenu 說明 entry 留 Phase 9.1 跟其他 doc 一起加
 
 ## 7. Settings & lifecycle
 
@@ -63,7 +63,7 @@
 ## 8. Smoke testing
 
 - [ ] 8.1 本機跑 `wrangler dev` Worker + `pnpm --filter @study-rpg/medexam2-hospital-tw dev`，手動 opt-in + 看 D1 row + 手動 trigger cron + 看 KV key 寫入
-- [ ] 8.2 Chrome MCP preflight `list_connected_browsers` → 在 localhost 跑 SPA route 三件套：(1) home click 到 leaderboard tab、(2) 直接 navigate `/leaderboard`、(3) `/leaderboard` 上 F5；三輪都 render
+- [x] 8.2 Chrome MCP preflight `list_connected_browsers`（1 browser connected）→ localhost SPA route 三件套全綠：(1) Direct URL `#/leaderboard` render ✓、(2) in-app nav 回首頁 link + h1 切換 ✓、(3) F5 on `?tab=study` URL + `aria-selected` 完整保留 ✓；console 零 leaderboard error（R2 future flag warn + Supabase refresh-token expired 是 app-wide pre-existing）。Polish: tab UI 從 plain `<button>` refactor 成既有 `.filter-bar` + `.filter-chip` + `aria-pressed` convention，跟年份/稀有度 filter 一套 design system（零新 CSS）
 - [ ] 8.3 跑 nickname 邊界 case：1 char（reject）/ 13 char（reject）/ 12 char（accept）/「wlk」+「WLK」collision（reject 第二個）/ 含 emoji ZWJ（count > 12 reject）
 - [ ] 8.4 跑 opt-out → 下次 cron 後 verify 不在 KV snapshot
 - [ ] 8.5 跑 delete account → verify D1 row 不存在

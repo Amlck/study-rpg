@@ -159,6 +159,9 @@ export function HomePage() {
           <Link to="/bookmarks" className="nav-link">
             收藏 →
           </Link>
+          <Link to="/leaderboard" className="nav-link">
+            排名 →
+          </Link>
         </div>
       </header>
 

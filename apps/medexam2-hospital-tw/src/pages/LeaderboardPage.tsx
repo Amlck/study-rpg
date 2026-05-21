@@ -104,22 +104,24 @@ export function LeaderboardPage() {
         </div>
       </header>
 
-      <nav className="leaderboard-tabs" role="tablist" aria-label="排名類別">
-        {LEADERBOARD_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            role="tab"
-            aria-selected={activeFilter === f}
-            className={`leaderboard-tabs__tab${
-              activeFilter === f ? ' leaderboard-tabs__tab--active' : ''
-            }`}
-            onClick={() => setFilter(f)}
-          >
-            {LEADERBOARD_FILTER_LABELS[f]}
-          </button>
-        ))}
-      </nav>
+      <section className="filter-bar" aria-label="排名類別篩選">
+        <div className="filter-bar__group">
+          <span className="filter-bar__label">類別</span>
+          <span className="filter-chip-group" role="group" aria-label="排名類別">
+            {LEADERBOARD_FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className="filter-chip"
+                aria-pressed={activeFilter === f}
+                onClick={() => setFilter(f)}
+              >
+                {LEADERBOARD_FILTER_LABELS[f]}
+              </button>
+            ))}
+          </span>
+        </div>
+      </section>
 
       <LeaderboardBody
         snapshotState={snapshotState}
