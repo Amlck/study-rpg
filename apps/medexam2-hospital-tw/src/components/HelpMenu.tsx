@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react'
 import { TIER_UPGRADE_THRESHOLDS } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
 import { BugReportModal } from './BugReportModal'
+import { EmojiIcon } from './EmojiIcon'
 import {
   discardActiveERConsult,
   getERConsultSettings,
@@ -265,7 +266,7 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
         aria-label="開啟說明選單"
         title="說明"
       >
-        ❓
+        <EmojiIcon char="❓" size={28} />
       </button>
       {open && (
         <div className="modal-backdrop" onClick={() => setOpen(false)}>
@@ -297,7 +298,9 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                       onClick={() => toggle(section.id)}
                       aria-expanded={expanded}
                     >
-                      <span className="help-menu__icon" aria-hidden>{section.icon}</span>
+                      <span className="help-menu__icon" aria-hidden>
+                        <EmojiIcon char={section.icon} size={24} />
+                      </span>
                       <span className="help-menu__title">{section.title}</span>
                       <span className="help-menu__chevron" aria-hidden>{expanded ? '▼' : '▶'}</span>
                     </button>
@@ -315,7 +318,7 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                             className="settings-modal__reset-btn"
                             onClick={() => setBugReportOpen(true)}
                           >
-                            💬 開啟回報表單
+                            <EmojiIcon char="💬" size={18} /> 開啟回報表單
                           </button>
                         )}
                         {section.id === 'er-consult' && erConsultEnabled !== null && (
@@ -346,7 +349,13 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                                     : '重置此帳號進度（雙重確認）'
                               }
                             >
-                              {accountResetting ? '重置中…' : '🔁 重置此帳號進度'}
+                              {accountResetting ? (
+                                '重置中…'
+                              ) : (
+                                <>
+                                  <EmojiIcon char="🔁" size={18} /> 重置此帳號進度
+                                </>
+                              )}
                             </button>
                             {accountResetMsg && (
                               <p className="settings-modal__reset-msg">{accountResetMsg}</p>
