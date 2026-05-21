@@ -45,10 +45,11 @@
 ## 6. Leaderboard page UI
 
 - [ ] 6.1 新增 route `/leaderboard` 進 `apps/medexam2-hospital-tw/src/App.tsx` router
-- [ ] 6.2 建 `apps/medexam2-hospital-tw/src/pages/LeaderboardPage.tsx` — 4 filter tabs（segmented control）+ Top 100 list + my-rank sticky chip + 「上次更新：HH:MM」timestamp + footer 二行 disclosure
-- [ ] 6.3 第一次進入 page 偵測「未 opted in 且未 dismissed」→ render LeaderboardOptInModal
-- [ ] 6.4 Tab 切換時不重新 fetch（KV 同小時 cache client-side），改 toggle local state sorting
-- [ ] 6.5 < 100 玩家時顯示 counter「目前 N 位玩家加入排行」；N = 0 時顯示空態文案
+- [x] 6.2 建 `apps/medexam2-hospital-tw/src/pages/LeaderboardPage.tsx` — 沿用 `BookmarksPage` `app-shell + app-header` 慣例；4 filter tabs (segmented control, role=tablist) + Top 100 list + my-rank chip + 「上次更新：HH:MM」timestamp + footer 二行 disclosure（自填無驗證 + V6 起算）
+- [ ] 6.3 第一次進入 page 偵測「未 opted in 且未 dismissed」→ render LeaderboardOptInModal（依賴 5.5 Dexie schema bump 做 local state，留 Phase 5 完成後接）
+- [x] 6.4 Mount 時 `Promise.all` parallel fetch 4 個 filter snapshots、cache to local state；Tab 切換 = local state 切，不打網路。URL `?tab=` 同 `BookmarksPage` 模式
+- [x] 6.5 `total_count === 0` 時顯示「期待第一個上榜的玩家！」+ 上方 timestamp 行永遠顯示「目前 N 位玩家加入排行」counter
+- [x] 6.7（新加 task）`lib/leaderboard/api.ts` 加 `fetchLeaderboardSnapshot(filter)` — public read 不需 JWT，GET KV cache
 - [ ] 6.6 把「排名」加進 home page 主導覽（HelpMenu 也加說明 entry）
 
 ## 7. Settings & lifecycle

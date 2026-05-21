@@ -8,7 +8,11 @@
 // Phase 4 will expand this file with upsert / opt-out / delete / fetch
 // alongside the sync engine adapter.
 
-import type { LeaderboardNicknameCheckResponse } from '@study-rpg/core'
+import type {
+  LeaderboardFilter,
+  LeaderboardNicknameCheckResponse,
+  LeaderboardSnapshot,
+} from '@study-rpg/core'
 import { getSupabase } from '../auth/client'
 import { getWorkerUrl } from '../sync/r2/client'
 
@@ -46,4 +50,26 @@ export async function checkNicknameAvailability(
     throw new Error(`nickname_check_failed_${res.status}: ${body.slice(0, 200)}`)
   }
   return (await res.json()) as LeaderboardNicknameCheckResponse
+}
+
+/**
+ * GET /leaderboard/:filter
+ *
+ * Public read — no JWT required. Worker reads from a KV snapshot written
+ * hourly by the cron handler; client never touches D1 on the read path.
+ *
+ * Returns `{rows: [], last_updated_at: null, total_count: 0}` if the cron
+ * has not yet run for the first time (cold-start after deploy). UI surfaces
+ * the empty state when `total_count === 0`.
+ */
+export async function fetchLeaderboardSnapshot(
+  filter: LeaderboardFilter,
+): Promise<LeaderboardSnapshot> {
+  const url = `${getWorkerUrl()}/leaderboard/${filter}`
+  const res = await fetch(url, { method: 'GET' })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`leaderboard_fetch_failed_${res.status}: ${body.slice(0, 200)}`)
+  }
+  return (await res.json()) as LeaderboardSnapshot
 }
