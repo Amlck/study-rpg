@@ -36,8 +36,8 @@
 
 ## 5. Opt-in modal & nickname UX
 
-- [ ] 5.1 建 `apps/medexam2-hospital-tw/src/components/LeaderboardOptInModal.tsx` — 列出公開欄位（tier / 聲望 / 醫師個數 / 累積唸書 / 暱稱）+ unchecked checkbox「同意公開以上資訊」+ 暱稱輸入 + 「了解更多 — 隱私說明」link
-- [ ] 5.2 建 `apps/medexam2-hospital-tw/src/components/NicknameField.tsx` — 輸入 + debounced 400ms 唯一性檢查 + 長度錯誤 + 空白允許（blank fallback Google name 邏輯內含）
+- [x] 5.1 建 `apps/medexam2-hospital-tw/src/components/LeaderboardOptInModal.tsx` — modal-backdrop + modal-card frame、列 5 個公開欄位 + unchecked checkbox「同意公開以上資訊」、嵌 `NicknameField`、submit/dismiss-forever buttons、登入 gate fallback、Google name fallback messaging
+- [x] 5.2 建 `apps/medexam2-hospital-tw/src/components/NicknameField.tsx` — controlled input + 400ms debounce + monotonic requestId 防 stale fetch result + 6 個 validity states（empty / invalid-length / checking / available / taken / error）+ `onValidityChange` ref-mirrored 防 parent callback identity 變化重觸發。額外建 `lib/leaderboard/api.ts` 含 `checkNicknameAvailability()`（Phase 4.4 的一小部分，全套 upsert/opt-out/delete 留 Phase 4）
 - [ ] 5.3 加「不再顯示」二次選項（dismiss persistent for current device，存 IndexedDB local state，不上 cloud sync）
 - [ ] 5.4 寫 nickname 提交 mutation：成功後寫 IndexedDB `leaderboardProfile` table + trigger 一次 sync push
 - [ ] 5.5 把「曾否 opted in / opted out」狀態加進 Dexie schema（bump 到 next version）
