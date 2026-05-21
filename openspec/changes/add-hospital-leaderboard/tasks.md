@@ -22,10 +22,10 @@
 
 ## 3. Shared types (@study-rpg/core)
 
-- [ ] 3.1 在 `packages/core/src/types.ts` 加 `LeaderboardFilter = 'composite' | 'reputation' | 'doctor' | 'study'` + `LeaderboardRow` interface + `LeaderboardSnapshot` interface（含 `last_updated_at`）
-- [ ] 3.2 export 新類型 from `packages/core/src/index.ts`
-- [ ] 3.3 加 `LEADERBOARD_NICKNAME_MIN = 2` / `_MAX = 12` 常數 + `normalizeNickname()` helper（NFKC + toLowerCase + codepoint length check）
-- [ ] 3.4 跑 `pnpm --filter @study-rpg/core build` 確認 dist/ 重 build；core 改動後 leaf packages 需要這步
+- [x] 3.1 在 `packages/core/src/lib/leaderboard-types.ts`（沿用 `bug-report-types.ts` convention，非 root `types.ts`）加 `LeaderboardFilter` const array + `LeaderboardRow` + `LeaderboardSnapshot` + `LeaderboardUpsertPayload` + `LeaderboardNicknameCheckResponse` + `LEADERBOARD_FILTER_LABELS` (繁中)
+- [x] 3.2 在 `packages/core/src/index.ts` re-export 上述 11 個 symbol
+- [x] 3.3 加 `LEADERBOARD_NICKNAME_MIN_CODEPOINTS = 2` / `_MAX = 12` 常數 + `normalizeNickname()` (NFKC + toLowerCase) + `countNicknameCodepoints()` + `isValidNicknameLength()` helpers
+- [x] 3.4 `pnpm --filter @study-rpg/core build` ✓ (ESM 29.87 KB + DTS 46.81 KB); `pnpm -r typecheck` ✓ 全 8 packages clean
 
 ## 4. Sync engine integration
 
