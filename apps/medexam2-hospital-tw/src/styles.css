@@ -868,6 +868,14 @@ body:has(.modal-backdrop) {
   height: 96px;
 }
 
+.supply-ceremony__icon.equipment-artwork--hero {
+  width: min(300px, 78vw);
+  height: 220px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(3px 3px 0 color-mix(in srgb, var(--rarity-color) 42%, var(--frame-dark)));
+}
+
 /* Silhouette: black cutout of the icon */
 .supply-ceremony__icon--silhouette {
   filter: brightness(0) saturate(0);
@@ -1348,16 +1356,21 @@ body:has(.modal-backdrop) {
 }
 
 .room-card__throughput {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
   font-size: 16px;
   color: var(--accent-leaf);
   font-weight: bold;
+  cursor: help;
 }
 
 .room-card--empty .room-card__throughput {
   color: var(--frame-light);
 }
 
-.room-card__affinity {
+.room-card__affinity,
+.room-card__equipment-bonus {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -1368,6 +1381,31 @@ body:has(.modal-backdrop) {
   color: var(--accent-gold, #d4a04d);
   font-size: 13px;
   font-weight: bold;
+}
+
+.room-card__equipment-bonus {
+  background: color-mix(in srgb, var(--rarity-color) 18%, transparent);
+  color: var(--rarity-color);
+}
+
+.room-card__breakdown {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg-cream);
+  border: 2px dashed var(--frame-light);
+  border-radius: 4px;
+  color: var(--frame-dark);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.room-card__breakdown span:not(:last-child)::after {
+  content: " ×";
+  color: var(--frame-light);
 }
 
 /* ── Assign modal ──────────────────────────────────────── */
@@ -5150,6 +5188,24 @@ body:has(.modal-backdrop) {
   flex-shrink: 0;
 }
 
+.equipment-storage-card--p1 {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--rarity-color) 14%, var(--bg-paper)), var(--bg-cream));
+}
+
+.equipment-storage-card--hero {
+  grid-template-columns: 88px minmax(0, 1fr);
+  min-height: 112px;
+}
+
+.equipment-storage-card .equipment-artwork--hero {
+  width: 82px;
+  height: 82px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--rarity-color) 42%, transparent));
+}
+
 .equipment-icon {
   width: 64px;
   height: 64px;
@@ -5203,6 +5259,14 @@ body:has(.modal-backdrop) {
   width: 96px;
   height: 96px;
   margin: 0 auto 10px;
+}
+
+.equipment-detail__icon.equipment-artwork--hero {
+  width: min(260px, 78vw);
+  height: 180px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(3px 3px 0 color-mix(in srgb, var(--rarity-color) 36%, var(--frame-dark)));
 }
 
 .equipment-detail__category {

@@ -19,6 +19,7 @@ import {
   type SpriteLayout,
 } from '../components/EquipmentIcon'
 import { EquipmentResultModal } from '../components/EquipmentResultModal'
+import { EquipmentArtwork, hasEquipmentHeroArt } from '../components/EquipmentArtwork'
 import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { lookupSprite } from '../lib/sprite-lookup'
 import {
@@ -641,11 +642,12 @@ function EquipmentStorageCard({
   onDragEnd,
 }: EquipmentStorageCardProps) {
   const meta = describeEquipment(item)
+  const hasHeroArt = hasEquipmentHeroArt(item)
 
   return (
     <button
       type="button"
-      className="equipment-storage-card"
+      className={`equipment-storage-card${item.rarity === 'P1' ? ' equipment-storage-card--p1' : ''}${hasHeroArt ? ' equipment-storage-card--hero' : ''}`}
       draggable={!disabled}
       disabled={disabled}
       onClick={onClick}
@@ -653,7 +655,7 @@ function EquipmentStorageCard({
       onDragEnd={onDragEnd}
       style={{ ['--rarity-color' as string]: `var(--rarity-${item.rarity.toLowerCase()})` }}
     >
-      <EquipmentIcon category={item.category} rarity={item.rarity} />
+      <EquipmentArtwork item={item} />
       <span className="equipment-storage-card__body">
         <strong>{item.rarity} {meta.name}</strong>
         <small>{EQUIPMENT_CATEGORY_LABELS[item.category]} · {EQUIPMENT_RARITY_LABELS[item.rarity]}</small>
@@ -791,7 +793,7 @@ function EquipmentDetailModal({
           <span className="modal-card__rarity-label">{EQUIPMENT_RARITY_LABELS[item.rarity]}</span>
           {wasPity && <span className="modal-card__pity">保底</span>}
         </div>
-        <EquipmentIcon category={item.category} rarity={item.rarity} className="equipment-detail__icon" />
+        <EquipmentArtwork item={item} className="equipment-detail__icon" />
         <h2 className="modal-card__name">{meta.name}</h2>
         <p className="equipment-detail__category">
           {EQUIPMENT_CATEGORY_LABELS[item.category]} · {RARITY_LABELS[item.rarity]}

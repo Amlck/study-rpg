@@ -144,10 +144,31 @@ export const EQUIPMENT_DEFINITIONS: EquipmentDefinition[] = [
   },
   {
     id: 'oracle-stethoscope',
-    name: '神諭聽診器',
+    name: '心音羅盤',
     category: 'stethoscope',
     rarity: 'P1',
     effectText: '門診產能 +55%。傳說級診斷裝備，適合門診王牌。',
+  },
+  {
+    id: 'shadowless-scalpel',
+    name: '無影手術刀',
+    category: 'scalpel',
+    rarity: 'P1',
+    effectText: '手術房產能 +55%。傳說級手術裝備，適合外科核心醫師。',
+  },
+  {
+    id: 'chief-rounding-chart',
+    name: '總醫師交班夾',
+    category: 'chart',
+    rarity: 'P1',
+    effectText: '病房產能 +55%。傳說級病房管理裝備，適合照護主力醫師。',
+  },
+  {
+    id: 'founder-white-coat',
+    name: '創院白袍',
+    category: 'coat',
+    rarity: 'P1',
+    effectText: '所有房型產能 +30%。傳說級泛用裝備，適合任何醫院王牌。',
   },
 ]
 

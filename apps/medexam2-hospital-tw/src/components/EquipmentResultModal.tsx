@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { RARITY_LABELS } from '@study-rpg/content-medexam2-tw'
 import { EQUIPMENT_CATEGORY_LABELS, EQUIPMENT_RARITY_LABELS } from '../data/equipment'
-import { EquipmentIcon } from './EquipmentIcon'
+import { EquipmentArtwork, hasEquipmentHeroArt } from './EquipmentArtwork'
 import { describeEquipment } from '../services/equipment'
 import type { EquipmentRow } from '../db/schema'
 import medicalCaseBodySprite from '../assets/equipment/medical-case-body.png'
@@ -182,17 +182,18 @@ export function EquipmentResultModal({ item, wasPity, onClose }: Props) {
                 </div>
 
                 <div className="supply-ceremony__icon-wrap">
-                  <EquipmentIcon
-                    category={item.category}
-                    rarity={item.rarity}
+                  <EquipmentArtwork
+                    item={item}
                     className={`supply-ceremony__icon${step === 'silhouette' ? ' supply-ceremony__icon--silhouette' : ''}`}
                   />
                 </div>
 
                 {/* Category tease visible from step 2 onward */}
-                <p className="supply-ceremony__category-hint">
-                  {EQUIPMENT_CATEGORY_LABELS[item.category]}
-                </p>
+                {!hasEquipmentHeroArt(item) && (
+                  <p className="supply-ceremony__category-hint">
+                    {EQUIPMENT_CATEGORY_LABELS[item.category]}
+                  </p>
+                )}
 
                 {/* Full reveal */}
                 <AnimatePresence>

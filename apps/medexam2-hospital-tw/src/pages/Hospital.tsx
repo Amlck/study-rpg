@@ -68,7 +68,9 @@ export function Hospital() {
       <SurfaceHint surfaceId="hospital" />
 
       <p className="hospital-hint">
-        指派招募來的醫師到診間。每 5 秒結算一次：產能 = 基礎 × 醫師 ×力 × 設施。
+        指派招募來的醫師到診間。每 5 秒結算一次：產能 = 基礎 × 醫師 × 設施 × 科別適性 × 器材。
+        聽診器加成門診、手術刀加成手術房、病歷夾加成病房，白袍則套用所有房型。
+        將游標停在房間產能數字上可查看計算明細。
       </p>
 
       <section className="hospital-grid">
@@ -81,7 +83,7 @@ export function Hospital() {
               room={room}
               doctor={doctor}
               onClick={() => setActiveRoom(room)}
-              equipmentBonus={getEquipmentBonus(equippedItem, room.type)}
+              equipment={equippedItem}
             />
           )
         })}
