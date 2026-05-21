@@ -2,16 +2,13 @@
 //
 // Endpoints live in cloudflare/sync-worker/src/leaderboard.ts. All require
 // a Supabase JWT in the Authorization header (verifyJWT on the worker side
-// gates by `sub` claim).
-//
-// Phase 5 implements only nickname-check (used by NicknameField).
-// Phase 4 will expand this file with upsert / opt-out / delete / fetch
-// alongside the sync engine adapter.
+// gates by `sub` claim) except `fetchLeaderboardSnapshot` (public read).
 
 import type {
   LeaderboardFilter,
   LeaderboardNicknameCheckResponse,
   LeaderboardSnapshot,
+  LeaderboardUpsertPayload,
 } from '@study-rpg/core'
 import { getSupabase } from '../auth/client'
 import { getWorkerUrl } from '../sync/r2/client'
@@ -72,4 +69,73 @@ export async function fetchLeaderboardSnapshot(
     throw new Error(`leaderboard_fetch_failed_${res.status}: ${body.slice(0, 200)}`)
   }
   return (await res.json()) as LeaderboardSnapshot
+}
+
+/**
+ * POST /leaderboard/upsert
+ *
+ * Worker reads `user_id` from the verified JWT `sub` claim — body never
+ * carries it (cross-tenancy forging guard). Returns 409 `nickname_taken`
+ * when another user already owns this nickname (case-insensitive). All
+ * out-of-bounds attribute values are silently dropped server-side with a
+ * 200 OK + `{dropped: <reason>}` body (see worker design D3).
+ */
+export async function upsertLeaderboard(
+  payload: LeaderboardUpsertPayload,
+): Promise<void> {
+  const token = await getAuthToken()
+  const url = `${getWorkerUrl()}/leaderboard/upsert`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    if (res.status === 409) {
+      throw new Error('nickname_taken')
+    }
+    throw new Error(`leaderboard_upsert_failed_${res.status}: ${body.slice(0, 200)}`)
+  }
+}
+
+/**
+ * POST /leaderboard/opt-out
+ *
+ * Flips `is_public = 0` on the player's row. Row is preserved so re-enabling
+ * opt-in restores rank history without forcing the player to re-consent.
+ */
+export async function optOutLeaderboard(): Promise<void> {
+  const token = await getAuthToken()
+  const url = `${getWorkerUrl()}/leaderboard/opt-out`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`leaderboard_opt_out_failed_${res.status}: ${body.slice(0, 200)}`)
+  }
+}
+
+/**
+ * DELETE /leaderboard/me
+ *
+ * Hard-deletes the player's row. Called from delete-account / delete-data
+ * flows (Phase 7.4 / 7.5). Frees the nickname for reuse by other players.
+ */
+export async function deleteLeaderboardMe(): Promise<void> {
+  const token = await getAuthToken()
+  const url = `${getWorkerUrl()}/leaderboard/me`
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`leaderboard_delete_failed_${res.status}: ${body.slice(0, 200)}`)
+  }
 }

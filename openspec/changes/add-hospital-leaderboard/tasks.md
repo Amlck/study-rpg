@@ -38,15 +38,15 @@
 
 - [x] 5.1 建 `apps/medexam2-hospital-tw/src/components/LeaderboardOptInModal.tsx` — modal-backdrop + modal-card frame、列 5 個公開欄位 + unchecked checkbox「同意公開以上資訊」、嵌 `NicknameField`、submit/dismiss-forever buttons、登入 gate fallback、Google name fallback messaging
 - [x] 5.2 建 `apps/medexam2-hospital-tw/src/components/NicknameField.tsx` — controlled input + 400ms debounce + monotonic requestId 防 stale fetch result + 6 個 validity states（empty / invalid-length / checking / available / taken / error）+ `onValidityChange` ref-mirrored 防 parent callback identity 變化重觸發。額外建 `lib/leaderboard/api.ts` 含 `checkNicknameAvailability()`（Phase 4.4 的一小部分，全套 upsert/opt-out/delete 留 Phase 4）
-- [ ] 5.3 加「不再顯示」二次選項（dismiss persistent for current device，存 IndexedDB local state，不上 cloud sync）
-- [ ] 5.4 寫 nickname 提交 mutation：成功後寫 IndexedDB `leaderboardProfile` table + trigger 一次 sync push
-- [ ] 5.5 把「曾否 opted in / opted out」狀態加進 Dexie schema（bump 到 next version）
+- [x] 5.3 加「不再顯示」二次選項 — `LeaderboardPage` wire `onDismissForever` → `markDismissedForever(userId)` 寫 `leaderboardProfile.dismissed_at = Date.now()`（IDB local state, 不上 cloud sync）
+- [x] 5.4 寫 nickname 提交 mutation — `LeaderboardPage` wire `onSubmit` → 讀 `buildLeaderboardAttributes()` 4-attr snapshot → POST `/leaderboard/upsert` → `markOptedIn(userId, nickname)` 寫 IDB profile + 紀錄 `last_pushed_at`。Phase 4.4 補的 `upsertLeaderboard` / `optOutLeaderboard` / `deleteLeaderboardMe` 3 個 helper 同檔
+- [x] 5.5 Dexie schema bump v13 → v14：新增 `leaderboardProfile` table（PK = `user_id`，欄位 `nickname / opted_in / dismissed_at / last_pushed_at`），additive 無 upgrade hook
 
 ## 6. Leaderboard page UI
 
 - [x] 6.1 新增 route `/leaderboard` 進 `apps/medexam2-hospital-tw/src/App.tsx` router（HashRouter `<Route path="/leaderboard" element={<LeaderboardPage />} />`，2 行）
 - [x] 6.2 建 `apps/medexam2-hospital-tw/src/pages/LeaderboardPage.tsx` — 沿用 `BookmarksPage` `app-shell + app-header` 慣例；4 filter tabs (segmented control, role=tablist) + Top 100 list + my-rank chip + 「上次更新：HH:MM」timestamp + footer 二行 disclosure（自填無驗證 + V6 起算）
-- [ ] 6.3 第一次進入 page 偵測「未 opted in 且未 dismissed」→ render LeaderboardOptInModal（依賴 5.5 Dexie schema bump 做 local state，留 Phase 5 完成後接）
+- [x] 6.3 第一次進入 page 偵測「未 opted in 且未 dismissed」→ render LeaderboardOptInModal — `LeaderboardPage` mount 時 one-shot `getLeaderboardProfile(user.id)` → if no profile + no dismiss → setShowOptInModal(true)；submit / dismiss callbacks 收尾 setShowOptInModal(false)
 - [x] 6.4 Mount 時 `Promise.all` parallel fetch 4 個 filter snapshots、cache to local state；Tab 切換 = local state 切，不打網路。URL `?tab=` 同 `BookmarksPage` 模式
 - [x] 6.5 `total_count === 0` 時顯示「期待第一個上榜的玩家！」+ 上方 timestamp 行永遠顯示「目前 N 位玩家加入排行」counter
 - [x] 6.7（新加 task）`lib/leaderboard/api.ts` 加 `fetchLeaderboardSnapshot(filter)` — public read 不需 JWT，GET KV cache

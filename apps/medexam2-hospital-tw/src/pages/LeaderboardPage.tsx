@@ -8,14 +8,12 @@
 //
 // Phase 6 scope:
 //   - 6.2: page render + 4 tabs + Top 100 list + footer disclosure
+//   - 6.3: first-time opt-in modal (gated on local profile in IDB)
 //   - 6.4: tab switching client-side (no re-fetch — fetch all 4 in parallel
 //          on mount, switch tabs is local state change)
 //   - 6.5: empty state with player counter
 //
 // Deferred to later phases:
-//   - 6.1: route registration in App.tsx (page is currently unrouted)
-//   - 6.3: first-time opt-in modal (depends on 5.3-5.5 dismiss flag in IDB)
-//   - 6.6: home page nav entry
 //   - my-rank chip for opted-in players outside top 100 (needs Worker
 //     /my-rank endpoint — Phase 4 follow-up)
 
@@ -29,7 +27,14 @@ import {
   type LeaderboardSnapshot,
 } from '@study-rpg/core'
 import { useAuth } from '../lib/auth/AuthContext'
-import { fetchLeaderboardSnapshot } from '../lib/leaderboard/api'
+import { fetchLeaderboardSnapshot, upsertLeaderboard } from '../lib/leaderboard/api'
+import { LeaderboardOptInModal } from '../components/LeaderboardOptInModal'
+import {
+  getLeaderboardProfile,
+  markDismissedForever,
+  markOptedIn,
+} from '../services/leaderboard-profile'
+import { buildLeaderboardAttributes } from '../lib/sync/leaderboard'
 
 type SnapshotState =
   | { kind: 'loading' }
@@ -59,6 +64,7 @@ export function LeaderboardPage() {
   const activeFilter: LeaderboardFilter = parseFilter(params.get('tab'))
 
   const [snapshotState, setSnapshotState] = useState<SnapshotState>({ kind: 'loading' })
+  const [showOptInModal, setShowOptInModal] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -86,11 +92,52 @@ export function LeaderboardPage() {
     }
   }, [])
 
+  // First-visit opt-in modal — show only when authed + no prior opt-in + no
+  // dismiss flag. One-shot read (not useLiveQuery) so we avoid the
+  // loading-vs-absent ambiguity; the user's submit / dismiss action mutates
+  // local state directly via setShowOptInModal.
+  useEffect(() => {
+    if (!user) {
+      setShowOptInModal(false)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const profile = await getLeaderboardProfile(user.id)
+      if (cancelled) return
+      if (!profile?.opted_in && !profile?.dismissed_at) {
+        setShowOptInModal(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
   const setFilter = (next: LeaderboardFilter): void => {
     if (next === activeFilter) return
     const nextParams = new URLSearchParams(params)
     nextParams.set('tab', next)
     setParams(nextParams, { replace: true })
+  }
+
+  const handleOptInSubmit = async ({ nickname }: { nickname: string }): Promise<void> => {
+    if (!user) return
+    const attrs = await buildLeaderboardAttributes()
+    await upsertLeaderboard({
+      nickname,
+      ...attrs,
+      is_public: 1,
+      updated_at: Date.now(),
+    })
+    await markOptedIn(user.id, nickname)
+    setShowOptInModal(false)
+  }
+
+  const handleDismissForever = (): void => {
+    if (!user) return
+    void markDismissedForever(user.id)
+    setShowOptInModal(false)
   }
 
   return (
@@ -137,6 +184,13 @@ export function LeaderboardPage() {
           累積唸書時間自 V6 起算（更早的時間不計）。
         </p>
       </footer>
+
+      <LeaderboardOptInModal
+        isOpen={showOptInModal}
+        onClose={() => setShowOptInModal(false)}
+        onSubmit={handleOptInSubmit}
+        onDismissForever={handleDismissForever}
+      />
     </main>
   )
 }
