@@ -54,11 +54,11 @@
 
 ## 7. Settings & lifecycle
 
-- [ ] 7.1 在 `apps/medexam2-hospital-tw/src/components/SettingsPanel.tsx` 加「公開到排行榜」section — toggle on/off + 改暱稱按鈕（同 NicknameField 驗證）
-- [ ] 7.2 Toggle off → call `/leaderboard/opt-out` + 本地 state 改為 hidden
-- [ ] 7.3 Toggle on（從 opt-out 重回）→ leaderboard adapter 下次 push 帶 `is_public: 1`，無需重設暱稱 / 重 consent
-- [ ] 7.4 接 `delete_my_account()` flow — 在既有 Supabase RPC 流程後加一步 `DELETE /leaderboard/me`
-- [ ] 7.5 接 `delete_my_data()` flow — 同 7.4，刪 D1 leaderboard row
+- [x] 7.1 在 `HelpMenu.tsx`（**修正**: 二階 settings 在 HelpMenu accordion，不是 SettingsPanel — 那是一階 convention）加「公開到排行榜」section（9th，介於 命運卡 跟 回報問題 之間）— body 兩段說明 + 嵌入新建的 `LeaderboardSettingsControls.tsx` 元件，含三種狀態：未登入 / 未 opt-in（指引到 /leaderboard 頁面）/ 已 opt-in（顯示 toggle + 改暱稱）
+- [x] 7.2 Toggle off → `optOutLeaderboard()` (POST `/leaderboard/opt-out`) + `setLeaderboardPublic(userId, false)` 本地改 hidden
+- [x] 7.3 Toggle on（從 opt-out 重回）→ `setLeaderboardPublic(userId, true)` 改 IDB + 立即跑 `pushLeaderboardIfOptedIn(userId)` 直接 POST `/leaderboard/upsert` 帶 `is_public:1`（不等下次 R2 sync push，避免幾小時 stale）
+- [N/A] 7.4 `delete_my_account()` flow — 二階 沒有 delete-account 按鈕（只有 `safeResetAccountData` → `delete_my_data` 路徑；一階 SettingsPanel 才有 `delete_my_account`）。Cross-app account delete 留 orphan row 為可接受 trade-off（未來 cron 可清；nickname 仍被佔用屬已知 wart）。詳見 commit message
+- [x] 7.5 接 `safeResetAccountData` flow — `getLeaderboardProfile(user.id)` 偵測有 profile 才跑 `deleteLeaderboardMe()` (DELETE D1 row) + `clearLeaderboardProfile()`（清本地）；Worker 失敗用 `console.warn` 吞掉、不 abort reset 流程（leaderboard 是 best-effort，主流程不該因 Worker 掛掉中斷）
 
 ## 8. Smoke testing
 

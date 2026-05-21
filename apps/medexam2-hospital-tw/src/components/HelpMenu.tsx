@@ -18,6 +18,7 @@ import {
   getERConsultSettings,
   setERConsultSettings,
 } from '../services/er-consultation'
+import { LeaderboardSettingsControls } from './LeaderboardSettingsControls'
 
 interface AccordionSection {
   id: string
@@ -109,6 +110,15 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     body: [
       '消耗 reputation 抽 4 階卡包（普通 / 稀有 / 史詩 / 傳奇）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
       '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward。',
+    ],
+  },
+  {
+    id: 'leaderboard-settings',
+    icon: '🏆',
+    title: '公開到排行榜',
+    body: [
+      '公開後，全二階玩家可以在「排名」頁面看到你的醫院 tier、聲望、醫師數、累積唸書時間和你設定的暱稱。',
+      '隨時可以在下方關掉公開（紀錄保留，再次打開不必重新同意）；想完全刪除排行榜紀錄請走「重置此帳號進度」。還沒加入排行榜的話請到「🏆 排名」頁面開啟流程。',
     ],
   },
   {
@@ -285,6 +295,9 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                         {section.body.map((paragraph, i) => (
                           <p key={i}>{paragraph}</p>
                         ))}
+                        {section.id === 'leaderboard-settings' && (
+                          <LeaderboardSettingsControls />
+                        )}
                         {section.id === 'bug-report' && (
                           <button
                             type="button"
