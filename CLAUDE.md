@@ -114,8 +114,9 @@ VITE_SYNC_WORKER_URL=https://study-rpg-sync-worker.tony85314.workers.dev
 ```
 
 GH Actions secrets: 
-- **Supabase**: `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` exposed to `.github/workflows/deploy.yml`
-- **R2 (Phase 3+ deploy)**: `CF_API_TOKEN` + `CF_ACCOUNT_ID` for Worker deploy via `.github/workflows/deploy-worker.yml` (see `cloudflare/sync-worker/README.md` for scopes)
+- **Supabase (required)**: `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` exposed to `.github/workflows/deploy.yml`
+- **R2 app build (optional, Phase 3+ flip)**: `VITE_CLOUD_SYNC_BACKEND` (`supabase`/`dual`/`r2`) + `VITE_CLOUD_SYNC_READ_BACKEND` (`supabase`/`r2`) + `VITE_SYNC_WORKER_URL`. Already wired into `deploy.yml` build steps; unset = empty string = safe default (`supabase`/`supabase`/prod Worker URL) per backend-config nonEmpty guard. Owner adds them only when ready to flip Phase 3 or 4.
+- **R2 Worker deploy (one-time)**: `CF_API_TOKEN` + `CF_ACCOUNT_ID` for Worker deploy via `.github/workflows/deploy-worker.yml` (see `cloudflare/sync-worker/README.md` for scopes)
 - Owner manually adds these in repo Settings → Secrets and variables → Actions
 
 ### Schema (9 sync tables + 4 RPCs)
