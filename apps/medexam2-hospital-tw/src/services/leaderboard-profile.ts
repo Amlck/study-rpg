@@ -21,18 +21,30 @@ export async function getLeaderboardProfile(
 export async function markOptedIn(userId: string, nickname: string): Promise<void> {
   const db = getHospitalDB()
   const now = Date.now()
-  const existing = await db.leaderboardProfile.get(userId)
   await db.leaderboardProfile.put({
     user_id: userId,
     nickname,
     opted_in: true,
+    // Opt-in always starts visible on the public board; Phase 7 settings
+    // toggle uses setLeaderboardPublic() below to flip without re-consent.
+    is_public: true,
     // Opt-in clears any prior dismiss flag — the player explicitly chose in.
     dismissed_at: null,
     last_pushed_at: now,
-    // Preserve any other fields if the row already exists (none currently,
-    // but future-proofing against additive schema changes).
-    ...(existing ? {} : {}),
   })
+}
+
+/**
+ * Settings-panel toggle: flip `is_public` without touching `opted_in` (so
+ * re-enabling later doesn't force a re-consent dialog per design D5). The
+ * sync push hook (lib/sync/leaderboard.ts) reads this on every push and
+ * sends `is_public: 1` or `0` to the Worker accordingly.
+ */
+export async function setLeaderboardPublic(userId: string, isPublic: boolean): Promise<void> {
+  const db = getHospitalDB()
+  const existing = await db.leaderboardProfile.get(userId)
+  if (!existing) return
+  await db.leaderboardProfile.put({ ...existing, is_public: isPublic })
 }
 
 export async function markDismissedForever(userId: string): Promise<void> {

@@ -28,6 +28,7 @@ import {
 } from './account-switch'
 import { checkAssignmentInvariants } from '../assignment'
 import { getBackendConfig } from './backend-config'
+import { pushLeaderboardIfOptedIn } from './leaderboard'
 import { requestR2Cleanup } from './r2/account-lifecycle'
 import {
   applyResetPropagationIfNeeded,
@@ -248,6 +249,10 @@ export function useSync(): UseSyncReturn {
             // applied stale hospital_state.rooms (e.g. legacy non-null
             // assignedDoctorId values from pre-fix saves).
             onPullComplete: () => checkAssignmentInvariants().then(() => undefined),
+            // Post-push leaderboard chain — fires after every successful R2
+            // bundle push within the same 3s debounce window (Phase 4.2).
+            // Orchestrator skips silently for never-opted-in players.
+            onPushComplete: () => pushLeaderboardIfOptedIn(user.id).then(() => undefined),
           })
         }
         if (needsModal) engineRef.current.pause()

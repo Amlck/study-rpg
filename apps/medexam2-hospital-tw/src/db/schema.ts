@@ -277,8 +277,20 @@ export interface LeaderboardProfileRow {
   user_id: string
   /** Player's chosen nickname (case-preserved). `null` until opted in. */
   nickname: string | null
-  /** Set true after the first successful `/leaderboard/upsert` POST. */
+  /**
+   * Consent flag — set true after the first successful `/leaderboard/upsert`.
+   * Once true, never goes false (settings toggle uses `is_public` instead so
+   * re-enabling doesn't force a re-consent flow per design D5).
+   */
   opted_in: boolean
+  /**
+   * Settings-panel toggle state (true = visible on public leaderboard, false =
+   * row preserved but is_public=0 server-side). Defaults to true on opt-in.
+   * Optional in TS because v14 rows shipped before this field existed; treat
+   * undefined as `true` at read sites (the safe default — already-consented
+   * players were public).
+   */
+  is_public?: boolean
   /** ms timestamp of「不再顯示」dismiss; null = never dismissed. */
   dismissed_at: number | null
   /** ms timestamp of last successful upsert; null = never pushed. */

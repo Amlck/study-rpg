@@ -29,9 +29,9 @@
 
 ## 4. Sync engine integration
 
-- [ ] 4.1 新增 `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` adapter — snapshot helper 從 hospital_state / hospital_doctors / study-session 抽 `{tier, reputation, doctor_count, total_study_min}`
-- [ ] 4.2 在 `apps/medexam2-hospital-tw/src/lib/sync/engine.ts` push pipeline hook：每次 R2 bundle push 後（同 debounce 3s window）若玩家曾 opt-in → 順手 POST `/leaderboard/upsert`
-- [ ] 4.3 未 opt-in 玩家 skip 整個 leaderboard adapter；opted-out（is_public=0）玩家仍 push（with `is_public: 0`），讓 row 維持新鮮
+- [x] 4.1 `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` adapter — `buildLeaderboardAttributes()` reads tier (clamp 國家級教學醫院 → 3 to match Worker TIER_MAX) / reputation / doctor_count / total_study_min from `gameCounters` + `doctors.count()` + `monotonicCounters.totalStudyMinutes`
+- [x] 4.2 在 `apps/medexam2-hospital-tw/src/lib/sync/engine.ts` push pipeline hook：加 `onPushComplete?: () => void | Promise<void>` 進 `CreateSyncEngineOptions`（mirrors `onPullComplete` pattern, keeps engine content-pack-agnostic per add-cloud-sync §D4）→ engine 在 `firstError === null && !anyOffline` 時觸發 → useSync.ts 接 `pushLeaderboardIfOptedIn(user.id)` 順手 POST `/leaderboard/upsert`
+- [x] 4.3 三狀態分流 in `pushLeaderboardIfOptedIn`: `no-profile` skip / `not-opted-in` skip / `opted_in === true` push with `is_public: profile.is_public === false ? 0 : 1`（pre-`is_public` v14 rows 預設 true）。錯誤吞掉返回 `{kind:'error'}`，不算 sync engine consecutive-failure
 - [ ] 4.4 加 `apps/medexam2-hospital-tw/src/lib/leaderboard/api.ts` client helper（fetch top-100 / opt-out / delete / nickname-check / debounce）
 
 ## 5. Opt-in modal & nickname UX

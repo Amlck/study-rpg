@@ -116,6 +116,16 @@ export interface CreateSyncEngineOptions {
    * inside a try/catch so repair failure does not break the pull.
    */
   onPullComplete?: () => void | Promise<void>
+  /**
+   * Optional callback fired after a `pushNow` cycle that actually pushed
+   * dirty data AND fully succeeded (all R2 bundles + Supabase batches OK).
+   * Used by 二階 to chain a leaderboard `/leaderboard/upsert` POST in the
+   * same 3s debounce window (add-hospital-leaderboard design §D2). Skipped
+   * on push failure (don't pile retries on a wobbly network) and on no-op
+   * pushes (totalDirty === 0). Engine-side: invoked inside a try/catch so
+   * callback failure does not affect sync status.
+   */
+  onPushComplete?: () => void | Promise<void>
 }
 
 export interface R2BundleBinding {
