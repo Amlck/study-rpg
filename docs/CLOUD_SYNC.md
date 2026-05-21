@@ -524,6 +524,44 @@ dashboard** and remove from `.env.local`. R2 S3 keys are
 narrower-scoped (bucket-only) and can stay on a normal rotation
 schedule.
 
+### Quick R2 audit recipe (manual, no extra tooling)
+
+When you need to spot-check R2 freshness (post-deploy / pre-Phase-5 /
+"is dual-write alive" sanity check) without building a dedicated script:
+
+```bash
+# Per-user m2 bundle download + meta inspection.
+# Replace UUIDS with the user_ids of interest (or all auth.users).
+for uuid in <uuid-1> <uuid-2> ...; do
+  out=/tmp/r2-probe-$uuid.gz
+  wrangler r2 object get "study-rpg-saves/users/$uuid/m2-snapshot.json.gz" \
+    --file "$out" --remote >/dev/null 2>&1
+  [ -s "$out" ] && gunzip -c "$out" | python3 -c "
+import sys, json
+d = json.load(sys.stdin); m = d.get('meta', {})
+cid = m.get('client_id', '?')
+src = 'bulk' if cid.startswith('bulk-migrate-') else 'CLIENT'
+print(f\"{m.get('updated_at','?'):30s} {src:6s} ${uuid:.13s}\")
+"
+done | sort -r
+```
+
+**Reading the output**:
+
+- `CLIENT` rows = real player wrote (via dual-write or post-migrate
+  return) → R2 is live.
+- `bulk` rows (`client_id` prefix `bulk-migrate-`) = `scripts/bulk-migrate.ts`
+  filled this, user hasn't returned since the rescue.
+- `(missing)` (empty / no output) = user has no R2 blob — investigate
+  whether they have Supabase rows (re-run `pnpm bulk-migrate --user
+  <uuid>`) or are a sign-in-only no-data user (expected).
+
+Same recipe works for `m1-snapshot.json.gz` and `bookmarks.json.gz`
+keys — swap the path. Use `wc -c < $out` for compressed bundle size if
+you want capacity stats. **Wrangler 4.x has no `r2 object list`**, so
+this is the cleanest path until either upstream adds it or we wire an
+S3 list call into a script.
+
 ## Phase 4 — Drop Supabase writes (planned)
 
 After Phase 3 bakes 7+ days with no rollback events:
