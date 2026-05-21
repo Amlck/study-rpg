@@ -120,10 +120,17 @@ export interface CreateSyncEngineOptions {
    * Optional callback fired after a `pushNow` cycle that actually pushed
    * dirty data AND fully succeeded (all R2 bundles + Supabase batches OK).
    * Used by 二階 to chain a leaderboard `/leaderboard/upsert` POST in the
-   * same 3s debounce window (add-hospital-leaderboard design §D2). Skipped
-   * on push failure (don't pile retries on a wobbly network) and on no-op
-   * pushes (totalDirty === 0). Engine-side: invoked inside a try/catch so
-   * callback failure does not affect sync status.
+   * same 3s debounce window (add-hospital-leaderboard design §D2).
+   *
+   * NOTE — intentionally STRICTER than onPullComplete: this hook also gates
+   * on `firstError === null`, while onPullComplete fires whenever the cycle
+   * is online (even if some adapters errored). Rationale: pull failures
+   * partially recover by re-pulling next cycle, but push side-effects (e.g.
+   * leaderboard upsert) shouldn't pile retries on a wobbly network. The
+   * asymmetry is the design, not a bug.
+   *
+   * Also skipped on no-op pushes (totalDirty === 0). Engine-side: invoked
+   * inside a try/catch so callback failure does not affect sync status.
    */
   onPushComplete?: () => void | Promise<void>
 }

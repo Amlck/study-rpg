@@ -54,8 +54,11 @@ export async function markDismissedForever(userId: string): Promise<void> {
     user_id: userId,
     nickname: existing?.nickname ?? null,
     opted_in: existing?.opted_in ?? false,
-    dismissed_at: Date.now(),
     last_pushed_at: existing?.last_pushed_at ?? null,
+    // Spread existing so `is_public` (and any future fields) survive an
+    // already-opted-in player picking 「不再顯示」.
+    ...(existing ?? {}),
+    dismissed_at: Date.now(),
   })
 }
 

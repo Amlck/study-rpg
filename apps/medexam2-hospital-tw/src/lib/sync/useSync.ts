@@ -252,9 +252,17 @@ export function useSync(): UseSyncReturn {
             // assignedDoctorId values from pre-fix saves).
             onPullComplete: () => checkAssignmentInvariants().then(() => undefined),
             // Post-push leaderboard chain — fires after every successful R2
-            // bundle push within the same 3s debounce window (Phase 4.2).
-            // Orchestrator skips silently for never-opted-in players.
-            onPushComplete: () => pushLeaderboardIfOptedIn(user.id).then(() => undefined),
+            // bundle push within the same 3s debounce window. Orchestrator
+            // skips silently for never-opted-in players; surface its tagged
+            // error result via console.warn so a broken Worker is observable
+            // (the chain itself must NEVER throw — leaderboard is best-effort
+            // and a Worker outage must not trip the engine's failure counter).
+            onPushComplete: () =>
+              pushLeaderboardIfOptedIn(user.id).then((result) => {
+                if (result.kind === 'error') {
+                  console.warn('[leaderboard] push failed:', result.message)
+                }
+              }),
           })
         }
         if (needsModal) engineRef.current.pause()

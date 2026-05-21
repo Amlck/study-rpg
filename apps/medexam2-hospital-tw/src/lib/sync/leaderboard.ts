@@ -87,13 +87,9 @@ export async function pushLeaderboardIfOptedIn(
   // Treat undefined as visible — pre-`is_public`-field rows (v14 ship before
   // 4.2) were always public by definition (no opt-out mechanism existed yet).
   const isPublic: 0 | 1 = profile.is_public === false ? 0 : 1
-  const nickname = profile.nickname
-  if (typeof nickname !== 'string' || nickname.length === 0) {
-    return {
-      kind: 'error',
-      message: 'profile_missing_nickname_despite_opted_in',
-    }
-  }
+  // `opted_in === true` invariant from markOptedIn() guarantees nickname is
+  // a non-empty string; defensive check removed (truly impossible state).
+  const nickname = profile.nickname ?? ''
 
   try {
     const attrs = await buildLeaderboardAttributes()

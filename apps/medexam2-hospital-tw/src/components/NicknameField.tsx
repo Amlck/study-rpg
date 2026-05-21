@@ -62,6 +62,9 @@ export function NicknameField({
   // Monotonic counter — in-flight fetches whose ID no longer matches the
   // current ref are stale (user typed again) and their result is discarded.
   const requestIdRef = useRef(0)
+  // Abort in-flight nickname-check fetches when the user types again or
+  // the component unmounts — saves bandwidth on slow networks.
+  const abortRef = useRef<AbortController | null>(null)
 
   // Mirror onValidityChange in a ref so the validity-broadcast effect does
   // NOT need it in the dep array (avoids re-firing when parent re-creates
@@ -80,6 +83,7 @@ export function NicknameField({
       window.clearTimeout(debounceTimerRef.current)
       debounceTimerRef.current = null
     }
+    abortRef.current?.abort()
 
     const trimmed = value
     requestIdRef.current += 1
@@ -104,16 +108,19 @@ export function NicknameField({
     }
 
     setValidity({ state: 'checking' })
+    const controller = new AbortController()
+    abortRef.current = controller
     debounceTimerRef.current = window.setTimeout(() => {
       void (async () => {
         try {
-          const result = await checkNicknameAvailability(trimmed)
+          const result = await checkNicknameAvailability(trimmed, controller.signal)
           if (requestIdRef.current !== myRequestId) return
           setValidity(
             result.available ? { state: 'available' } : { state: 'taken' },
           )
         } catch (err) {
           if (requestIdRef.current !== myRequestId) return
+          if (err instanceof DOMException && err.name === 'AbortError') return
           setValidity({
             state: 'error',
             message: err instanceof Error ? err.message : String(err),
@@ -129,6 +136,7 @@ export function NicknameField({
         window.clearTimeout(debounceTimerRef.current)
         debounceTimerRef.current = null
       }
+      controller.abort()
     }
   }, [value, skipUniquenessCheck])
 

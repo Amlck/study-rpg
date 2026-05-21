@@ -35,12 +35,14 @@ async function getAuthToken(): Promise<string> {
  */
 export async function checkNicknameAvailability(
   candidate: string,
+  signal?: AbortSignal,
 ): Promise<LeaderboardNicknameCheckResponse> {
   const token = await getAuthToken()
   const url = `${getWorkerUrl()}/leaderboard/nickname-check?n=${encodeURIComponent(candidate)}`
   const res = await fetch(url, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
+    signal,
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
