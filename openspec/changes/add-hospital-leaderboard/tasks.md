@@ -62,12 +62,12 @@
 
 ## 8. Smoke testing
 
-- [ ] 8.1 本機跑 `wrangler dev` Worker + `pnpm --filter @study-rpg/medexam2-hospital-tw dev`，手動 opt-in + 看 D1 row + 手動 trigger cron + 看 KV key 寫入
+- [x] 8.1 本機跑 `wrangler dev --local` Worker + vite on `:5173` + `.dev.vars`（`SUPABASE_JWKS_URL=https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`、`SUPABASE_PROJECT_REF=<ref>`，前者必須是 `.well-known` 路徑、`/auth/v1/keys` 會 401 要 apikey header）→ opt-in `wlksmoke` via React modal → `POST /leaderboard/upsert` 200 → local D1 row { user_id, nickname: wlksmoke, tier:1, rep:452, doctor:3, study_min:1, is_public:1 } ✓ → manual cron via `curl /cdn-cgi/handler/scheduled` 200 → KV `composite` snapshot now { rows:1, total_count:1 } with same row ✓
 - [x] 8.2 Chrome MCP preflight `list_connected_browsers`（1 browser connected）→ localhost SPA route 三件套全綠：(1) Direct URL `#/leaderboard` render ✓、(2) in-app nav 回首頁 link + h1 切換 ✓、(3) F5 on `?tab=study` URL + `aria-selected` 完整保留 ✓；console 零 leaderboard error（R2 future flag warn + Supabase refresh-token expired 是 app-wide pre-existing）。Polish: tab UI 從 plain `<button>` refactor 成既有 `.filter-bar` + `.filter-chip` + `aria-pressed` convention，跟年份/稀有度 filter 一套 design system（零新 CSS）
-- [ ] 8.3 跑 nickname 邊界 case：1 char（reject）/ 13 char（reject）/ 12 char（accept）/「wlk」+「WLK」collision（reject 第二個）/ 含 emoji ZWJ（count > 12 reject）
-- [ ] 8.4 跑 opt-out → 下次 cron 後 verify 不在 KV snapshot
-- [ ] 8.5 跑 delete account → verify D1 row 不存在
-- [ ] 8.6 在 production prod URL 重跑 SPA 三件套（GH Pages 404.html redirect 已存在，但本 route 第一次驗）
+- [x] 8.3 nickname 邊界 5/5 cases 全綠（via direct Worker fetch `/leaderboard/nickname-check`）— 1 char `a` → `{available:false, reason:invalid_length}` ✓ / 13 chars `abcdefghijklm` → `{available:false, reason:invalid_length}` ✓ / 12 chars `abcdefghijkl` → `{available:true}` ✓ / case collision `WLKSMOKE` vs taken `wlksmoke` → `{available:false}` ✓ / emoji ZWJ family ×2 = 14 codepoints → `{available:false, reason:invalid_length}` ✓
+- [x] 8.4 HelpMenu「公開到排行榜（設定）」toggle off → `POST /leaderboard/opt-out` 200 → D1 row `is_public:0` + `updated_at` bumped + row preserved ✓ → manual cron → KV `composite` now `{rows:0, total_count:0}` ✓ (per D5: opt-out 是隱藏不刪)
+- [x] 8.5 `DELETE /leaderboard/me` via direct Worker fetch with fresh JWT → `{ok:true, deleted:1}` 200 → D1 `SELECT COUNT(*) FROM leaderboard_m2` returns 0 rows ✓ (full `safeResetAccountData` UI flow not exercised — typing "RESET" + game-state wipe too destructive for smoke; client integration is direct `getLeaderboardProfile → deleteLeaderboardMe` wire per task 7.5, covered by code review)
+- [ ] 8.6 在 production prod URL 重跑 SPA 三件套（GH Pages 404.html redirect 已存在，但本 route 第一次驗）— deferred to post-merge dogfood (needs `track-m2 → main` + push first)
 
 ## 9. Documentation & release notes
 
@@ -79,7 +79,7 @@
 ## 10. Pre-archive verification
 
 - [x] 10.1 跑 `openspec validate add-hospital-leaderboard` — 三維檢查 completeness / correctness / coherence（"Change 'add-hospital-leaderboard' is valid" ✓ on 2026-05-22 evening, post-simplify）
-- [ ] 10.2 跑 `/verify` — Chrome MCP end-to-end smoke（含 SPA route F5 三件套）+ visual QA（blocked: localhost vite 5174/5175 被 R2 parallel session 老進程佔用 + OAuth 過期）
+- [x] 10.2 跑 `/verify` Chrome MCP end-to-end smoke — SPA route 三件套全綠 (1) in-app nav: home `<Link to="/leaderboard">` click → `#/leaderboard` + h1 "排名" + 4 filter chips ✓ (2) direct URL `#/leaderboard?tab=study` → `aria-pressed=true` on 「累積唸書時間」 ✓ (3) F5 reload on tab=study → hash + active filter both preserved ✓；console errors all R2 `accessKeyId is a required option` pre-existing (local Worker 沒 R2 S3 secrets — 不阻擋 leaderboard 流程), zero leaderboard-related errors
 - [x] 10.3 確認 `pnpm -r typecheck` 全綠（含 worker package）（all 8 packages clean post-simplify ✓）
 - [x] 10.4 確認 D1 production 已 migrate；KV namespace production 已 bind；cron `0 * * * *` 在 production 已啟用（curl probes 2026-05-22 evening：`/health` 200 / `/leaderboard/composite` 200 with `last_updated_at: 1779386448416` = 38 min stale = cron OK / `/leaderboard/nickname-check` 401 JWT-gated / unknown filter 404）
 - [x] 10.5 跑 `/simplify` 對本 change 觸碰的程式碼做 final pass（commit `6a0d139` — 2 P1 bugs fixed + 5 P2 wins + 1 P3 doc; deferred follow-ups: workerFetch DRY / lazy snapshot fetch / JSX nesting）
