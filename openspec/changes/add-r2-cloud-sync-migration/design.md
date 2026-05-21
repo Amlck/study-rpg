@@ -191,6 +191,19 @@ Follow-up change opened, applied, verified, and archived in the same Phase 3 ses
 
 Archive: `openspec/changes/archive/2026-05-20-fix-r2-engine-recovery-and-cleanup-phase-0-smoke/`. Commits `e27f796` (implementation) + `6bb534a` (archive).
 
+### 2026-05-22 — Phase 3 cutover shipped (task 5.6)
+
+`VITE_CLOUD_SYNC_BACKEND=dual` + `VITE_CLOUD_SYNC_READ_BACKEND=r2` set as repo Secrets via `gh secret set`; deploy 26237383912 (manual `workflow_dispatch` after `c150dee` merged track-m2 → main) shipped both apps with R2 read flag baked into the bundle. Chrome MCP end-to-end smoke from the live GH Pages:
+
+- **一階** (`https://fireman333.github.io/study-rpg/`): 3 `study-rpg-sync-worker.tony85314.workers.dev/presign` POST 200s on initial pull. Page renders Lv 1 / 0-stat fresh state — expected because owner Supabase has 0 M1 rows (per Phase 1 task 4.7 caveat: migration banner not exercise-able for this owner).
+- **二階** (`/hospital/`): 6 presign POST 200s (m2 + bookmarks ~3 ops each). Real owner data restored from R2 m2 bundle — 外科 26/1154 對 / 38% mastery / 6 wrong queue / 「醫學五」 visible, identical to pre-cutover state.
+- **engine.ts:267 branch**: no per-table `?select=*&updated_at=gt.<iso>` SELECTs in either tab; the R2-read branch took over. `pullNow` ran clean.
+- **migration.ts:170 one-shot SELECTs**: still fire on sign-in (4 per app: player_state / srs_cards / item_instances / mentor_backlog `?select=updated_at&order=updated_at.desc&limit=1`). Expected — this is the conflict-gate watermark, not pullNow. Will keep firing through Phase 4 until Supabase rows freeze, then can be killed in Phase 5 follow-up.
+
+**Sideband finding (not a regression)**: 6 Supabase `HEAD ?select=user_id&limit=1` on `player_state` / `hospital_state` / `question_bookmarks` returned **503 Service Unavailable** across both 一階 + 二階 page loads. These are the `migrate-from-supabase.ts` row-existence probes (banner detection). 503 is consistent across tables but the app handles it gracefully (page renders, sync engine works, no user-visible error). Has been firing since Phase 1 banner shipped — investigate in 5.7 monitor window as possible Supabase free-tier rate-limit / project-hibernate signal. Does NOT block Phase 3.
+
+**7-day monitor window** (task 5.7) opens 2026-05-22; proceed to 5.8 (Phase 4 readiness) on or after 2026-05-29 if zero `cloud-sync`-category `bug_reports` and no rollback-worthy issues. Owner can flip back to Supabase reads at any time during the window via `gh secret delete VITE_CLOUD_SYNC_READ_BACKEND` (preserves dual-write).
+
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
