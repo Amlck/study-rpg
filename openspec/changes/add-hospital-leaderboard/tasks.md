@@ -44,7 +44,7 @@
 
 ## 6. Leaderboard page UI
 
-- [ ] 6.1 新增 route `/leaderboard` 進 `apps/medexam2-hospital-tw/src/App.tsx` router
+- [x] 6.1 新增 route `/leaderboard` 進 `apps/medexam2-hospital-tw/src/App.tsx` router（HashRouter `<Route path="/leaderboard" element={<LeaderboardPage />} />`，2 行）
 - [x] 6.2 建 `apps/medexam2-hospital-tw/src/pages/LeaderboardPage.tsx` — 沿用 `BookmarksPage` `app-shell + app-header` 慣例；4 filter tabs (segmented control, role=tablist) + Top 100 list + my-rank chip + 「上次更新：HH:MM」timestamp + footer 二行 disclosure（自填無驗證 + V6 起算）
 - [ ] 6.3 第一次進入 page 偵測「未 opted in 且未 dismissed」→ render LeaderboardOptInModal（依賴 5.5 Dexie schema bump 做 local state，留 Phase 5 完成後接）
 - [x] 6.4 Mount 時 `Promise.all` parallel fetch 4 個 filter snapshots、cache to local state；Tab 切換 = local state 切，不打網路。URL `?tab=` 同 `BookmarksPage` 模式
