@@ -467,6 +467,63 @@ local wipe / signout. If the R2 step fails, the whole flow aborts before
 touching Supabase, so the user retries from a clean slate. R2 cleanup is
 no-op (skipped) when `writeR2 === false` (Phase 0–1 compatibility).
 
+### Bulk migration tool (`scripts/bulk-migrate.ts`)
+
+The client-side migration banner only fires when the affected user
+returns AND clicks 「立即遷移」. During Phase 3 cutover smoke
+(2026-05-22) the R2 inventory showed only 2 user folders despite 29
+`auth.users` + 29 distinct `hospital_state.user_id` — 27 active
+dogfooders had Supabase rows but no R2 blob. Without intervention,
+Phase 5 (drop sync tables) would have permanently lost their saves.
+
+`scripts/bulk-migrate.ts` is the operator-side rescue: one-shot Node
+script that reads any user's rows with Supabase service-role and PUTs
+the 3 bundles to R2 via S3 sigv4 direct, bypassing the Worker
+`/presign` (Worker can only sign for the JWT's own `sub`). Bundle
+shape mirrors `apps/medexam-tw/src/lib/sync/r2/migrate-from-supabase.ts`
+BUNDLE_SPECS — keep both in sync if schema changes.
+
+**Idempotent**: `If-None-Match: *` on PUT → 412 = blob exists, treated
+as `already-present`. Re-running is safe; the HEAD probe also short-
+circuits before reading Supabase rows when a blob is already present.
+
+**Run** (from repo root):
+
+```bash
+# Owner sets up .env.local once via interactive prompt (read -s, no echo):
+bash scripts/setup-env-local.sh
+
+# Smoke flow:
+pnpm bulk-migrate --dry-run --user <uuid>   # one user, no writes
+pnpm bulk-migrate --user <uuid>             # one user, live
+pnpm bulk-migrate --dry-run                 # all users, no writes
+pnpm bulk-migrate                           # all users, live (idempotent)
+```
+
+**Env needed** (in `.env.local`; never commit):
+
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (new `sb_secret_*` format
+  works; legacy `service_role` JWT also accepted)
+- `R2_S3_ENDPOINT`, `R2_S3_ACCESS_KEY_ID`, `R2_S3_SECRET_ACCESS_KEY`,
+  `R2_BUCKET`
+
+**When to use**:
+
+- A post-cutover cohort of new sign-ups end up in the same migration-gap
+  state (Supabase rows present, R2 blob missing).
+- A user reports "my save disappeared" after Phase 4 cutover — re-run
+  the script against their UUID with `--user <uuid>` to restore from
+  the (still-extant) Supabase rows.
+- Pre-Phase-5 final audit: run a dry-run pass to confirm every
+  `auth.users` row maps to at least one R2 blob; treat any
+  `no-rows`-only user as expected (sign-in trial, no game state).
+
+**Security**: service-role key bypasses RLS. Loading it into local env
+makes it momentarily exposed. After running, **rotate via Supabase
+dashboard** and remove from `.env.local`. R2 S3 keys are
+narrower-scoped (bucket-only) and can stay on a normal rotation
+schedule.
+
 ## Phase 4 — Drop Supabase writes (planned)
 
 After Phase 3 bakes 7+ days with no rollback events:
