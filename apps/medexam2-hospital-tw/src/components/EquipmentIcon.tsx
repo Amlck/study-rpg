@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { Rarity } from '@study-rpg/content-medexam2-tw'
 import type { EquipmentCategory } from '../data/equipment'
 
@@ -7,99 +8,116 @@ interface EquipmentIconProps {
   className?: string
 }
 
-function Stethoscope() {
+function PixelStethoscope() {
   return (
-    <>
-      <rect x="14" y="10" width="4" height="16" />
-      <rect x="30" y="10" width="4" height="16" />
-      <rect x="18" y="24" width="12" height="4" />
-      <rect x="22" y="28" width="4" height="8" />
-      <rect x="26" y="34" width="10" height="4" />
-      <rect x="34" y="30" width="4" height="4" />
-    </>
+    <g className="equipment-icon__sprite">
+      <rect className="equipment-icon__metal" x="14" y="11" width="6" height="15" />
+      <rect className="equipment-icon__metal" x="32" y="11" width="6" height="15" />
+      <rect className="equipment-icon__dark" x="16" y="26" width="4" height="6" />
+      <rect className="equipment-icon__dark" x="34" y="26" width="4" height="6" />
+      <rect className="equipment-icon__accent" x="20" y="30" width="14" height="5" />
+      <rect className="equipment-icon__accent" x="25" y="34" width="5" height="8" />
+      <rect className="equipment-icon__dark" x="29" y="39" width="10" height="5" />
+      <rect className="equipment-icon__accent" x="36" y="34" width="5" height="8" />
+      <rect className="equipment-icon__light" x="16" y="12" width="3" height="4" />
+      <rect className="equipment-icon__light" x="34" y="12" width="3" height="4" />
+    </g>
   )
 }
 
-function Scalpel() {
+function PixelScalpel() {
   return (
-    <>
-      <rect x="12" y="32" width="8" height="4" />
-      <rect x="18" y="28" width="8" height="4" />
-      <rect x="24" y="24" width="8" height="4" />
-      <rect x="30" y="18" width="4" height="8" />
-      <rect x="34" y="12" width="6" height="10" />
-    </>
+    <g className="equipment-icon__sprite">
+      <rect className="equipment-icon__dark" x="11" y="35" width="8" height="5" />
+      <rect className="equipment-icon__accent" x="17" y="31" width="9" height="5" />
+      <rect className="equipment-icon__accent" x="24" y="27" width="9" height="5" />
+      <rect className="equipment-icon__accent" x="31" y="23" width="6" height="5" />
+      <rect className="equipment-icon__metal" x="34" y="13" width="8" height="13" />
+      <rect className="equipment-icon__light" x="36" y="14" width="4" height="5" />
+      <rect className="equipment-icon__dark" x="39" y="22" width="4" height="4" />
+    </g>
   )
 }
 
-function Chart() {
+function PixelChart() {
   return (
-    <>
-      <rect x="14" y="10" width="24" height="32" />
-      <rect x="18" y="14" width="16" height="4" fill="var(--bg-paper)" />
-      <rect x="18" y="22" width="14" height="3" fill="var(--bg-paper)" />
-      <rect x="18" y="29" width="16" height="3" fill="var(--bg-paper)" />
-      <rect x="18" y="36" width="10" height="3" fill="var(--bg-paper)" />
-    </>
+    <g className="equipment-icon__sprite">
+      <rect className="equipment-icon__dark" x="15" y="10" width="24" height="34" />
+      <rect className="equipment-icon__paper" x="18" y="13" width="18" height="27" />
+      <rect className="equipment-icon__accent" x="21" y="17" width="12" height="4" />
+      <rect className="equipment-icon__metal" x="21" y="25" width="11" height="3" />
+      <rect className="equipment-icon__metal" x="21" y="31" width="13" height="3" />
+      <rect className="equipment-icon__metal" x="21" y="37" width="8" height="3" />
+      <rect className="equipment-icon__light" x="22" y="8" width="10" height="5" />
+    </g>
   )
 }
 
-function Coat() {
+function PixelCoat() {
   return (
-    <>
-      <rect x="18" y="10" width="16" height="6" />
-      <rect x="14" y="16" width="10" height="26" />
-      <rect x="28" y="16" width="10" height="26" />
-      <rect x="24" y="18" width="4" height="24" fill="var(--bg-paper)" />
-      <rect x="18" y="28" width="6" height="3" fill="var(--bg-paper)" />
-      <rect x="30" y="28" width="5" height="3" fill="var(--bg-paper)" />
-    </>
+    <g className="equipment-icon__sprite">
+      <rect className="equipment-icon__paper" x="18" y="10" width="16" height="8" />
+      <rect className="equipment-icon__paper" x="13" y="17" width="13" height="27" />
+      <rect className="equipment-icon__paper" x="28" y="17" width="13" height="27" />
+      <rect className="equipment-icon__dark" x="24" y="18" width="5" height="26" />
+      <rect className="equipment-icon__accent" x="18" y="29" width="7" height="4" />
+      <rect className="equipment-icon__accent" x="31" y="29" width="7" height="4" />
+      <rect className="equipment-icon__metal" x="18" y="12" width="16" height="3" />
+    </g>
   )
 }
 
-function Textbook() {
+function PixelTextbook() {
   return (
-    <>
-      <rect x="12" y="12" width="26" height="30" />
-      <rect x="16" y="16" width="18" height="4" fill="var(--bg-paper)" />
-      <rect x="16" y="24" width="14" height="3" fill="var(--bg-paper)" />
-      <rect x="16" y="31" width="16" height="3" fill="var(--bg-paper)" />
-      <rect x="36" y="14" width="3" height="26" fill="var(--frame-dark)" />
-    </>
+    <g className="equipment-icon__sprite">
+      <rect className="equipment-icon__dark" x="12" y="12" width="28" height="32" />
+      <rect className="equipment-icon__accent" x="15" y="13" width="20" height="28" />
+      <rect className="equipment-icon__paper" x="19" y="18" width="13" height="4" />
+      <rect className="equipment-icon__paper" x="19" y="26" width="10" height="3" />
+      <rect className="equipment-icon__paper" x="19" y="32" width="12" height="3" />
+      <rect className="equipment-icon__metal" x="35" y="15" width="3" height="25" />
+    </g>
   )
 }
 
-function Coffee() {
+function PixelCoffee() {
   return (
-    <>
-      <rect x="14" y="20" width="22" height="18" />
-      <rect x="36" y="24" width="6" height="8" />
-      <rect x="18" y="14" width="3" height="4" />
-      <rect x="25" y="10" width="3" height="6" />
-      <rect x="32" y="14" width="3" height="4" />
-      <rect x="17" y="38" width="16" height="3" fill="var(--frame-dark)" />
-    </>
+    <g className="equipment-icon__sprite">
+      <rect className="equipment-icon__paper" x="14" y="22" width="22" height="17" />
+      <rect className="equipment-icon__dark" x="35" y="26" width="7" height="8" />
+      <rect className="equipment-icon__paper" x="37" y="28" width="3" height="4" />
+      <rect className="equipment-icon__accent" x="18" y="26" width="14" height="6" />
+      <rect className="equipment-icon__dark" x="16" y="39" width="19" height="4" />
+      <rect className="equipment-icon__metal" x="18" y="14" width="3" height="5" />
+      <rect className="equipment-icon__metal" x="25" y="10" width="3" height="7" />
+      <rect className="equipment-icon__metal" x="32" y="14" width="3" height="5" />
+    </g>
   )
 }
 
 export function EquipmentIcon({ category, rarity, className }: EquipmentIconProps) {
+  const style = { ['--equipment-rarity-color' as string]: `var(--rarity-${rarity.toLowerCase()})` } as CSSProperties
+
   return (
     <svg
       className={`equipment-icon equipment-icon--${rarity.toLowerCase()} ${className ?? ''}`}
+      style={style}
       viewBox="0 0 52 52"
       role="img"
       aria-hidden="true"
       focusable="false"
     >
       <rect x="4" y="4" width="44" height="44" className="equipment-icon__frame" />
-      <g className="equipment-icon__shape">
-        {category === 'stethoscope' && <Stethoscope />}
-        {category === 'scalpel' && <Scalpel />}
-        {category === 'chart' && <Chart />}
-        {category === 'coat' && <Coat />}
-        {category === 'textbook' && <Textbook />}
-        {category === 'coffee' && <Coffee />}
-      </g>
+      <rect x="8" y="8" width="4" height="4" className="equipment-icon__corner" />
+      <rect x="40" y="8" width="4" height="4" className="equipment-icon__corner" />
+      <rect x="8" y="40" width="4" height="4" className="equipment-icon__corner" />
+      <rect x="40" y="40" width="4" height="4" className="equipment-icon__corner" />
+      {category === 'stethoscope' && <PixelStethoscope />}
+      {category === 'scalpel' && <PixelScalpel />}
+      {category === 'chart' && <PixelChart />}
+      {category === 'coat' && <PixelCoat />}
+      {category === 'textbook' && <PixelTextbook />}
+      {category === 'coffee' && <PixelCoffee />}
     </svg>
   )
 }

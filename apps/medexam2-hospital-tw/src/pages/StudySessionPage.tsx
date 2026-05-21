@@ -25,6 +25,7 @@ import { getHospitalDB } from '../db/schema'
 import { getStudySessionController, useStudySessionTick } from '../lib/tick'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
 
 export function StudySessionPage() {
   const db = getHospitalDB()
@@ -32,20 +33,23 @@ export function StudySessionPage() {
   const mono = useLiveQuery(() => db.monotonicCounters.get('singleton'), [])
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
+  const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
 
   const controller = getStudySessionController()
   const state = useStudySessionTick()
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+  const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let t = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
-      t += computeThroughput(room, doctor)
+      const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
+      t += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
     }
     return t
-  }, [rooms, doctorByRoom])
+  }, [rooms, doctorByRoom, equippedItemMap])
 
   const salaryDrain = useMemo(() => {
     if (!counters) return 0
@@ -184,7 +188,8 @@ export function StudySessionPage() {
           <ul className="study-session__room-list">
             {assignedRooms.map((room) => {
               const d = getAssignedDoctor(room.id, doctorByRoom)
-              const throughput = computeThroughput(room, d)
+              const equippedItem = d ? equippedItemMap.get(d.id) : undefined
+              const throughput = computeThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
               return (
                 <li key={room.id} className="study-session__room-item">
                   <span className="room-type-label">{ROOM_TYPE_LABELS[room.type]} #{room.slot}</span>

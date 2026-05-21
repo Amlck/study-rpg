@@ -15,6 +15,7 @@ import { AssignDoctorModal } from '../components/AssignDoctorModal'
 import { purchaseRoomExtension, type ExtensionResult } from '../services/room-extension'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
 
 const EXTRA_PREFIX = 'extra-'
 const ROOM_TYPES_ORDERED: ReadonlyArray<RoomType> = ['outpatient', 'surgery', 'ward']
@@ -28,20 +29,23 @@ export function Hospital() {
   const rooms = useLiveQuery(() => db.rooms.orderBy('slot').toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
+  const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
   const [activeRoom, setActiveRoom] = useState<Room | null>(null)
   const [extOutcome, setExtOutcome] = useState<{ type: RoomType; result: ExtensionResult } | null>(null)
   const [extBusy, setExtBusy] = useState(false)
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+  const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let sum = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
-      sum += computeThroughput(room, doctor)
+      const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
+      sum += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
     }
     return sum
-  }, [rooms, doctorByRoom])
+  }, [rooms, doctorByRoom, equippedItemMap])
 
   const assignedCount = doctorByRoom.size
 
@@ -70,8 +74,15 @@ export function Hospital() {
       <section className="hospital-grid">
         {rooms.map((room) => {
           const doctor = getAssignedDoctor(room.id, doctorByRoom)
+          const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
           return (
-            <RoomCard key={room.id} room={room} doctor={doctor} onClick={() => setActiveRoom(room)} />
+            <RoomCard
+              key={room.id}
+              room={room}
+              doctor={doctor}
+              onClick={() => setActiveRoom(room)}
+              equipmentBonus={getEquipmentBonus(equippedItem, room.type)}
+            />
           )
         })}
       </section>
@@ -178,6 +189,7 @@ export function Hospital() {
         <AssignDoctorModal
           room={activeRoom}
           currentDoctor={activeDoctor}
+          equippedItemMap={equippedItemMap}
           onClose={() => setActiveRoom(null)}
         />
       )}

@@ -653,6 +653,213 @@ body:has(.modal-backdrop) {
   .recruit-ceremony__tap-hint  { animation: none; }
 }
 
+/* ── Supply box ceremony ────────────────────────────────── */
+
+.supply-ceremony {
+  /* backdrop is already position:fixed via .modal-backdrop */
+  background: rgba(10, 20, 10, 0.88);
+}
+
+/* Entry step wrapper */
+.supply-ceremony__entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+/* The whole box+hint wrapper */
+.supply-box-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  user-select: none;
+}
+
+.supply-box {
+  position: relative;
+  width: 164px;
+  height: 142px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  filter: drop-shadow(5px 7px 0 rgba(0, 0, 0, 0.25));
+}
+
+.supply-box:disabled {
+  cursor: wait;
+}
+
+.supply-box__handle {
+  position: absolute;
+  left: 51px;
+  top: 0;
+  width: 62px;
+  height: 34px;
+  border: 6px solid var(--frame-dark);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--bg-cream);
+}
+
+.supply-box__lid,
+.supply-box__body {
+  position: absolute;
+  left: 0;
+  width: 164px;
+  border: 4px solid var(--frame-dark);
+  background: var(--bg-paper);
+}
+
+.supply-box__cross {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-rose);
+  color: var(--bg-paper);
+  border: 3px solid var(--frame-dark);
+  border-radius: 4px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.supply-box__lid {
+  top: 31px;
+  height: 36px;
+  border-radius: 6px 6px 0 0;
+  box-shadow: inset 0 -6px 0 var(--bg-cream);
+  transform-origin: left bottom;
+  transition: transform 0.34s ease, top 0.34s ease;
+}
+
+.supply-box__latch {
+  position: absolute;
+  left: 50%;
+  top: 19px;
+  width: 32px;
+  height: 18px;
+  transform: translateX(-50%);
+  background: var(--accent-gold);
+  border: 3px solid var(--frame-dark);
+  border-radius: 2px;
+}
+
+.supply-box__body {
+  top: 61px;
+  height: 78px;
+  border-radius: 0 0 6px 6px;
+  box-shadow: inset 0 -7px 0 var(--bg-cream);
+  overflow: hidden;
+}
+
+.supply-box__body::before,
+.supply-box__body::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--frame-light);
+  opacity: 0.45;
+}
+
+.supply-box__body::before { left: 38px; }
+.supply-box__body::after { right: 38px; }
+
+.supply-box__shine {
+  position: absolute;
+  left: 50%;
+  top: -42px;
+  width: 74px;
+  height: 74px;
+  transform: translateX(-50%) scale(0);
+  background: var(--accent-gold);
+  opacity: 0.75;
+  clip-path: polygon(50% 0, 62% 36%, 100% 50%, 62% 64%, 50% 100%, 38% 64%, 0 50%, 38% 36%);
+}
+
+.supply-box--opening .supply-box__lid {
+  top: 18px;
+  transform: rotate(-13deg) translate(-12px, -18px);
+}
+
+.supply-box--opening .supply-box__shine {
+  animation: supply-box-shine 0.42s steps(4, end) forwards;
+}
+
+.supply-box__hint {
+  margin: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: rgba(255,255,255,0.65);
+  animation: ceremony-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes supply-box-shine {
+  0% { transform: translateX(-50%) scale(0); opacity: 0; }
+  35% { transform: translateX(-50%) scale(0.8); opacity: 0.7; }
+  100% { transform: translateX(-50%) scale(1.35); opacity: 0; }
+}
+
+/* Card wrapper for silhouette + revealed steps */
+.supply-ceremony__card {
+  max-width: 340px;
+  text-align: center;
+}
+
+/* The EquipmentIcon inside the card */
+.supply-ceremony__icon-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 8px;
+}
+
+.supply-ceremony__icon {
+  width: 96px;
+  height: 96px;
+}
+
+/* Silhouette: black cutout of the icon */
+.supply-ceremony__icon--silhouette {
+  filter: brightness(0) saturate(0);
+  transition: filter 0.45s ease;
+}
+
+/* Category name tease */
+.supply-ceremony__category-hint {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--rarity-color, var(--text-muted));
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+}
+
+/* Effect description in revealed step */
+.supply-ceremony__effect {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Reduced-motion overrides for supply ceremony */
+@media (prefers-reduced-motion: reduce) {
+  .supply-box__hint                   { animation: none; }
+  .supply-box__lid                    { transition: none; }
+  .supply-box--opening .supply-box__shine { animation: none; }
+  .supply-ceremony__icon--silhouette  { filter: none; }
+}
+
 /* ── Dev panel ─────────────────────────────────────────── */
 
 .dev-panel {
@@ -4796,6 +5003,7 @@ body:has(.modal-backdrop) {
 }
 
 .equipment-slot-dropzone {
+  --rarity-color: var(--frame-light);
   min-height: 150px;
   padding: 10px;
   background: var(--bg-cream);
@@ -4805,7 +5013,8 @@ body:has(.modal-backdrop) {
 
 .equipment-slot-dropzone--filled {
   border-style: solid;
-  border-color: var(--frame-dark);
+  border-color: var(--rarity-color);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--rarity-color) 24%, transparent);
 }
 
 .equipment-slot-dropzone__label {
@@ -4855,6 +5064,7 @@ body:has(.modal-backdrop) {
   background: var(--bg-paper);
   border: 2px solid var(--rarity-color);
   border-radius: 5px;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--rarity-color) 65%, var(--frame-dark));
   text-align: left;
 }
 
@@ -4900,23 +5110,45 @@ body:has(.modal-backdrop) {
 .equipment-icon {
   width: 64px;
   height: 64px;
-  color: var(--rarity-color);
+  color: var(--equipment-rarity-color, var(--rarity-color));
   shape-rendering: crispEdges;
 }
 
 .equipment-icon__frame {
-  fill: var(--bg-cream);
+  fill: var(--bg-paper);
   stroke: currentColor;
   stroke-width: 3px;
 }
 
-.equipment-icon__shape {
+.equipment-icon__corner,
+.equipment-icon__accent {
   fill: currentColor;
+}
+
+.equipment-icon__sprite {
   filter: drop-shadow(1px 1px 0 rgba(45, 31, 26, 0.2));
+}
+
+.equipment-icon__dark {
+  fill: var(--frame-dark);
+}
+
+.equipment-icon__light {
+  fill: var(--bg-paper);
+}
+
+.equipment-icon__paper {
+  fill: var(--bg-cream);
+}
+
+.equipment-icon__metal {
+  fill: color-mix(in srgb, currentColor 42%, var(--frame-light));
 }
 
 .equipment-detail {
   max-width: 460px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
 }
 
 .equipment-detail__icon {
@@ -4945,6 +5177,9 @@ body:has(.modal-backdrop) {
   gap: 8px;
   margin: 0 0 16px;
   text-align: left;
+  max-height: min(280px, 38dvh);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .equipment-detail__equip-list h3 {

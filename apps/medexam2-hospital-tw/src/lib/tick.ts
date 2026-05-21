@@ -50,6 +50,18 @@ import {
   rollNewERConsult,
 } from '../services/er-consultation'
 import { buildDoctorByRoom, getAssignedDoctor } from './room-doctor-map'
+import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
+
+/** Equipment tickets granted on tier upgrade (indexed by the tier you just reached). */
+const TIER_UPGRADE_EQUIPMENT_TICKETS: Partial<Record<HospitalTier, number>> = {
+  '區域醫院': 3,
+  '醫學中心': 4,
+  '國家級教學醫院': 5,
+}
+
+/** Study time (in minutes) between hourly equipment ticket grants. */
+const EQUIPMENT_TICKET_STUDY_INTERVAL_MIN = 60
 
 export interface TickEventToastInfo {
   event: EventDefinition
@@ -114,6 +126,8 @@ export async function runTick(): Promise<TickResult> {
       db.retirementLog,
       db.eventLog,
       db.erConsultLog,
+      db.equipment,
+      db.equipmentTickets,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -137,11 +151,14 @@ export async function runTick(): Promise<TickResult> {
       const rooms = await db.rooms.toArray()
       const doctors = await db.doctors.toArray()
       const doctorByRoom = buildDoctorByRoom(doctors)
+      const allEquipment = await db.equipment.toArray()
+      const equippedItemMap = buildEquippedItemMap(allEquipment)
 
       let totalThroughput = 0
       for (const room of rooms) {
         const doctor = getAssignedDoctor(room.id, doctorByRoom)
-        totalThroughput += computeThroughput(room, doctor)
+        const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
+        totalThroughput += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
       }
 
       const elapsedMin = elapsedSec / 60
@@ -333,12 +350,37 @@ export async function runTick(): Promise<TickResult> {
         erConsultTicksUntilRoll,
       })
 
+      let studyTicketsEarned = 0
       const mono = await db.monotonicCounters.get('singleton')
       if (mono) {
+        const newTotalStudyMinutes = mono.totalStudyMinutes + deltaStudyMinutes
+        const lastMilestone = mono.lastEquipmentTicketStudyMinutes ?? mono.totalStudyMinutes
+        studyTicketsEarned = Math.floor(
+          (newTotalStudyMinutes - lastMilestone) / EQUIPMENT_TICKET_STUDY_INTERVAL_MIN,
+        )
+        const newLastMilestone =
+          studyTicketsEarned > 0
+            ? lastMilestone + studyTicketsEarned * EQUIPMENT_TICKET_STUDY_INTERVAL_MIN
+            : lastMilestone
+
         await db.monotonicCounters.put({
           ...mono,
-          totalStudyMinutes: mono.totalStudyMinutes + deltaStudyMinutes,
+          totalStudyMinutes: newTotalStudyMinutes,
+          lastEquipmentTicketStudyMinutes: newLastMilestone,
         })
+      }
+
+      // Grant equipment tickets (study milestone + tier upgrade) in a single write
+      const tierBundle = upgradedTo ? (TIER_UPGRADE_EQUIPMENT_TICKETS[upgradedTo] ?? 0) : 0
+      const totalEquipmentGrant = studyTicketsEarned + tierBundle
+      if (totalEquipmentGrant > 0) {
+        const eqTickets = await db.equipmentTickets.get('global')
+        if (eqTickets) {
+          await db.equipmentTickets.put({
+            ...eqTickets,
+            available: Math.min(EQUIPMENT_TICKET_CAP, eqTickets.available + totalEquipmentGrant),
+          })
+        }
       }
 
       return {

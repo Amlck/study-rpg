@@ -13,10 +13,12 @@ interface RoomCardProps {
   room: Room
   doctor: DoctorRow | null
   onClick: () => void
+  /** Multiplicative equipment bonus for the assigned doctor (default 1). */
+  equipmentBonus?: number
 }
 
-export function RoomCard({ room, doctor, onClick }: RoomCardProps) {
-  const throughput = computeThroughput(room, doctor)
+export function RoomCard({ room, doctor, onClick, equipmentBonus = 1 }: RoomCardProps) {
+  const throughput = computeThroughput(room, doctor, equipmentBonus)
   const isAffinityMatch = doctor !== null && SUBJECT_TO_ROOM[doctor.subjectId] === room.type
   const affinityBonus = isAffinityMatch && doctor ? AFFINITY_MATCH_BONUS[doctor.rarity] : null
   const spriteUrl = doctor

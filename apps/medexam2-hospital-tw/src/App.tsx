@@ -5,7 +5,7 @@ import {
   type HospitalTier,
   type Room,
 } from '@study-rpg/content-medexam2-tw'
-import { ensureSeed, getHospitalDB, refreshDailyTickets, type GameCountersRow } from './db/schema'
+import { ensureSeed, getHospitalDB, refreshDailyTickets, refreshDailyEquipmentTickets, type GameCountersRow } from './db/schema'
 import { HomePage } from './pages/HomePage'
 import { DoctorRoster } from './pages/DoctorRoster'
 import { Hospital } from './pages/Hospital'
@@ -81,6 +81,7 @@ function App() {
     ;(async () => {
       await ensureSeed()
       await refreshDailyTickets()
+      await refreshDailyEquipmentTickets()
       await checkAssignmentInvariants()
       // Initialise prev-tier so the first upgrade banner shows the correct room delta
       const counters = await getHospitalDB().gameCounters.get('singleton')

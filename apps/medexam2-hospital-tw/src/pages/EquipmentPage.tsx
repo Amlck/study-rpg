@@ -10,6 +10,7 @@ import {
   type EquipmentCategory,
 } from '../data/equipment'
 import { EquipmentIcon } from '../components/EquipmentIcon'
+import { EquipmentResultModal } from '../components/EquipmentResultModal'
 import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { lookupSprite } from '../lib/sprite-lookup'
 import {
@@ -60,6 +61,7 @@ export function EquipmentPage() {
   const rollInFlight = useRef(false)
   const [rolling, setRolling] = useState(false)
   const [rollOutcome, setRollOutcome] = useState<Extract<EquipmentRollOutcome, { ok: true }> | null>(null)
+  const [showCeremony, setShowCeremony] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedItem, setSelectedItem] = useState<EquipmentRow | null>(null)
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
@@ -121,7 +123,7 @@ export function EquipmentPage() {
       const outcome = await rollEquipment()
       if (outcome.ok) {
         setRollOutcome(outcome)
-        setSelectedItem(outcome.equipment)
+        setShowCeremony(true)
         return
       }
       setToast(outcome.reason === 'no-tickets' ? '器材券不足' : '器材池目前沒有可抽項目')
@@ -414,7 +416,18 @@ export function EquipmentPage() {
         </section>
       </section>
 
-      {currentSelectedItem && (
+      {/* Supply box ceremony — shown immediately after a roll */}
+      <EquipmentResultModal
+        item={showCeremony && rollOutcome ? rollOutcome.equipment : null}
+        wasPity={rollOutcome?.wasPity ?? false}
+        onClose={() => {
+          setShowCeremony(false)
+          // Hand off to detail modal after ceremony
+          if (rollOutcome) setSelectedItem(rollOutcome.equipment)
+        }}
+      />
+
+      {currentSelectedItem && !showCeremony && (
         <EquipmentDetailModal
           item={currentSelectedItem}
           doctors={doctors}
@@ -553,6 +566,7 @@ function EquipmentSlot({
       aria-label={label}
       onDragOver={onAllowDrop}
       onDrop={onDropEquipment}
+      style={equipment ? { ['--rarity-color' as string]: `var(--rarity-${equipment.rarity.toLowerCase()})` } : undefined}
     >
       <span className="equipment-slot-dropzone__label">{label}</span>
       {equipment && meta ? (

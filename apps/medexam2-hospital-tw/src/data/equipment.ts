@@ -56,105 +56,109 @@ export const EQUIPMENT_DEFINITIONS: EquipmentDefinition[] = [
     name: '標準聽診器',
     category: 'stethoscope',
     rarity: 'P5',
-    effectText: '門診型醫師的基礎診斷裝備。',
+    effectText: '門診產能 +5%。裝備中的醫師在門診房間效率提升。',
   },
   {
     id: 'night-shift-coffee',
     name: '值班咖啡',
     category: 'coffee',
     rarity: 'P5',
-    effectText: '適合長時間唸書與急診照會的精神支援。',
+    effectText: '暫未開放效果；目前不會出現在器材補給池。',
   },
   {
     id: 'clean-white-coat',
     name: '乾淨白袍',
     category: 'coat',
     rarity: 'P5',
-    effectText: '泛用裝備，任何科別都能穿。',
+    effectText: '所有房型產能 +3%。泛用，任何科別都能穿。',
   },
   {
     id: 'surgical-scalpel',
     name: '外科手術刀',
     category: 'scalpel',
     rarity: 'P4',
-    effectText: '手術房取向裝備，適合外科系醫師。',
+    effectText: '手術房產能 +10%。適合外科系醫師。',
   },
   {
     id: 'rounding-chart',
     name: '病房查房夾',
     category: 'chart',
     rarity: 'P4',
-    effectText: '病房與住院照護取向裝備。',
+    effectText: '病房產能 +10%。適合住院照護取向醫師。',
   },
   {
     id: 'pocket-guideline',
     name: '口袋臨床指引',
     category: 'textbook',
     rarity: 'P4',
-    effectText: '寫題與進修戰取向裝備。',
+    effectText: '暫未開放效果；目前不會出現在器材補給池。',
   },
   {
     id: 'cardiology-stethoscope',
     name: '心臟科聽診器',
     category: 'stethoscope',
     rarity: 'P3',
-    effectText: '門診診斷取向，適合內科與家醫科。',
+    effectText: '門診產能 +20%。適合內科與家醫科王牌。',
   },
   {
     id: 'annotated-textbook',
     name: '滿是註記的國考書',
     category: 'textbook',
     rarity: 'P3',
-    effectText: '進修戰與考古題練習取向裝備。',
+    effectText: '暫未開放效果；目前不會出現在器材補給池。',
   },
   {
     id: 'golden-chart',
     name: '金邊病歷夾',
     category: 'chart',
     rarity: 'P3',
-    effectText: '病房管理與連續照護取向裝備。',
+    effectText: '病房產能 +20%。適合病房管理與連續照護。',
   },
   {
     id: 'chief-scalpel',
     name: '主任手術刀',
     category: 'scalpel',
     rarity: 'P2',
-    effectText: '高階手術房裝備，適合核心外科醫師。',
+    effectText: '手術房產能 +35%。適合核心外科醫師。',
   },
   {
     id: 'professor-coat',
     name: '教授白袍',
     category: 'coat',
     rarity: 'P2',
-    effectText: '高階泛用裝備，適合醫院主力醫師。',
+    effectText: '所有房型產能 +20%。適合醫院主力醫師。',
   },
   {
     id: 'legendary-coffee',
     name: '傳說值班咖啡',
     category: 'coffee',
     rarity: 'P2',
-    effectText: '急診照會與長時間 session 取向裝備。',
+    effectText: '暫未開放效果；目前不會出現在器材補給池。',
   },
   {
     id: 'national-board-textbook',
     name: '國考祕典',
     category: 'textbook',
     rarity: 'P1',
-    effectText: '頂級進修與寫題裝備，之後可作為 build 核心。',
+    effectText: '暫未開放效果；目前不會出現在器材補給池。',
   },
   {
     id: 'oracle-stethoscope',
     name: '神諭聽診器',
     category: 'stethoscope',
     rarity: 'P1',
-    effectText: '頂級診斷裝備，適合門診王牌。',
+    effectText: '門診產能 +55%。傳說級診斷裝備，適合門診王牌。',
   },
 ]
+
+export const EQUIPMENT_ROLL_DEFINITIONS: EquipmentDefinition[] = EQUIPMENT_DEFINITIONS.filter(
+  (item) => item.category !== 'coffee' && item.category !== 'textbook',
+)
 
 export function getEquipmentDefinition(definitionId: string): EquipmentDefinition | undefined {
   return EQUIPMENT_DEFINITIONS.find((item) => item.id === definitionId)
 }
 
 export function getDefinitionsByRarity(rarity: Rarity): EquipmentDefinition[] {
-  return EQUIPMENT_DEFINITIONS.filter((item) => item.rarity === rarity)
+  return EQUIPMENT_ROLL_DEFINITIONS.filter((item) => item.rarity === rarity)
 }

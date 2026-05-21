@@ -11,17 +11,20 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { lookupSprite } from '../lib/sprite-lookup'
-import { getHospitalDB, type DoctorRow } from '../db/schema'
+import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { assignDoctor, unassignDoctor, getUnassignedDoctors } from '../lib/assignment'
 import { upgradeFacility } from '../services/facility'
+import { getEquipmentBonus } from '../services/equipment'
 
 interface AssignDoctorModalProps {
   room: Room
   currentDoctor: DoctorRow | null
+  /** Equipment currently equipped by each doctor, keyed by doctorId. */
+  equippedItemMap?: Map<string, EquipmentRow>
   onClose: () => void
 }
 
-export function AssignDoctorModal({ room: initialRoom, currentDoctor, onClose }: AssignDoctorModalProps) {
+export function AssignDoctorModal({ room: initialRoom, currentDoctor, equippedItemMap, onClose }: AssignDoctorModalProps) {
   const db = getHospitalDB()
   // Live-track the room so facility upgrades reflect immediately in the modal
   const liveRoom = useLiveQuery(() => db.rooms.get(initialRoom.id), [initialRoom.id])
@@ -116,7 +119,8 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, onClose }:
           <ul className="assign-modal__list">
             {candidates.map((d) => {
               const isCurrent = d.id === currentDoctor?.id
-              const throughput = computeThroughput(room, d)
+              const equippedItem = equippedItemMap?.get(d.id)
+              const throughput = computeThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
               const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
               return (
                 <li key={d.id}>

@@ -14,6 +14,7 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import {
   EQUIPMENT_PITY_RULES,
+  EQUIPMENT_TICKET_CAP,
   EQUIPMENT_WEIGHTS,
   INITIAL_EQUIPMENT_TICKETS,
   type EquipmentCategory,
@@ -71,6 +72,13 @@ export interface TicketsRow {
 export interface EquipmentTicketsRow {
   id: 'global'
   available: number
+  /**
+   * UTC epoch day of last daily-free-ticket grant. Matches the same epoch-day
+   * cadence as `TicketsRow.lastRefreshDay` (fires at Taiwan local 08:00).
+   * Optional: absent on rows created pre-v15; refreshDailyEquipmentTickets
+   * treats a missing value as 0 (epoch day 0 = always in the past).
+   */
+  lastRefreshDay?: number
 }
 
 export interface EquipmentRow {
@@ -166,6 +174,12 @@ export interface MonotonicCountersRow {
    * and counter resets to 0. Field added in v8.
    */
   freshCorrectSinceLastTicket?: number
+  /**
+   * Snapshot of `totalStudyMinutes` at which the last hourly equipment ticket
+   * was granted. Every 60-minute increment past this baseline grants +1 ticket.
+   * Optional: absent on rows created pre-v14; treated as 0 by tick loop.
+   */
+  lastEquipmentTicketStudyMinutes?: number
 }
 
 /**
@@ -707,6 +721,25 @@ export class HospitalDB extends Dexie {
           await statsTable.put({ id: 'global', ...init })
         }
       })
+
+    // v15: equipment ticket daily-free grant (lastRefreshDay) +
+    //      study-time hourly ticket milestone (lastEquipmentTicketStudyMinutes).
+    //      No new tables — schema unchanged; upgrade seeds missing fields only.
+    this.version(15)
+      .stores({})
+      .upgrade(async (tx) => {
+        const eqTicketsTable = tx.table<EquipmentTicketsRow, 'global'>('equipmentTickets')
+        const eqTickets = await eqTicketsTable.get('global')
+        if (eqTickets && eqTickets.lastRefreshDay === undefined) {
+          await eqTicketsTable.put({ ...eqTickets, lastRefreshDay: currentEpochDay() })
+        }
+
+        const monoTable = tx.table<MonotonicCountersRow, 'singleton'>('monotonicCounters')
+        const mono = await monoTable.get('singleton')
+        if (mono && mono.lastEquipmentTicketStudyMinutes === undefined) {
+          await monoTable.put({ ...mono, lastEquipmentTicketStudyMinutes: mono.totalStudyMinutes })
+        }
+      })
   }
 }
 
@@ -781,7 +814,11 @@ export async function ensureSeed(): Promise<void> {
       }
       const equipmentTickets = await db.equipmentTickets.get('global')
       if (!equipmentTickets) {
-        await db.equipmentTickets.put({ id: 'global', available: INITIAL_EQUIPMENT_TICKETS })
+        await db.equipmentTickets.put({
+          id: 'global',
+          available: INITIAL_EQUIPMENT_TICKETS,
+          lastRefreshDay: currentEpochDay(),
+        })
       }
       const equipmentStats = await db.equipmentGachaStats.get('global')
       if (!equipmentStats) {
@@ -867,6 +904,30 @@ export async function refreshDailyTickets(): Promise<void> {
     await db.tickets.put({
       ...t,
       available: Math.min(TICKET_CAP, t.available + Math.max(0, grant)),
+      lastRefreshDay: today,
+    })
+  })
+}
+
+/**
+ * Daily-free equipment ticket grant — mirrors `refreshDailyTickets`.
+ * Grants +1 equipment ticket per elapsed UTC epoch day, clamped at
+ * EQUIPMENT_TICKET_CAP. Safe to call on every app boot; no-ops when already
+ * refreshed today. Rows missing `lastRefreshDay` (pre-v15) are treated as
+ * epoch day 0 (always in the past), triggering a one-time catch-up grant.
+ */
+export async function refreshDailyEquipmentTickets(): Promise<void> {
+  const db = getHospitalDB()
+  await db.transaction('rw', db.equipmentTickets, async () => {
+    const t = await db.equipmentTickets.get('global')
+    if (!t) return
+    const today = currentEpochDay()
+    const delta = today - (t.lastRefreshDay ?? 0)
+    if (delta <= 0) return
+    const grant = Math.min(delta, EQUIPMENT_TICKET_CAP - t.available)
+    await db.equipmentTickets.put({
+      ...t,
+      available: Math.min(EQUIPMENT_TICKET_CAP, t.available + Math.max(0, grant)),
       lastRefreshDay: today,
     })
   })
