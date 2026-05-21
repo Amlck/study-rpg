@@ -5,6 +5,8 @@ import { EQUIPMENT_CATEGORY_LABELS, EQUIPMENT_RARITY_LABELS } from '../data/equi
 import { EquipmentIcon } from './EquipmentIcon'
 import { describeEquipment } from '../services/equipment'
 import type { EquipmentRow } from '../db/schema'
+import medicalCaseBodySprite from '../assets/equipment/medical-case-body.png'
+import medicalCaseLidSprite from '../assets/equipment/medical-case-lid.png'
 
 // entry -> rarity-flash -> silhouette -> revealed -> close
 type RevealStep = 'entry' | 'rarity-flash' | 'silhouette' | 'revealed'
@@ -27,10 +29,14 @@ function nextStep(current: RevealStep): RevealStep | null {
   return null
 }
 
-interface OpenBoxProps { onOpen: () => void }
+interface OpenBoxProps {
+  onOpen: () => void
+  rarity: EquipmentRow['rarity']
+}
 
-function TapToOpenBox({ onOpen }: OpenBoxProps) {
+function TapToOpenBox({ onOpen, rarity }: OpenBoxProps) {
   const [opening, setOpening] = useState(false)
+  const rarityKey = rarity.toLowerCase()
 
   function handleOpen() {
     if (opening) return
@@ -42,20 +48,18 @@ function TapToOpenBox({ onOpen }: OpenBoxProps) {
     <div className="supply-box-wrapper">
       <motion.button
         type="button"
-        className={`supply-box${opening ? ' supply-box--opening' : ''}`}
+        className={`supply-box supply-box--${rarityKey}${opening ? ' supply-box--opening' : ''}`}
+        style={{ ['--rarity-color' as string]: `var(--rarity-${rarityKey})` }}
         aria-label="開箱"
         disabled={opening}
         onClick={handleOpen}
         whileTap={{ y: 2 }}
       >
-        <span className="supply-box__handle" aria-hidden />
-        <span className="supply-box__lid" aria-hidden>
-          <span className="supply-box__latch" />
-        </span>
-        <span className="supply-box__body" aria-hidden>
-          <span className="supply-box__cross">+</span>
-          <span className="supply-box__shine" />
-        </span>
+        <img className="supply-box__body" src={medicalCaseBodySprite} alt="" draggable={false} />
+        <span className="supply-box__interior" aria-hidden />
+        <img className="supply-box__lid" src={medicalCaseLidSprite} alt="" draggable={false} />
+        <span className="supply-box__burst" aria-hidden />
+        <span className="supply-box__shine" aria-hidden />
       </motion.button>
       <p className="supply-box__hint" aria-hidden>
         點擊開箱
@@ -119,7 +123,7 @@ export function EquipmentResultModal({ item, wasPity, onClose }: Props) {
                 transition={{ type: 'spring', stiffness: 280, damping: 24 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <TapToOpenBox onOpen={advance} />
+                <TapToOpenBox onOpen={advance} rarity={item.rarity} />
               </motion.div>
             )}
           </AnimatePresence>

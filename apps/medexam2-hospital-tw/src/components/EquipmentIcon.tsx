@@ -1,11 +1,94 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { Rarity } from '@study-rpg/content-medexam2-tw'
 import type { EquipmentCategory } from '../data/equipment'
+import chartSprite from '../assets/equipment/chart.png'
+import coatSprite from '../assets/equipment/coat.png'
+import scalpelSprite from '../assets/equipment/scalpel.png'
+import stethoscopeSprite from '../assets/equipment/stethoscope.png'
 
 interface EquipmentIconProps {
   category: EquipmentCategory
   rarity: Rarity
   className?: string
+}
+
+export interface SpriteLayout {
+  x: number
+  y: number
+  size: number
+}
+
+export const DEFAULT_STETHOSCOPE_SPRITE_LAYOUT: SpriteLayout = { x: 11, y: 6, size: 40 }
+export const EQUIPMENT_SPRITE_TUNING_ENABLED_KEY = 'study-rpg:show-equipment-sprite-tuner'
+export const EQUIPMENT_SPRITE_TUNING_KEY = 'study-rpg:equipment-sprite-layouts:v2'
+const EQUIPMENT_SPRITE_TUNING_EVENT = 'study-rpg:equipment-sprite-layouts'
+
+const EQUIPMENT_SPRITES: Partial<Record<EquipmentCategory, string>> = {
+  chart: chartSprite,
+  coat: coatSprite,
+  scalpel: scalpelSprite,
+  stethoscope: stethoscopeSprite,
+}
+
+const SPRITE_LAYOUT: Partial<Record<EquipmentCategory, SpriteLayout>> = {
+  chart: { x: 4, y: 1, size: 52 },
+  coat: { x: 1.5, y: 0, size: 52 },
+  scalpel: { x: 7, y: 8, size: 38 },
+  stethoscope: { x: 11, y: 6, size: 40 },
+}
+
+function coerceSpriteLayout(value: unknown): SpriteLayout | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Partial<SpriteLayout>
+  if (
+    typeof candidate.x !== 'number' ||
+    typeof candidate.y !== 'number' ||
+    typeof candidate.size !== 'number' ||
+    !Number.isFinite(candidate.x) ||
+    !Number.isFinite(candidate.y) ||
+    !Number.isFinite(candidate.size)
+  ) {
+    return null
+  }
+  return {
+    x: candidate.x,
+    y: candidate.y,
+    size: candidate.size,
+  }
+}
+
+function coerceSpriteLayoutMap(value: unknown): Partial<Record<EquipmentCategory, SpriteLayout>> {
+  if (!value || typeof value !== 'object') return {}
+  const source = value as Partial<Record<EquipmentCategory, unknown>>
+  const next: Partial<Record<EquipmentCategory, SpriteLayout>> = {}
+  for (const category of Object.keys(EQUIPMENT_SPRITES) as EquipmentCategory[]) {
+    const layout = coerceSpriteLayout(source[category])
+    if (layout) next[category] = layout
+  }
+  return next
+}
+
+export function readEquipmentSpriteLayouts(): Partial<Record<EquipmentCategory, SpriteLayout>> {
+  if (!import.meta.env.DEV) return {}
+  if (typeof window === 'undefined') return {}
+  if (window.localStorage.getItem(EQUIPMENT_SPRITE_TUNING_ENABLED_KEY) !== '1') return {}
+  const raw = window.localStorage.getItem(EQUIPMENT_SPRITE_TUNING_KEY)
+  if (!raw) return {}
+  try {
+    return coerceSpriteLayoutMap(JSON.parse(raw))
+  } catch {
+    return {}
+  }
+}
+
+export function getEquipmentSpriteLayout(category: EquipmentCategory, overrides = readEquipmentSpriteLayouts()): SpriteLayout {
+  return overrides[category] ?? SPRITE_LAYOUT[category] ?? { x: 7, y: 7, size: 38 }
+}
+
+export function writeEquipmentSpriteLayouts(layouts: Partial<Record<EquipmentCategory, SpriteLayout>>) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(EQUIPMENT_SPRITE_TUNING_KEY, JSON.stringify(layouts))
+  window.dispatchEvent(new CustomEvent<Partial<Record<EquipmentCategory, SpriteLayout>>>(EQUIPMENT_SPRITE_TUNING_EVENT, { detail: layouts }))
 }
 
 function PixelStethoscope() {
@@ -97,6 +180,18 @@ function PixelCoffee() {
 
 export function EquipmentIcon({ category, rarity, className }: EquipmentIconProps) {
   const style = { ['--equipment-rarity-color' as string]: `var(--rarity-${rarity.toLowerCase()})` } as CSSProperties
+  const sprite = EQUIPMENT_SPRITES[category]
+  const [layoutOverrides, setLayoutOverrides] = useState<Partial<Record<EquipmentCategory, SpriteLayout>>>(readEquipmentSpriteLayouts)
+
+  useEffect(() => {
+    function handleTuning(event: Event) {
+      setLayoutOverrides(coerceSpriteLayoutMap((event as CustomEvent<Partial<Record<EquipmentCategory, SpriteLayout>>>).detail))
+    }
+    window.addEventListener(EQUIPMENT_SPRITE_TUNING_EVENT, handleTuning)
+    return () => window.removeEventListener(EQUIPMENT_SPRITE_TUNING_EVENT, handleTuning)
+  }, [])
+
+  const spriteLayout = getEquipmentSpriteLayout(category, layoutOverrides)
 
   return (
     <svg
@@ -112,12 +207,26 @@ export function EquipmentIcon({ category, rarity, className }: EquipmentIconProp
       <rect x="40" y="8" width="4" height="4" className="equipment-icon__corner" />
       <rect x="8" y="40" width="4" height="4" className="equipment-icon__corner" />
       <rect x="40" y="40" width="4" height="4" className="equipment-icon__corner" />
-      {category === 'stethoscope' && <PixelStethoscope />}
-      {category === 'scalpel' && <PixelScalpel />}
-      {category === 'chart' && <PixelChart />}
-      {category === 'coat' && <PixelCoat />}
-      {category === 'textbook' && <PixelTextbook />}
-      {category === 'coffee' && <PixelCoffee />}
+      {sprite ? (
+        <image
+          className="equipment-icon__asset"
+          href={sprite}
+          x={spriteLayout.x}
+          y={spriteLayout.y}
+          width={spriteLayout.size}
+          height={spriteLayout.size}
+          preserveAspectRatio="xMidYMid meet"
+        />
+      ) : (
+        <>
+          {category === 'stethoscope' && <PixelStethoscope />}
+          {category === 'scalpel' && <PixelScalpel />}
+          {category === 'chart' && <PixelChart />}
+          {category === 'coat' && <PixelCoat />}
+          {category === 'textbook' && <PixelTextbook />}
+          {category === 'coffee' && <PixelCoffee />}
+        </>
+      )}
     </svg>
   )
 }

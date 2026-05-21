@@ -9,7 +9,15 @@ import {
   EQUIPMENT_TICKET_CAP,
   type EquipmentCategory,
 } from '../data/equipment'
-import { EquipmentIcon } from '../components/EquipmentIcon'
+import {
+  DEFAULT_STETHOSCOPE_SPRITE_LAYOUT,
+  EQUIPMENT_SPRITE_TUNING_ENABLED_KEY,
+  EquipmentIcon,
+  getEquipmentSpriteLayout,
+  readEquipmentSpriteLayouts,
+  writeEquipmentSpriteLayouts,
+  type SpriteLayout,
+} from '../components/EquipmentIcon'
 import { EquipmentResultModal } from '../components/EquipmentResultModal'
 import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { lookupSprite } from '../lib/sprite-lookup'
@@ -36,6 +44,13 @@ const RARITY_FILTER_OPTIONS: Rarity[] = [...RARITY_ORDER].reverse()
 const RARITY_RANK = new Map<Rarity, number>(RARITY_ORDER.map((r, index) => [r, index]))
 const EQUIPMENT_DRAG_TYPE = 'application/x-study-rpg-equipment'
 const EQUIPMENT_SLOTS = [{ id: 'main', label: '主要器材' }] as const
+const SPRITE_TUNER_CATEGORIES: EquipmentCategory[] = ['stethoscope', 'scalpel', 'chart', 'coat']
+
+function isSpriteTunerEnabled() {
+  return import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    window.localStorage.getItem(EQUIPMENT_SPRITE_TUNING_ENABLED_KEY) === '1'
+}
 
 function sortEquipment(items: EquipmentRow[], sortMode: SortMode): EquipmentRow[] {
   return [...items].sort((a, b) => {
@@ -73,6 +88,9 @@ export function EquipmentPage() {
   const [rarityFilter, setRarityFilter] = useState<Rarity | 'all'>('all')
   const [categoryFilter, setCategoryFilter] = useState<EquipmentCategory | 'all'>('all')
   const [equipFilter, setEquipFilter] = useState<EquipFilter>('all')
+  const [spriteLayoutOverrides, setSpriteLayoutOverrides] = useState<Partial<Record<EquipmentCategory, SpriteLayout>>>(readEquipmentSpriteLayouts)
+  const [spriteTunerCategory, setSpriteTunerCategory] = useState<EquipmentCategory>('stethoscope')
+  const [showSpriteTuner] = useState(isSpriteTunerEnabled)
 
   const doctorById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor])), [doctors])
   const equipmentByDoctorId = useMemo(() => {
@@ -257,6 +275,18 @@ export function EquipmentPage() {
       </section>
 
       {toast && <p className="equipment-page__toast" role="status">{toast}</p>}
+      {showSpriteTuner && (
+        <EquipmentSpriteTuner
+          category={spriteTunerCategory}
+          layout={getEquipmentSpriteLayout(spriteTunerCategory, spriteLayoutOverrides)}
+          onCategoryChange={setSpriteTunerCategory}
+          onChange={(next) => {
+            const layouts = { ...spriteLayoutOverrides, [spriteTunerCategory]: next }
+            setSpriteLayoutOverrides(layouts)
+            writeEquipmentSpriteLayouts(layouts)
+          }}
+        />
+      )}
 
       <section className="equipment-workbench" aria-label="器材配置工作台">
         <aside className="equipment-roster-pane" aria-label="醫師名冊">
@@ -630,6 +660,83 @@ function EquipmentStorageCard({
         <span>{doctor ? doctor.name : '未裝備'}</span>
       </span>
     </button>
+  )
+}
+
+interface EquipmentSpriteTunerProps {
+  category: EquipmentCategory
+  layout: SpriteLayout
+  onCategoryChange: (category: EquipmentCategory) => void
+  onChange: (layout: SpriteLayout) => void
+}
+
+function EquipmentSpriteTuner({ category, layout, onCategoryChange, onChange }: EquipmentSpriteTunerProps) {
+  function updateField(field: keyof SpriteLayout, value: number) {
+    onChange({ ...layout, [field]: value })
+  }
+
+  return (
+    <section className="equipment-sprite-tuner" aria-label="器材圖示位置調整">
+      <div className="equipment-sprite-tuner__preview">
+        <EquipmentIcon category={category} rarity="P3" />
+      </div>
+      <div className="equipment-sprite-tuner__controls">
+        <div className="equipment-sprite-tuner__header">
+          <strong>Dev: 器材圖示位置</strong>
+          <code>x={layout.x} y={layout.y} size={layout.size}</code>
+        </div>
+        <label>
+          類型
+          <select value={category} onChange={(event) => onCategoryChange(event.target.value as EquipmentCategory)}>
+            {SPRITE_TUNER_CATEGORIES.map((option) => (
+              <option key={option} value={option}>
+                {EQUIPMENT_CATEGORY_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          X
+          <input
+            type="range"
+            min="0"
+            max="16"
+            step="0.5"
+            value={layout.x}
+            onChange={(event) => updateField('x', Number(event.target.value))}
+          />
+        </label>
+        <label>
+          Y
+          <input
+            type="range"
+            min="0"
+            max="12"
+            step="0.5"
+            value={layout.y}
+            onChange={(event) => updateField('y', Number(event.target.value))}
+          />
+        </label>
+        <label>
+          Size
+          <input
+            type="range"
+            min="34"
+            max="52"
+            step="0.5"
+            value={layout.size}
+            onChange={(event) => updateField('size', Number(event.target.value))}
+          />
+        </label>
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={() => onChange(category === 'stethoscope' ? DEFAULT_STETHOSCOPE_SPRITE_LAYOUT : getEquipmentSpriteLayout(category, {}))}
+        >
+          Reset
+        </button>
+      </div>
+    </section>
   )
 }
 
