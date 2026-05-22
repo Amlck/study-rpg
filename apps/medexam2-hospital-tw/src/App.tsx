@@ -8,6 +8,7 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import { ensureSeed, getHospitalDB, refreshDailyTickets, type GameCountersRow } from './db/schema'
 import { getFontMode, DEFAULT_FONT_MODE } from './services/font-mode'
+import { seedLeaderboardProfileFromServer } from './services/leaderboard-profile'
 import { HomePage } from './pages/HomePage'
 import { DoctorRoster } from './pages/DoctorRoster'
 import { Hospital } from './pages/Hospital'
@@ -161,6 +162,21 @@ function App() {
   useEffect(() => {
     document.body.dataset.fontMode = fontMode
   }, [fontMode])
+
+  // Cross-origin seed-back for `leaderboardProfile` — recovers users who
+  // migrated BEFORE the m2 bundle adapter for leaderboardProfile shipped
+  // (their R2 m2 blob predates the field). One-shot check on sign-in:
+  // if Dexie row missing AND server has it, seed from GET /leaderboard/me.
+  // Silently no-ops on 404 (old Worker), empty server row, or network
+  // error — opt-in modal handles the genuine "never opted in" case.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    seedLeaderboardProfileFromServer(user.id).catch(() => {
+      // swallow — seed is best-effort, opt-in modal is the safe fallback
+    })
+    return () => { cancelled = true; void cancelled }
+  }, [user])
 
   // navigator.onLine for SyncStatusChip + AccountSwitchPrompt awareness.
   const [online, setOnline] = useState(

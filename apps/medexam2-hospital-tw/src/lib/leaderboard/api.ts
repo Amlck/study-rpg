@@ -129,6 +129,50 @@ export async function optOutLeaderboard(): Promise<void> {
  * Hard-deletes the player's row. Called from delete-account / delete-data
  * flows (Phase 7.4 / 7.5). Frees the nickname for reuse by other players.
  */
+/**
+ * GET /leaderboard/me
+ *
+ * Cross-origin seed-back: a client landing on a new origin (e.g. post-
+ * domain-migration `med-study-rpg.com`) whose IndexedDB `leaderboardProfile`
+ * is empty calls this to discover whether the user already has a server-
+ * side row from a prior session — avoids a redundant opt-in modal.
+ *
+ * Returns `null` when the user has never opted in (200 + `{ row: null }`),
+ * or the server row when found. Endpoint added 2026-05-22 by
+ * `fix(migration-scope): include leaderboardProfile in m2 bundle` —
+ * Worker code may still be 404 on older deployments; callers should
+ * tolerate that and fall through to the local opt-in flow.
+ */
+export interface LeaderboardServerRow {
+  user_id: string
+  nickname: string
+  hospital_tier: number
+  reputation: number
+  doctor_count: number
+  total_study_min: number
+  is_public: boolean
+  updated_at: number
+}
+
+export async function fetchLeaderboardMe(): Promise<LeaderboardServerRow | null> {
+  const token = await getAuthToken()
+  const url = `${getWorkerUrl()}/leaderboard/me`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (res.status === 404) {
+    // Endpoint not deployed yet (old Worker version) — treat same as "no row".
+    return null
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`leaderboard_me_failed_${res.status}: ${body.slice(0, 200)}`)
+  }
+  const json = (await res.json()) as { row: LeaderboardServerRow | null }
+  return json.row
+}
+
 export async function deleteLeaderboardMe(): Promise<void> {
   const token = await getAuthToken()
   const url = `${getWorkerUrl()}/leaderboard/me`
