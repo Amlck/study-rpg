@@ -32,7 +32,7 @@
 - [x] 4.1 `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` adapter — `buildLeaderboardAttributes()` reads tier (clamp 國家級教學醫院 → 3 to match Worker TIER_MAX) / reputation / doctor_count / total_study_min from `gameCounters` + `doctors.count()` + `monotonicCounters.totalStudyMinutes`
 - [x] 4.2 在 `apps/medexam2-hospital-tw/src/lib/sync/engine.ts` push pipeline hook：加 `onPushComplete?: () => void | Promise<void>` 進 `CreateSyncEngineOptions`（mirrors `onPullComplete` pattern, keeps engine content-pack-agnostic per add-cloud-sync §D4）→ engine 在 `firstError === null && !anyOffline` 時觸發 → useSync.ts 接 `pushLeaderboardIfOptedIn(user.id)` 順手 POST `/leaderboard/upsert`
 - [x] 4.3 三狀態分流 in `pushLeaderboardIfOptedIn`: `no-profile` skip / `not-opted-in` skip / `opted_in === true` push with `is_public: profile.is_public === false ? 0 : 1`（pre-`is_public` v14 rows 預設 true）。錯誤吞掉返回 `{kind:'error'}`，不算 sync engine consecutive-failure
-- [ ] 4.4 加 `apps/medexam2-hospital-tw/src/lib/leaderboard/api.ts` client helper（fetch top-100 / opt-out / delete / nickname-check / debounce）
+- [x] 4.4 加 `apps/medexam2-hospital-tw/src/lib/leaderboard/api.ts` client helper（5 exports: `checkNicknameAvailability` + `fetchLeaderboardSnapshot` + `upsertLeaderboard` + `optOutLeaderboard` + `deleteLeaderboardMe`，全部包 fetch + JWT bearer + body parse + 400ms debounce on NicknameField; 增量於 Phase 5.2 + 5.4 完成，checkbox 在 verify gate 補勾）
 
 ## 5. Opt-in modal & nickname UX
 
