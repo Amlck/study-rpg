@@ -12,6 +12,7 @@ import {
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { lookupSprite } from '../lib/sprite-lookup'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 import { assignDoctor, unassignDoctor, getUnassignedDoctors } from '../lib/assignment'
 import { upgradeFacility } from '../services/facility'
 
@@ -128,7 +129,7 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, onClose }:
                     style={{ ['--rarity-color' as string]: `var(--rarity-${d.rarity.toLowerCase()})` } as React.CSSProperties}
                   >
                     <span className="assign-modal__sprite">
-                      {spriteUrl ? <img src={spriteUrl} alt="" /> : <span aria-hidden>🩺</span>}
+                      {spriteUrl ? <img src={spriteUrl} alt="" /> : <EmojiIcon char="🩺" size={32} />}
                     </span>
                     <span className="assign-modal__info">
                       <span className="assign-modal__name">{d.name}</span>

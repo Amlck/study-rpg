@@ -10,6 +10,7 @@ import {
   type RoomType,
 } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { RoomCard } from '../components/RoomCard'
 import { AssignDoctorModal } from '../components/AssignDoctorModal'
 import { purchaseRoomExtension, type ExtensionResult } from '../services/room-extension'
@@ -143,7 +144,7 @@ export function Hospital() {
           >
             {extOutcome.result.kind === 'success' && (
               <>
-                <h2 className="modal__title">🏗️ 房間擴建完成</h2>
+                <h2 className="modal__title"><EmojiIcon char="🏗" size={24} /> 房間擴建完成</h2>
                 <p>
                   新{ROOM_TYPE_LABELS[extOutcome.type]}（{extOutcome.result.roomId}）已加入醫院
                 </p>

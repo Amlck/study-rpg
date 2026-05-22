@@ -7,6 +7,7 @@
 //   3. Decide later — no-op, re-prompts next sign-in
 
 import { useState } from 'react'
+import { EmojiIcon } from './EmojiIcon'
 
 type Choice = 'upload' | 'keep-separate' | 'later'
 
@@ -36,7 +37,7 @@ export function MigrationUploadPrompt({ email, onChoose }: Props) {
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="本機進度移轉">
       <div className="modal frame migration-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <span>☁ 雲端同步初次設定</span>
+          <span><EmojiIcon char="☁" size={18} /> 雲端同步初次設定</span>
         </div>
         <p className="migration-body">
           這個裝置已有遊戲進度，但雲端帳號
@@ -54,7 +55,11 @@ export function MigrationUploadPrompt({ email, onChoose }: Props) {
             disabled={busy !== null}
             onClick={() => handle('upload')}
           >
-            {busy === 'upload' ? '上傳中…' : '☁️ 把本機進度上傳到這個帳號'}
+            {busy === 'upload' ? (
+              '上傳中…'
+            ) : (
+              <><EmojiIcon char="☁" size={16} /> 把本機進度上傳到這個帳號</>
+            )}
             <span className="migration-hint">推薦：本機資料完整上雲端，之後跨裝置自動同步</span>
           </button>
 
@@ -64,7 +69,11 @@ export function MigrationUploadPrompt({ email, onChoose }: Props) {
             disabled={busy !== null}
             onClick={() => handle('keep-separate')}
           >
-            {busy === 'keep-separate' ? '紀錄中…' : '🔒 本機與雲端分開保存'}
+            {busy === 'keep-separate' ? (
+              '紀錄中…'
+            ) : (
+              <><EmojiIcon char="🔒" size={16} /> 本機與雲端分開保存</>
+            )}
             <span className="migration-hint">本機進度留著、雲端維持空白；不會同步任何資料</span>
           </button>
 
@@ -74,12 +83,12 @@ export function MigrationUploadPrompt({ email, onChoose }: Props) {
             disabled={busy !== null}
             onClick={() => handle('later')}
           >
-            ⏰ 待會再決定
+            <EmojiIcon char="⏰" size={16} /> 待會再決定
             <span className="migration-hint">下次登入會再問一次</span>
           </button>
         </div>
 
-        {error && <div className="migration-error">⚠ {error}</div>}
+        {error && <div className="migration-error"><EmojiIcon char="⚠" size={16} /> {error}</div>}
       </div>
     </div>
   )

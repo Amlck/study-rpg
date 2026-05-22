@@ -18,6 +18,7 @@
 
 import { useState } from 'react'
 import { useAuth } from '../lib/auth/AuthContext'
+import { EmojiIcon } from './EmojiIcon'
 import { NicknameField, type NicknameValidity } from './NicknameField'
 
 interface Props {
@@ -87,7 +88,7 @@ export function LeaderboardOptInModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h2>🏆 加入排行榜</h2>
+          <h2><EmojiIcon char="🏆" size={24} /> 加入排行榜</h2>
           <button
             type="button"
             className="leaderboard-optin-modal__close"
@@ -114,11 +115,11 @@ export function LeaderboardOptInModal({
             <section className="leaderboard-optin-modal__intro">
               <p>加入後，以下資訊會公開在全二階玩家排行榜：</p>
               <ul className="leaderboard-optin-modal__field-list">
-                <li>🏥 醫院等級（tier 1–3）</li>
-                <li>📈 累積聲望</li>
-                <li>👨‍⚕️ 醫師個數</li>
-                <li>📖 累積唸書時間（自 V6 起算）</li>
-                <li>🏷️ 你設定的暱稱（留空則用 Google 名稱）</li>
+                <li><EmojiIcon char="🏥" size={16} /> 醫院等級（tier 1–3）</li>
+                <li><EmojiIcon char="📈" size={16} /> 累積聲望</li>
+                <li><EmojiIcon char="👨‍⚕️" size={16} /> 醫師個數</li>
+                <li><EmojiIcon char="📖" size={16} /> 累積唸書時間（自 V6 起算）</li>
+                <li><EmojiIcon char="🏷" size={16} /> 你設定的暱稱（留空則用 Google 名稱）</li>
               </ul>
               <p className="leaderboard-optin-modal__note">
                 不會公開：email、實際遊戲存檔、任何個資。資料來自你本機記錄，
