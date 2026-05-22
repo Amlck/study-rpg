@@ -393,7 +393,7 @@ export function TrainingPage() {
                         disabled={!canAfford || busy}
                         title={canAfford ? '' : `需要 ${fmt(cost)} 營收`}
                       >
-                        進修（{fmt(cost)} 💰）
+                        進修（{fmt(cost)} <EmojiIcon char="💰" size={14} />）
                       </button>
                     )}
                     <button
@@ -460,7 +460,7 @@ export function TrainingPage() {
                   目標：<strong>{TRAINING_NEXT_RARITY[confirming.doctor.rarity]}</strong>
                 </p>
                 <p>
-                  成本：<strong>{fmt(TRAINING_COSTS[confirming.doctor.rarity])} 💰</strong>
+                  成本：<strong>{fmt(TRAINING_COSTS[confirming.doctor.rarity])} <EmojiIcon char="💰" size={14} /></strong>
                 </p>
                 <p>
                   基礎成功率：
@@ -671,7 +671,7 @@ export function TrainingPage() {
               {' '}（{retireConfirming.doctor.rarity}）
             </p>
             <p>
-              將返還 <strong>{fmt(retireConfirming.doctor.powerMultiplier * 1000)} 💰</strong>。
+              將返還 <strong>{fmt(retireConfirming.doctor.powerMultiplier * 1000)} <EmojiIcon char="💰" size={14} /></strong>。
             </p>
             <p className="muted">
               此操作無法復原。該醫師會從名冊永久移除；若已指派診間，該診間會空出。
@@ -707,7 +707,7 @@ export function TrainingPage() {
                 <p>
                   <strong>{retireOutcome.doctorName}</strong>（{retireOutcome.doctorRarity}）
                 </p>
-                <p>返還 <strong>{fmt(retireOutcome.result.refund)} 💰</strong></p>
+                <p>返還 <strong>{fmt(retireOutcome.result.refund)} <EmojiIcon char="💰" size={14} /></strong></p>
                 {retireOutcome.result.roomFreed && (
                   <p className="muted">已釋放診間 {retireOutcome.result.roomFreed}</p>
                 )}
@@ -750,7 +750,7 @@ export function TrainingPage() {
                     <strong>{fmtPct(outcome.battle.effectiveRate)}</strong>
                   </p>
                 )}
-                <p className="muted">-{fmt(outcome.result.revenueSpent)} 💰</p>
+                <p className="muted">-{fmt(outcome.result.revenueSpent)} <EmojiIcon char="💰" size={14} /></p>
               </>
             )}
             {outcome.result.kind === 'failure' && (
@@ -769,7 +769,7 @@ export function TrainingPage() {
                     <strong>{fmtPct(outcome.battle.effectiveRate)}</strong>
                   </p>
                 )}
-                <p className="muted">-{fmt(outcome.result.revenueSpent)} 💰</p>
+                <p className="muted">-{fmt(outcome.result.revenueSpent)} <EmojiIcon char="💰" size={14} /></p>
               </>
             )}
             {outcome.result.kind === 'aborted' && (

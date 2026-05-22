@@ -117,7 +117,7 @@ export function Hospital() {
                       <span>{ROOM_TYPE_LABELS[type]}</span>
                       <span className="muted">擴建 {current} / {config.maxExtras}</span>
                     </div>
-                    <p className="room-extension-card__cost">成本：{fmt(config.cost)} 💰</p>
+                    <p className="room-extension-card__cost">成本：{fmt(config.cost)} <EmojiIcon char="💰" size={14} /></p>
                     <button
                       className="primary-btn"
                       onClick={() => void handlePurchase(type)}
@@ -148,7 +148,7 @@ export function Hospital() {
                 <p>
                   新{ROOM_TYPE_LABELS[extOutcome.type]}（{extOutcome.result.roomId}）已加入醫院
                 </p>
-                <p className="muted">-{extOutcome.result.cost.toLocaleString('zh-TW')} 💰</p>
+                <p className="muted">-{extOutcome.result.cost.toLocaleString('zh-TW')} <EmojiIcon char="💰" size={14} /></p>
               </>
             )}
             {extOutcome.result.kind === 'aborted' && (
