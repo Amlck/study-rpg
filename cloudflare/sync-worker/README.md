@@ -135,15 +135,23 @@ The Worker is reachable under two URLs that hit the same Worker code (no traffic
 | `https://study-rpg-sync-worker.tony85314.workers.dev` | Legacy `workers.dev` route (GitHub Pages clients use this) |
 | `https://api.med-study-rpg.com` | Cloudflare Custom Domain binding (Cloudflare Pages clients use this) |
 
-The Custom Domain binding is added via the Cloudflare dashboard (Workers & Pages → `study-rpg-sync-worker` → Settings → Triggers → Custom Domains → Add Custom Domain → `api.med-study-rpg.com`). The `med-study-rpg.com` zone is on the same Cloudflare account, so DNS + TLS are auto-provisioned within ~60s.
-
-Equivalent `wrangler.jsonc` route entry (not currently in use — we picked the dashboard route for speed):
+Binding lives in `wrangler.jsonc`:
 
 ```jsonc
 "routes": [
-  { "pattern": "api.med-study-rpg.com/*", "zone_name": "med-study-rpg.com" }
+  { "pattern": "api.med-study-rpg.com", "custom_domain": true }
 ]
 ```
+
+`custom_domain: true` is the modern syntax — Cloudflare auto-provisions DNS + TLS on the matching zone (no separate `zone_name` needed since the host already pins the zone). Within ~60s of `wrangler deploy` the new URL is live with a valid cert.
+
+**Gotcha — wrangler 4.x defaults `workers_dev: false` whenever you add `routes`.** That silently kills the legacy `workers.dev` URL, which breaks the GH Pages clients during the migration bake. The fix is explicit:
+
+```jsonc
+"workers_dev": true,
+```
+
+Without it, `https://study-rpg-sync-worker.tony85314.workers.dev` starts 404'ing immediately after deploy. (Tripped this once on 2026-05-22 — ~30s outage before the explicit flag was added and re-deployed.)
 
 Client-side env (`VITE_SYNC_WORKER_URL`):
 

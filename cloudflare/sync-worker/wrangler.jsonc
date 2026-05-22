@@ -6,6 +6,11 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+	// Keep the workers.dev URL alive — legacy GitHub Pages clients still hit
+	// `study-rpg-sync-worker.tony85314.workers.dev` during the med-study-rpg.com
+	// migration bake. wrangler defaults this to `false` whenever a `routes`
+	// entry is added (since 4.x); explicit `true` preserves both URLs.
+	"workers_dev": true,
 	// R2 bindings — Worker uses these to LIST + DELETE under user prefixes
 	// (delete-account / reset endpoints). Direct browser→R2 traffic for
 	// PUT/GET goes via presigned URLs, NOT through these bindings (preserves
@@ -55,6 +60,17 @@
 			"0,30 * * * *"
 		]
 	},
+	// Custom Domain — `api.med-study-rpg.com` is the canonical API base for
+	// clients on https://med-study-rpg.com (Cloudflare Pages). The legacy
+	// workers.dev URL stays valid for GitHub Pages clients during the bake
+	// period. Both URLs hit the same Worker instance (no traffic split).
+	// `custom_domain: true` auto-provisions DNS + TLS on the matching zone.
+	"routes": [
+		{
+			"pattern": "api.med-study-rpg.com",
+			"custom_domain": true
+		}
+	],
 	// Observability — Workers Logs (no separate logpush needed at this scale)
 	"observability": {
 		"enabled": true,

@@ -3,11 +3,11 @@
 ## 1. Worker prep (Cloudflare side, code-only changes)
 
 - [x] 1.1 Update Worker CORS allowed origins in `cloudflare/sync-worker/wrangler.jsonc` (`vars.CORS_ALLOWED_ORIGINS`) to add `https://med-study-rpg.com` (keep `https://fireman333.github.io`, `http://localhost:5173`, `http://localhost:4173`) — *the runtime reads `env.CORS_ALLOWED_ORIGINS`, not a hardcoded constant in `src/`; the wrangler config is the only source of truth.*
-- [ ] 1.2 Run `wrangler deploy` from `cloudflare/sync-worker/` to publish the CORS update
-- [ ] 1.3 Verify CORS update: from a temporary local page or `curl -H "Origin: https://med-study-rpg.com" -i https://study-rpg-sync-worker.tony85314.workers.dev/health` — confirm `Access-Control-Allow-Origin: https://med-study-rpg.com` echoes back
-- [ ] 1.4 Bind Custom Domain `api.med-study-rpg.com` to the Worker (Cloudflare dashboard → Workers & Pages → `study-rpg-sync-worker` → Settings → Triggers → Custom Domains → Add Custom Domain) — *README already updated to document this; pick dashboard route to avoid touching wrangler.jsonc routes.*
-- [ ] 1.5 Verify `https://api.med-study-rpg.com/health` returns `{"ok":true}` identically to the workers.dev URL
-- [ ] 1.6 Verify TLS cert auto-provisioned by CF for `api.med-study-rpg.com` (no manual cert work)
+- [x] 1.2 `wrangler deploy` from `cloudflare/sync-worker/` published the CORS update (Version `3d2ca16d-4df3-41e7-b592-822cc64b4928` initial; later superseded by `b56f80c1-7a27-41e3-9257-350aa0a033ee` which added the Custom Domain + `workers_dev: true`)
+- [x] 1.3 CORS preflight verified — `curl -X OPTIONS -H "Origin: https://med-study-rpg.com" -H "Access-Control-Request-Method: POST" https://study-rpg-sync-worker.tony85314.workers.dev/presign` → HTTP 204 with `access-control-allow-origin: https://med-study-rpg.com` echoed. Legacy `https://fireman333.github.io` origin still returns 204 unchanged.
+- [x] 1.4 Custom Domain `api.med-study-rpg.com` bound via `wrangler.jsonc` `routes` entry with `custom_domain: true` (cleaner than dashboard for repo-tracked source of truth). **Tripped wrangler 4.x gotcha**: adding `routes` silently flipped `workers_dev: false`, which 404'd the legacy `study-rpg-sync-worker.tony85314.workers.dev` URL for ~30s until explicit `workers_dev: true` was added + re-deployed. Documented in `cloudflare/sync-worker/README.md`.
+- [x] 1.5 `https://api.med-study-rpg.com/presign` CORS preflight returns HTTP 204 identical to the workers.dev URL. Both routes hit the same Worker instance per deploy log.
+- [x] 1.6 TLS cert auto-provisioned by Cloudflare — `https://` resolves cleanly with no cert warning within ~60s of `wrangler deploy`.
 
 ## 2. Supabase Auth allowlist update
 
