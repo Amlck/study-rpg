@@ -649,7 +649,13 @@ export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   TARGETED_TICKETS,
   TARGETED_TICKET_HISTORY,
   HOSPITAL_MONOTONIC_COUNTERS,
-  LEADERBOARD_PROFILE,
+  // LEADERBOARD_PROFILE intentionally NOT here. Supabase code paths
+  // (migration.ts cloudHasAnyRows / getMaxCloudUpdatedAt + upsert_lww RPC
+  // whitelist) iterate this union and would 404 against a `leaderboard_profile`
+  // Postgres table that doesn't exist (the leaderboard backend is Cloudflare
+  // D1, not Supabase). A 404 makes the migration evaluator misread cloud as
+  // empty and fire a spurious conflict-chooser modal. LEADERBOARD_PROFILE
+  // lives only in M2_ADAPTERS (passenger of the R2 m2 bundle).
 ]
 
 /**
