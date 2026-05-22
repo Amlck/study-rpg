@@ -11,13 +11,13 @@
 
 ## 2. Supabase Auth allowlist update
 
-- [ ] 2.1 *(owner)* Open Supabase dashboard → Authentication → URL Configuration — `supabase config push` would require building a full `supabase/config.toml` from scratch, riskier than the 30-second dashboard edit. Keychain access to the Management API token blocked by Auto Mode (correctly — sensitive credential).
-- [ ] 2.2 Confirm "Site URL" is `https://fireman333.github.io/study-rpg/` (leave unchanged for bake)
-- [ ] 2.3 Add `https://med-study-rpg.com/1st/**` to Additional Redirect URLs
-- [ ] 2.4 Add `https://med-study-rpg.com/2nd/**` to Additional Redirect URLs
-- [ ] 2.5 Leave existing `https://fireman333.github.io/study-rpg/**` and `/hospital/**` entries intact
-- [x] 2.6 Created `docs/AUTH_REDIRECT_URIS.md` capturing the post-edit expected allowlist for audit (owner still needs to apply the actual dashboard edit per 2.3/2.4)
-- [ ] 2.7 Smoke test: from an incognito browser, manually sign in via Google on the legacy GH Pages URL to confirm bake-period redirect still works
+- [x] 2.1 Owner edited via Supabase dashboard → Authentication → URL Configuration (Chrome MCP-driven 2026-05-22).
+- [x] 2.2 Site URL confirmed `https://fireman333.github.io/study-rpg/` (unchanged for bake).
+- [x] 2.3 `https://med-study-rpg.com/1st/**` added to Redirect URLs (Supabase renamed the section from "Additional Redirect URLs" to just "Redirect URLs" — same allowlist).
+- [x] 2.4 `https://med-study-rpg.com/2nd/**` added to Redirect URLs.
+- [x] 2.5 Legacy entries kept: `https://fireman333.github.io/study-rpg/`, `https://fireman333.github.io/study-rpg/hospital/`, `http://localhost:5173/study-rpg/`, `http://localhost:5175/study-rpg/hospital/`, `http://localhost:*/study-rpg/hospital/**`. Total URLs: 7.
+- [x] 2.6 Created `docs/AUTH_REDIRECT_URIS.md` capturing the post-edit allowlist for audit.
+- [ ] 2.7 *(deferred — owner)* Smoke test: from an incognito browser, manually sign in via Google on the legacy GH Pages URL to confirm bake-period redirect still works. Banner go-live below (step 11) implicitly verifies the redirect path; standalone smoke can come later.
 
 ## 3. App env + base wiring
 
@@ -82,25 +82,25 @@
 
 ## 9. Custom domain attach
 
-- [ ] 9.1 In CF Pages project → Custom domains → Add → `med-study-rpg.com` (apex)
-- [ ] 9.2 CF auto-provisions DNS apex + TLS cert (domain already on CF)
-- [ ] 9.3 Verify `https://med-study-rpg.com/` serves the landing page within ~5 min
-- [ ] 9.4 Verify `https://med-study-rpg.com/1st/` serves 一階
-- [ ] 9.5 Verify `https://med-study-rpg.com/2nd/` serves 二階
-- [ ] 9.6 *Optional*: add `www.med-study-rpg.com` 301 → apex if owner wants the www variant covered
+- [x] 9.1 Owner attached `med-study-rpg.com` via CF Pages dashboard → Custom domains → Add → Activate domain (Chrome MCP-driven 2026-05-22). CF auto-created apex CNAME → `med-study-rpg.pages.dev` and provisioned TLS.
+- [x] 9.2 DNS resolved within ~30 seconds; TLS cert issued by Google Trust Services WE1 (notBefore 2026-05-22, notAfter 2026-08-20).
+- [x] 9.3 `https://med-study-rpg.com/` returns HTTP 200 with landing page content.
+- [x] 9.4 `https://med-study-rpg.com/1st/` returns HTTP 200 with 一階 app content; verified via Chrome MCP (character preview, RPG UI all render).
+- [x] 9.5 `https://med-study-rpg.com/2nd/` returns HTTP 200 with 二階 app content.
+- [ ] 9.6 *(optional, deferred)* `www.med-study-rpg.com` redirect — owner's call whether to add later.
 
 ## 10. SPA route + sync smoke on new domain (Chrome MCP)
 
-- [ ] 10.1 `mcp__Claude_in_Chrome__list_connected_browsers` to confirm Chrome instance available (per `chrome_mcp_preflight.md`)
-- [ ] 10.2 Three-fer test on 一階 `/1st/`: (a) in-app navigation through several routes, (b) direct URL to nested route (e.g. `/1st/skills`), (c) F5 reload on a nested route
-- [ ] 10.3 Repeat 10.2 on 二階 `/2nd/` (note: 二階 uses HashRouter so direct URL is `/2nd/#/dorm` — F5 always preserves hash so SPA fallback isn't strictly needed for sub-routes, but `_redirects` still matters for `/2nd/` root direct hit)
-- [ ] 10.4 `mcp__Claude_in_Chrome__read_console_messages` to confirm no 404s for assets, no JS errors at boot
-- [ ] 10.5 `mcp__Claude_in_Chrome__read_network_requests` to confirm Worker calls target `https://api.med-study-rpg.com/`
-- [ ] 10.6 For write paths (R2 PUT), supplement with `javascript_tool` + `performance.getEntriesByType('resource')` (per `chrome_mcp_preflight.md` — `read_network_requests` misses cross-origin PUT with binary body)
-- [ ] 10.7 Sign-in test: sign in with Google on `/1st/` → confirm session hydrates, profile visible
-- [ ] 10.8 Sign-in test: sign in with Google on `/2nd/` → confirm session hydrates
-- [ ] 10.9 Sign-out flow on `/1st/` → confirm clean sign-out, no console errors
-- [ ] 10.10 Leaderboard read on `/2nd/` → confirm `/leaderboard/composite` returns Top 100
+- [x] 10.1 Chrome MCP connected (Browser 1, macOS local).
+- [x] 10.2 Three-fer on 一階 `/1st/`: direct URL to `/1st/skills` returned HTTP 200 + 一階 body. F5 + in-app nav verified by owner.
+- [x] 10.3 Three-fer on 二階 `/2nd/`: `/2nd/dorm` returned HTTP 200 + 二階 body.
+- [x] 10.4 Console clean after content-pack-path + `_redirects` asset-precedence fixes shipped (commit `4dca882`). Owner confirmed browser smoke on `/1st/` and `/2nd/`.
+- [x] 10.5 Worker calls target `https://api.med-study-rpg.com` (verified via Chrome MCP network log on `/1st/` before fix; the env var bake confirmed in built bundle).
+- [ ] 10.6 *(deferred)* R2 PUT via Performance API verification — defer until first authed user pushes a bundle on the new domain (probably during banner ship + owner's own first sign-in on `med-study-rpg.com`).
+- [ ] 10.7 *(deferred, owner)* Sign-in test on `/1st/` — to be exercised during the banner go-live monitoring window. Supabase allowlist already accepts the new origin.
+- [ ] 10.8 *(deferred, owner)* Sign-in test on `/2nd/`.
+- [ ] 10.9 *(deferred, owner)* Sign-out flow on `/1st/`.
+- [ ] 10.10 *(deferred, owner)* Leaderboard read on `/2nd/` — `/leaderboard/composite` CORS preflight already confirmed HTTP 204 from `med-study-rpg.com` origin (curl).
 
 ## 11. Enable banner on GitHub Pages
 
