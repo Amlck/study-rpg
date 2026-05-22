@@ -19,6 +19,7 @@ import {
   getERConsultSettings,
   setERConsultSettings,
 } from '../services/er-consultation'
+import { getFontMode, setFontMode, type FontMode } from '../services/font-mode'
 import { LeaderboardSettingsControls } from './LeaderboardSettingsControls'
 
 interface AccordionSection {
@@ -152,6 +153,15 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'font-mode',
+    icon: '🔤',
+    title: '字型偏好（題目 / 選項 / 詳解）',
+    body: [
+      '預設用易讀的 Noto Sans TC 顯示答題系統內的年份科別、題目、選項與詳解，方便長時間閱讀。如果想要原本 GBA 風的全像素字型，可以切到「像素 (Cubic 11)」。',
+      '這個設定只影響答題系統內的閱讀區域 — 標題、按鈕、招募 banner、醫師卡片等其他 UI 永遠保持像素字體，維持遊戲整體美術調性。偏好只存在當前裝置，不會雲端同步。',
+    ],
+  },
+  {
     id: 'account-reset',
     icon: '♻',
     title: '重置此帳號進度',
@@ -178,6 +188,7 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
   const [resetting, setResetting] = useState(false)
   const [bugReportOpen, setBugReportOpen] = useState(false)
   const [erConsultEnabled, setErConsultEnabledState] = useState<boolean | null>(null)
+  const [fontMode, setFontModeState] = useState<FontMode | null>(null)
   const [accountResetMsg, setAccountResetMsg] = useState<string | null>(null)
   const [accountResetting, setAccountResetting] = useState(false)
 
@@ -220,6 +231,8 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
     void (async () => {
       const settings = await getERConsultSettings()
       setErConsultEnabledState(settings.enabled)
+      const mode = await getFontMode()
+      setFontModeState(mode)
     })()
   }, [])
 
@@ -231,6 +244,13 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
       // not "skip this one". No log row written.
       await discardActiveERConsult()
     }
+  }
+
+  async function handleFontModeChange(next: FontMode): Promise<void> {
+    setFontModeState(next)
+    await setFontMode(next)
+    // body[data-font-mode] is driven by App.tsx live-query effect; no manual
+    // DOM write needed here.
   }
 
   function toggle(id: string) {
@@ -333,6 +353,30 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                               {erConsultEnabled ? '✓ 已啟用急診照會' : '✗ 已關閉急診照會'}
                             </span>
                           </label>
+                        )}
+                        {section.id === 'font-mode' && fontMode !== null && (
+                          <div className="help-menu__radio-group" role="radiogroup" aria-label="字型偏好">
+                            <label className="help-menu__radio-row">
+                              <input
+                                type="radio"
+                                name="font-mode"
+                                value="readable"
+                                checked={fontMode === 'readable'}
+                                onChange={() => void handleFontModeChange('readable')}
+                              />
+                              <span>易讀（Noto Sans TC，預設）</span>
+                            </label>
+                            <label className="help-menu__radio-row">
+                              <input
+                                type="radio"
+                                name="font-mode"
+                                value="pixel"
+                                checked={fontMode === 'pixel'}
+                                onChange={() => void handleFontModeChange('pixel')}
+                              />
+                              <span>像素（Cubic 11，GBA 風）</span>
+                            </label>
+                          </div>
                         )}
                         {section.id === 'account-reset' && (
                           <>
