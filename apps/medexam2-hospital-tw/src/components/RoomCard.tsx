@@ -8,6 +8,7 @@ import {
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { lookupSprite } from '../lib/sprite-lookup'
 import type { DoctorRow } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 
 interface RoomCardProps {
   room: Room
@@ -44,7 +45,7 @@ export function RoomCard({ room, doctor, onClick }: RoomCardProps) {
         {doctor && spriteUrl ? (
           <img src={spriteUrl} alt="" className="room-card__sprite-img" />
         ) : doctor ? (
-          <span aria-hidden>🩺</span>
+          <EmojiIcon char="🩺" size={28} />
         ) : (
           <span className="room-card__empty-icon" aria-hidden>＋</span>
         )}
@@ -58,7 +59,7 @@ export function RoomCard({ room, doctor, onClick }: RoomCardProps) {
         {throughput.toFixed(1)} 患者/分
         {affinityBonus !== null && (
           <span className="room-card__affinity" aria-label={`適性加成 ${affinityBonus} 倍`}>
-            <span aria-hidden>✨</span>{affinityBonus.toFixed(1)}×
+            <EmojiIcon char="✨" size={14} />{affinityBonus.toFixed(1)}×
           </span>
         )}
       </div>

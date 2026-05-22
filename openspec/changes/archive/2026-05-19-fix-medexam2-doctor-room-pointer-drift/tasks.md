@@ -50,7 +50,7 @@
   - Click 門診 #2 → modal listed 2 unassigned doctors → picked 內科 → 門診 #2 now shows 內科 醫師 #1 (5.0 患者/分) → DB invariant `drift: []`
   - Click 門診 #2 again → 取消指派 → 內科 returns to bench, 門診 #2 empty CTA → DB still `rooms[*].assignedDoctorId === null`
   - Hospital tab + HospitalScene shelf + counters banner all agree on state
-- [ ] 7.2 Production smoke (deferred to after deploy — needs CI to publish gh-pages branch).
+- [x] 7.2 Production smoke ✓ — deploy f7241ef live at https://fireman333.github.io/study-rpg/hospital/ ; dogfood 戶頭 4/4 surfaces agree (Hospital tab 3/3 filled, HospitalScene 3 sprites, banner net +9/min, AssignDoctorModal unlocks per code path). DB state preserved (no repair needed — was already SOT-consistent).
 - [x] 7.3 `pnpm -r typecheck` → 0 errors across all 8 packages.
 - [x] 7.4 `pnpm --filter @study-rpg/medexam2-hospital-tw build` → built in 2.96s, no broken imports.
 - [x] 7.5 `grep -rn "assignedDoctorId" apps/medexam2-hospital-tw/src/` audit → only matches in `lib/assignment.ts` (repairer + JSDoc), `lib/sync/tables.ts` (sanitize), `lib/sync/useSync.ts` (comment), `db/schema.ts` (migration), `services/room-extension.ts` (canonical empty init `null`). No read site leaks.

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MigrationGateState } from '../lib/sync/migration'
 import type { SyncStatus } from '../lib/sync/types'
+import { EmojiIcon } from './EmojiIcon'
 
 interface Props {
   status: SyncStatus
@@ -127,7 +128,7 @@ export function SyncStatusChip({
         title={`同步狀態：${visual.label}`}
         aria-label={`同步狀態：${visual.label}`}
       >
-        <span aria-hidden>{visual.icon}</span>
+        <span aria-hidden><EmojiIcon char={visual.icon} size={16} /></span>
         <span className="sync-status-chip__label">{visual.label}</span>
       </button>
       {open && (
@@ -136,7 +137,7 @@ export function SyncStatusChip({
           <div className="sync-status-popover__row">
             <span>狀態</span>
             <span style={{ color: visual.color }}>
-              {visual.icon} {visual.label}
+              <EmojiIcon char={visual.icon} size={14} /> {visual.label}
             </span>
           </div>
           <div className="sync-status-popover__row">
@@ -154,7 +155,11 @@ export function SyncStatusChip({
               disabled={busy !== null || !online}
               onClick={handleForcePush}
             >
-              {busy === 'push' ? '上傳中…' : '⬆ 立即同步上傳'}
+              {busy === 'push' ? (
+                '上傳中…'
+              ) : (
+                <><EmojiIcon char="⬆" size={14} /> 立即同步上傳</>
+              )}
             </button>
             <button
               type="button"
@@ -162,7 +167,11 @@ export function SyncStatusChip({
               disabled={busy !== null || !online}
               onClick={handleForcePull}
             >
-              {busy === 'pull' ? '下載中…' : '⬇ 立即同步下載'}
+              {busy === 'pull' ? (
+                '下載中…'
+              ) : (
+                <><EmojiIcon char="⬇" size={14} /> 立即同步下載</>
+              )}
             </button>
           </div>
         </div>

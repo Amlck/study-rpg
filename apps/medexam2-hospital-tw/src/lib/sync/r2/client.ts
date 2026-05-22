@@ -14,8 +14,14 @@ export interface PresignResult {
   expiresAt: number  // epoch ms
 }
 
-const WORKER_URL = (import.meta.env.VITE_SYNC_WORKER_URL as string | undefined) ??
-  'https://study-rpg-sync-worker.tony85314.workers.dev'
+// Treat empty string as unset — GitHub Actions exposes `${{ secrets.X }}` as
+// "" when the secret is undefined, which would otherwise override the prod
+// default with a broken empty URL.
+const WORKER_URL_RAW = import.meta.env.VITE_SYNC_WORKER_URL as string | undefined
+const WORKER_URL =
+  WORKER_URL_RAW && WORKER_URL_RAW.length > 0
+    ? WORKER_URL_RAW
+    : 'https://study-rpg-sync-worker.tony85314.workers.dev'
 
 // Cache presigned URLs within their TTL minus a 60s safety margin so we don't
 // burn a Worker request on every push/pull when a recent URL would do.

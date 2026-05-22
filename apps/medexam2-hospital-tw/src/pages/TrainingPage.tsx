@@ -27,6 +27,7 @@ import { getHospitalDB, type DoctorRow } from '../db/schema'
 import { trainDoctor } from '../services/training'
 import { retireDoctor, type RetireResult } from '../services/retire'
 import type { TrainingAttemptResult } from '@study-rpg/content-medexam2-tw'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { pickRandomQuestion } from '../lib/quiz'
 import {
@@ -266,7 +267,7 @@ export function TrainingPage() {
       <header className="app-header">
         <h1>醫師進修</h1>
         <div className="app-header__meta">
-          <span className="ticket-counter">💰 {fmt(counters?.revenue ?? 0)}</span>
+          <span className="ticket-counter"><EmojiIcon char="💰" size={18} /> {fmt(counters?.revenue ?? 0)}</span>
           <Link to="/" className="nav-link">
             ← 回首頁
           </Link>
@@ -373,9 +374,11 @@ export function TrainingPage() {
                           基礎機率 {(rate * 100).toFixed(0)}%
                         </span>
                         <span className="training-pity">
-                          {pityAtMax
-                            ? '🎯 下次必中'
-                            : `保底進度 ${d.pityCounter} / ${TRAINING_PITY_THRESHOLD}`}
+                          {pityAtMax ? (
+                            <><EmojiIcon char="🎯" size={16} /> 下次必中</>
+                          ) : (
+                            `保底進度 ${d.pityCounter} / ${TRAINING_PITY_THRESHOLD}`
+                          )}
                         </span>
                       </>
                     ) : (
@@ -390,7 +393,7 @@ export function TrainingPage() {
                         disabled={!canAfford || busy}
                         title={canAfford ? '' : `需要 ${fmt(cost)} 營收`}
                       >
-                        進修（{fmt(cost)} 💰）
+                        進修<span style={{ whiteSpace: 'nowrap' }}>（{fmt(cost)} <EmojiIcon char="💰" size={14} />）</span>
                       </button>
                     )}
                     <button
@@ -425,9 +428,17 @@ export function TrainingPage() {
                     {row.fromRarity} → {row.toRarity}
                   </span>
                   <span className="training-history__result">
-                    {row.success ? (row.pityTriggered ? '🎯 保底成功' : '✓ 成功') : '✗ 失敗'}
+                    {row.success ? (
+                      row.pityTriggered ? (
+                        <><EmojiIcon char="🎯" size={14} /> 保底成功</>
+                      ) : (
+                        '✓ 成功'
+                      )
+                    ) : (
+                      '✗ 失敗'
+                    )}
                   </span>
-                  <span className="training-history__cost">-{fmt(row.cost)} 💰</span>
+                  <span className="training-history__cost">-{fmt(row.cost)} <EmojiIcon char="💰" size={14} /></span>
                 </li>
               )
             })}
@@ -449,7 +460,7 @@ export function TrainingPage() {
                   目標：<strong>{TRAINING_NEXT_RARITY[confirming.doctor.rarity]}</strong>
                 </p>
                 <p>
-                  成本：<strong>{fmt(TRAINING_COSTS[confirming.doctor.rarity])} 💰</strong>
+                  成本：<strong>{fmt(TRAINING_COSTS[confirming.doctor.rarity])} <EmojiIcon char="💰" size={14} /></strong>
                 </p>
                 <p>
                   基礎成功率：
@@ -547,12 +558,12 @@ export function TrainingPage() {
                 )}
                 {trainingBattle.question.hasImage && !trainingBattle.question.imagePath && (
                   <div className="quiz-modal__image-missing">
-                    📷 此題含附圖但尚未補齊（{trainingBattle.question.id}）
+                    <EmojiIcon char="📷" size={18} /> 此題含附圖但尚未補齊（{trainingBattle.question.id}）
                   </div>
                 )}
                 {trainingBattle.question.disputed && trainingBattle.revealed && (
                   <p className="quiz-modal__disputed">
-                    ⚖️ 送分題（考選部判定全部給分，任何選項都算對）
+                    <EmojiIcon char="⚖" size={18} /> 送分題（考選部判定全部給分，任何選項都算對）
                   </p>
                 )}
                 <ul className="quiz-modal__options">
@@ -660,7 +671,7 @@ export function TrainingPage() {
               {' '}（{retireConfirming.doctor.rarity}）
             </p>
             <p>
-              將返還 <strong>{fmt(retireConfirming.doctor.powerMultiplier * 1000)} 💰</strong>。
+              將返還 <strong>{fmt(retireConfirming.doctor.powerMultiplier * 1000)} <EmojiIcon char="💰" size={14} /></strong>。
             </p>
             <p className="muted">
               此操作無法復原。該醫師會從名冊永久移除；若已指派診間，該診間會空出。
@@ -692,11 +703,11 @@ export function TrainingPage() {
           >
             {retireOutcome.result.kind === 'success' && (
               <>
-                <h2 className="modal__title">👋 醫師已退休</h2>
+                <h2 className="modal__title"><EmojiIcon char="👋" size={24} /> 醫師已退休</h2>
                 <p>
                   <strong>{retireOutcome.doctorName}</strong>（{retireOutcome.doctorRarity}）
                 </p>
-                <p>返還 <strong>{fmt(retireOutcome.result.refund)} 💰</strong></p>
+                <p>返還 <strong>{fmt(retireOutcome.result.refund)} <EmojiIcon char="💰" size={14} /></strong></p>
                 {retireOutcome.result.roomFreed && (
                   <p className="muted">已釋放診間 {retireOutcome.result.roomFreed}</p>
                 )}
@@ -725,13 +736,13 @@ export function TrainingPage() {
           >
             {outcome.result.kind === 'success' && (
               <>
-                <h2 className="modal__title">🎉 進修成功！</h2>
+                <h2 className="modal__title"><EmojiIcon char="🎉" size={24} /> 進修成功！</h2>
                 <p>
                   <strong>{outcome.result.fromRarity}</strong>
                   {' → '}
                   <strong className="rarity-up">{outcome.result.toRarity}</strong>
                 </p>
-                {outcome.result.pityTriggered && <p>🎯 保底觸發</p>}
+                {outcome.result.pityTriggered && <p><EmojiIcon char="🎯" size={18} /> 保底觸發</p>}
                 {outcome.battle && (
                   <p>
                     進修戰 {outcome.battle.correct} / {outcome.battle.total}：
@@ -739,12 +750,12 @@ export function TrainingPage() {
                     <strong>{fmtPct(outcome.battle.effectiveRate)}</strong>
                   </p>
                 )}
-                <p className="muted">-{fmt(outcome.result.revenueSpent)} 💰</p>
+                <p className="muted">-{fmt(outcome.result.revenueSpent)} <EmojiIcon char="💰" size={14} /></p>
               </>
             )}
             {outcome.result.kind === 'failure' && (
               <>
-                <h2 className="modal__title">😞 進修失敗</h2>
+                <h2 className="modal__title"><EmojiIcon char="😞" size={24} /> 進修失敗</h2>
                 <p>
                   Rarity 維持 <strong>{outcome.result.fromRarity}</strong>
                 </p>
@@ -758,7 +769,7 @@ export function TrainingPage() {
                     <strong>{fmtPct(outcome.battle.effectiveRate)}</strong>
                   </p>
                 )}
-                <p className="muted">-{fmt(outcome.result.revenueSpent)} 💰</p>
+                <p className="muted">-{fmt(outcome.result.revenueSpent)} <EmojiIcon char="💰" size={14} /></p>
               </>
             )}
             {outcome.result.kind === 'aborted' && (

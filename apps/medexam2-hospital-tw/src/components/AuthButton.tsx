@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/auth/AuthContext'
 import { useSync } from '../lib/sync/useSync'
+import { EmojiIcon } from './EmojiIcon'
 
 export function AuthButton() {
   const { status, user, signInWithGoogle } = useAuth()
@@ -48,9 +49,9 @@ export function AuthButton() {
           onClick={() => setMenuOpen((v) => !v)}
           title={`已登入：${label}　點此打開帳號選單`}
         >
-          <span className="auth-button__email">☁️ {label}</span>
+          <span className="auth-button__email"><EmojiIcon char="☁" size={16} /> {label}</span>
           <span className="auth-button__email-collapsed" aria-hidden>
-            ☁️
+            <EmojiIcon char="☁" size={16} />
           </span>
         </button>
         {menuOpen && (
@@ -96,7 +97,11 @@ export function AuthButton() {
                 }
               }}
             >
-              {busy === 'switch' ? '切換中…' : '🔄 切換帳號'}
+              {busy === 'switch' ? (
+                '切換中…'
+              ) : (
+                <><EmojiIcon char="🔄" size={14} /> 切換帳號</>
+              )}
             </button>
           </div>
         )}
@@ -111,7 +116,7 @@ export function AuthButton() {
       onClick={signInWithGoogle}
       title="登入以同步進度到雲端"
     >
-      ☁ Sign in
+      <EmojiIcon char="☁" size={14} /> Sign in
     </button>
   )
 }

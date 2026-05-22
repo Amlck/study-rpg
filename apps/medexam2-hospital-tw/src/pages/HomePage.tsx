@@ -31,6 +31,7 @@ import {
   effectiveYearSet,
   getYearFilter,
 } from '../services/year-filter'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { YearFilterBar } from '../components/YearFilterBar'
 import { RecruitmentBanner } from '../components/RecruitmentBanner'
 import { RecruitmentResultModal } from '../components/RecruitmentResultModal'
@@ -159,6 +160,9 @@ export function HomePage() {
           <Link to="/bookmarks" className="nav-link">
             收藏 →
           </Link>
+          <Link to="/leaderboard" className="nav-link">
+            排名 →
+          </Link>
         </div>
       </header>
 
@@ -167,7 +171,7 @@ export function HomePage() {
           className="ticket-counter"
           title="每日台灣早上 08:00 自動發放 +1 張免費招募券，持有上限 99 張"
         >
-          🎟️ {ticketsAvailable} / {TICKET_CAP}
+          <EmojiIcon char="🎟" size={20} /> {ticketsAvailable} / {TICKET_CAP}
           <span className="ticket-counter__refill"> · {refreshLabel}</span>
         </span>
       </div>
@@ -197,7 +201,7 @@ export function HomePage() {
                   {next})
                 </>
               ) : (
-                <> ⭐ 已達頂峰</>
+                <> <EmojiIcon char="⭐" size={16} /> 已達頂峰</>
               )}
             </p>
             {req && (

@@ -19,6 +19,7 @@ import {
   type TutorialSurfaceId,
 } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 
 export interface SurfaceHintProps {
   surfaceId: TutorialSurfaceId
@@ -51,7 +52,7 @@ export function SurfaceHint({ surfaceId }: SurfaceHintProps) {
 
   return (
     <div className="surface-hint" role="status" aria-live="polite">
-      <span className="surface-hint__icon" aria-hidden>💡</span>
+      <span className="surface-hint__icon" aria-hidden><EmojiIcon char="💡" size={18} /></span>
       <div className="surface-hint__body">
         <h3 className="surface-hint__title">{hint.title}</h3>
         <p className="surface-hint__text">{hint.body}</p>

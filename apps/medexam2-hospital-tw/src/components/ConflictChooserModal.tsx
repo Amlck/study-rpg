@@ -10,6 +10,7 @@
 //   3. Decide later — pause sync engine until user re-opens chooser
 
 import { useState } from 'react'
+import { EmojiIcon } from './EmojiIcon'
 
 export type ConflictChoice = 'use-cloud' | 'use-local' | 'later'
 
@@ -77,7 +78,7 @@ export function ConflictChooserModal({
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="進度衝突解決">
       <div className="modal frame migration-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <span>⚠ 本機與雲端都有進度</span>
+          <span><EmojiIcon char="⚠" size={18} /> 本機與雲端都有進度</span>
         </div>
         <p className="migration-body">
           這個裝置和雲端帳號
@@ -87,12 +88,12 @@ export function ConflictChooserModal({
 
         <div className="migration-compare">
           <div className={`migration-compare-side ${newer === 'local' ? 'migration-compare-side--fresh' : ''}`}>
-            <div className="migration-compare-label">📱 本機</div>
+            <div className="migration-compare-label"><EmojiIcon char="📱" size={16} /> 本機</div>
             <div className="migration-compare-ts">{formatTs(localMaxUpdatedAt)}</div>
             {newer === 'local' && <div className="migration-compare-badge">較新</div>}
           </div>
           <div className={`migration-compare-side ${newer === 'cloud' ? 'migration-compare-side--fresh' : ''}`}>
-            <div className="migration-compare-label">☁ 雲端</div>
+            <div className="migration-compare-label"><EmojiIcon char="☁" size={16} /> 雲端</div>
             <div className="migration-compare-ts">{formatTs(cloudMaxUpdatedAt)}</div>
             {newer === 'cloud' && <div className="migration-compare-badge">較新</div>}
           </div>
@@ -105,7 +106,11 @@ export function ConflictChooserModal({
             disabled={busy !== null}
             onClick={() => handle('use-cloud')}
           >
-            {busy === 'use-cloud' ? '下載中…' : '☁ 使用雲端（覆蓋本機）'}
+            {busy === 'use-cloud' ? (
+              '下載中…'
+            ) : (
+              <><EmojiIcon char="☁" size={16} /> 使用雲端（覆蓋本機）</>
+            )}
             <span className="migration-hint">本機進度會先存進 local_backup 表備份，再用雲端覆蓋</span>
           </button>
 
@@ -115,7 +120,11 @@ export function ConflictChooserModal({
             disabled={busy !== null}
             onClick={() => handle('use-local')}
           >
-            {busy === 'use-local' ? '上傳中…' : '📱 使用本機（覆蓋雲端）'}
+            {busy === 'use-local' ? (
+              '上傳中…'
+            ) : (
+              <><EmojiIcon char="📱" size={16} /> 使用本機（覆蓋雲端）</>
+            )}
             <span className="migration-hint">本機進度全部用 updated_at=now() 推上去，覆蓋雲端</span>
           </button>
 
@@ -125,7 +134,7 @@ export function ConflictChooserModal({
             disabled={busy !== null}
             onClick={() => handle('later')}
           >
-            ⏸ 待會再決定（暫停同步）
+            <EmojiIcon char="⏸" size={16} /> 待會再決定（暫停同步）
             <span className="migration-hint">
               {hasSettingsEntry
                 ? '本機可繼續玩，但不會同步；之後到設定可重新開啟此對話'
@@ -134,7 +143,7 @@ export function ConflictChooserModal({
           </button>
         </div>
 
-        {error && <div className="migration-error">⚠ {error}</div>}
+        {error && <div className="migration-error"><EmojiIcon char="⚠" size={16} /> {error}</div>}
       </div>
     </div>
   )
