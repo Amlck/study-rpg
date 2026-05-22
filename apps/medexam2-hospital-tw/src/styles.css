@@ -47,16 +47,62 @@ body {
   -moz-osx-font-smoothing: none;
 }
 
-/* Long-form text (quiz stems / explanations / bookmarks entries / ER stems)
-   stays Noto Sans TC for readability — Cubic 11 at 11px gets tiring past ~30s. */
-.quiz-modal__stem,
-.quiz-modal__explanation,
-.explanation-markdown,
-.bookmarks-page__entry-stem,
-.bookmarks-page__entry-explanation,
-.er-consult__stem,
-.er-consult__explanation {
+/* Quiz reading area (stem / options / explanation / meta row / edge messages)
+   + bookmarks entries + ER consult stems — readable Noto Sans TC with
+   subpixel antialiasing.
+   The `body` prefix bumps specificity to (0,1,1) so we win over rules like
+   `.quiz-modal__option { font-family: inherit }` (specificity 0,1,0) that
+   appear later in source order — those `inherit` declarations exist because
+   <button> doesn't inherit font-family by default, so we can't just delete
+   them; bumping our specificity is cleaner.
+   The explicit -webkit-font-smoothing override defeats the body-level `none`
+   that intentionally pixelates UI chrome — without it Safari renders even
+   Noto Sans TC as blocky text (Chrome partially honors `none` too), so
+   `font-family` alone isn't enough to look readable across both browsers. */
+body .quiz-modal__stem,
+body .quiz-modal__option,
+body .quiz-modal__option-key,
+body .quiz-modal__option-text,
+body .quiz-modal__question-meta-id,
+body .quiz-modal__disputed,
+body .quiz-modal__empty,
+body .quiz-modal__image-missing,
+body .quiz-modal__explanation,
+body .explanation-markdown,
+body .bookmarks-page__entry-stem,
+body .bookmarks-page__entry-explanation,
+body .er-consult__stem,
+body .er-consult__explanation {
   font-family: var(--font-body-cjk);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Pixel mode opt-in — HelpMenu「字型偏好」 toggle writes `ui.fontMode='pixel'`
+   to Dexie meta; App.tsx mirrors it to `<body data-font-mode>`. When active,
+   the quiz reading area reverts to Cubic 11 + no smoothing, matching the
+   original GBA aesthetic for players who prefer the pixel look.
+   `body[data-font-mode='pixel']` has specificity (0,2,1) so it beats the
+   `body` readable rule (0,1,1) above.
+   Scope: reading area only — UI chrome (header / buttons / partner / banners)
+   always stays pixel regardless of this preference. */
+body[data-font-mode='pixel'] .quiz-modal__stem,
+body[data-font-mode='pixel'] .quiz-modal__option,
+body[data-font-mode='pixel'] .quiz-modal__option-key,
+body[data-font-mode='pixel'] .quiz-modal__option-text,
+body[data-font-mode='pixel'] .quiz-modal__question-meta-id,
+body[data-font-mode='pixel'] .quiz-modal__disputed,
+body[data-font-mode='pixel'] .quiz-modal__empty,
+body[data-font-mode='pixel'] .quiz-modal__image-missing,
+body[data-font-mode='pixel'] .quiz-modal__explanation,
+body[data-font-mode='pixel'] .explanation-markdown,
+body[data-font-mode='pixel'] .bookmarks-page__entry-stem,
+body[data-font-mode='pixel'] .bookmarks-page__entry-explanation,
+body[data-font-mode='pixel'] .er-consult__stem,
+body[data-font-mode='pixel'] .er-consult__explanation {
+  font-family: var(--font-pixel-cjk);
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
 }
 
 img {
@@ -5503,6 +5549,28 @@ body:has(.modal-backdrop) {
     width: 100%;
   }
 
+.help-menu__radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.help-menu__radio-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+}
+
+.help-menu__radio-row input[type="radio"] {
+  margin: 0;
+  cursor: pointer;
 }
 
 /* ─── ER Consultation Dialog (add-er-consultation-feature) ──────────────── */
@@ -6115,4 +6183,228 @@ body:has(.modal-backdrop) {
 
 .migration-banner-btn--ghost {
   opacity: 0.75;
+}
+
+/* ── Leaderboard ── (redesign-leaderboard-as-pixel-table) */
+
+.leaderboard-meta {
+  font-family: var(--font-pixel-cjk);
+  font-size: 12px;
+  color: var(--frame-light);
+  margin: 8px 0;
+  text-align: center;
+}
+
+.leaderboard-status {
+  text-align: center;
+  font-family: var(--font-pixel-cjk);
+  color: var(--frame-light);
+  padding: 16px;
+  font-size: 13px;
+}
+
+.leaderboard-status--error {
+  color: var(--accent-rose);
+}
+
+.leaderboard-my-rank-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  margin: 8px auto;
+  border: 2px solid var(--frame-dark);
+  box-shadow: 2px 2px 0 var(--frame-dark);
+  background: var(--bg-paper);
+  font-family: var(--font-pixel-cjk);
+  font-size: 13px;
+  color: var(--frame-dark);
+}
+
+.leaderboard-my-rank-chip--muted {
+  opacity: 0.75;
+}
+
+.leaderboard-footer {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.leaderboard-footer__disclosure {
+  font-family: var(--font-pixel-cjk);
+  font-size: 12px;
+  color: var(--frame-light);
+  line-height: 1.5;
+  margin: 4px 0;
+}
+
+/* Tabular grid — shared column template between inline <ol> and sticky <div>
+   so cells align vertically across both. */
+.leaderboard-list,
+.leaderboard-row--me-sticky {
+  --leaderboard-cols: 60px minmax(120px, 1fr) 50px 80px 60px 80px;
+}
+
+.leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--frame-dark);
+  box-shadow: 4px 4px 0 var(--frame-dark);
+  background: var(--bg-paper);
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: var(--leaderboard-cols);
+  align-items: stretch;
+  min-height: 36px;
+  border-bottom: 2px solid var(--frame-dark);
+}
+
+.leaderboard-row:last-child {
+  border-bottom: none;
+}
+
+.leaderboard-row--header {
+  background: var(--frame-dark);
+  color: var(--bg-paper);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 28px;
+}
+
+.leaderboard-row--header .leaderboard-cell {
+  color: var(--bg-paper);
+  border-right-color: var(--frame-light);
+  font-size: 12px;
+}
+
+.leaderboard-cell {
+  padding: 6px 8px;
+  font-family: var(--font-pixel-cjk);
+  font-size: 13px;
+  line-height: 1.2;
+  border-right: 2px solid var(--frame-dark);
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+}
+
+.leaderboard-cell:last-child {
+  border-right: none;
+}
+
+.leaderboard-cell--rank {
+  justify-content: center;
+  padding: 4px;
+}
+
+.leaderboard-cell--nickname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.leaderboard-cell--tier,
+.leaderboard-cell--reputation,
+.leaderboard-cell--doctors,
+.leaderboard-cell--study {
+  font-family: var(--font-pixel-num);
+  font-variant-numeric: tabular-nums;
+  justify-content: flex-end;
+  font-size: 14px;
+}
+
+.leaderboard-cell--primary {
+  font-weight: bold;
+  color: var(--frame-dark);
+}
+
+.leaderboard-rank-number {
+  font-family: var(--font-pixel-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--frame-dark);
+  font-size: 14px;
+}
+
+/* Rank 1/2/3 medal cell — sprite (from <EmojiIcon>) sits on coloured tint
+   backstop. The tint reads as "medal" even before image decode. */
+.leaderboard-row--rank-1 .leaderboard-cell--rank {
+  background: rgba(212, 160, 77, 0.32);
+  box-shadow: inset 0 0 0 2px var(--frame-dark);
+}
+
+.leaderboard-row--rank-2 .leaderboard-cell--rank {
+  background: rgba(176, 176, 176, 0.42);
+  box-shadow: inset 0 0 0 2px var(--frame-dark);
+}
+
+.leaderboard-row--rank-3 .leaderboard-cell--rank {
+  background: rgba(205, 127, 50, 0.38);
+  box-shadow: inset 0 0 0 2px var(--frame-dark);
+}
+
+/* My-row highlight — DK King of Swing-style gold-tint row + gold border on
+   all sides via inset box-shadow (avoids border layout shift). */
+.leaderboard-row--me {
+  background: rgba(212, 160, 77, 0.18);
+  box-shadow:
+    inset 2px 0 0 var(--accent-gold),
+    inset -2px 0 0 var(--accent-gold),
+    inset 0 2px 0 var(--accent-gold);
+  border-bottom-color: var(--accent-gold);
+}
+
+.leaderboard-row--me .leaderboard-cell {
+  border-right-color: var(--accent-gold);
+}
+
+/* My-row sticky duplicate — standalone <div> below the <ol>, sticky-pinned
+   to bottom of viewport when inline row scrolls offscreen. */
+.leaderboard-row--me-sticky {
+  display: grid;
+  grid-template-columns: var(--leaderboard-cols);
+  align-items: stretch;
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--bg-paper);
+  border: 2px solid var(--frame-dark);
+  box-shadow:
+    0 -3px 0 var(--frame-dark),
+    inset 2px 0 0 var(--accent-gold),
+    inset -2px 0 0 var(--accent-gold),
+    inset 0 2px 0 var(--accent-gold),
+    inset 0 -2px 0 var(--accent-gold);
+  min-height: 36px;
+  transition: opacity 150ms ease;
+  margin-top: 4px;
+}
+
+/* Mobile (< 768 px) — drop tier + doctors columns, give nickname room. */
+@media (max-width: 767px) {
+  .leaderboard-list,
+  .leaderboard-row--me-sticky {
+    --leaderboard-cols: 52px minmax(80px, 1fr) 64px 64px;
+  }
+
+  .leaderboard-cell--tier,
+  .leaderboard-cell--doctors {
+    display: none;
+  }
+
+  .leaderboard-cell {
+    padding: 5px 6px;
+    font-size: 12px;
+  }
+
+  .leaderboard-cell--nickname {
+    font-size: 13px;
+  }
+
+  .leaderboard-cell--primary {
+    font-size: 14px;
+  }
 }

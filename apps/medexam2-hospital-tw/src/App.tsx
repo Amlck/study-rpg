@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
 import {
   TIER_ROOMS,
   type HospitalTier,
   type Room,
 } from '@study-rpg/content-medexam2-tw'
 import { ensureSeed, getHospitalDB, refreshDailyTickets, refreshDailyEquipmentTickets, type GameCountersRow } from './db/schema'
+import { getFontMode, DEFAULT_FONT_MODE } from './services/font-mode'
 import { HomePage } from './pages/HomePage'
 import { DoctorRoster } from './pages/DoctorRoster'
 import { Hospital } from './pages/Hospital'
@@ -152,6 +154,14 @@ function App() {
   const supabase = getSupabase()
   const backendConfig = getBackendConfig()
   const showMigrationBanner = backendConfig.writeR2 && supabase !== null && user !== null
+
+  // Font mode preference — drives `<body data-font-mode>` so CSS can flip the
+  // quiz reading area between readable Noto Sans TC (default) and pixel Cubic 11.
+  // Per-device only; not cloud-synced. Toggled in HelpMenu「字型偏好」section.
+  const fontMode = useLiveQuery(() => getFontMode(), [], DEFAULT_FONT_MODE)
+  useEffect(() => {
+    document.body.dataset.fontMode = fontMode
+  }, [fontMode])
 
   // navigator.onLine for SyncStatusChip + AccountSwitchPrompt awareness.
   const [online, setOnline] = useState(
