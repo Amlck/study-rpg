@@ -39,12 +39,41 @@
 
 body {
   margin: 0;
+  --font-pixel-cjk: 'VT323', 'Press Start 2P', 'Noto Sans TC', monospace;
+  --font-pixel-num: 'VT323', 'Courier New', monospace;
+  --font-pixel-en: 'Press Start 2P', 'Courier New', monospace;
   font-family: var(--font-pixel-cjk);
   background: var(--bg-cream);
   color: var(--ink);
   image-rendering: pixelated;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+/* Original hospital font stack (pre-Cubic-11 UI pass):
+   Chinese falls through to Noto Sans TC, while Latin/numeric text keeps the
+   earlier retro terminal flavor. This is the default for players without a
+   saved preference and is selectable from HelpMenu「字型偏好」. */
+body[data-font-mode='classic'] {
+  --font-pixel-cjk: 'VT323', 'Press Start 2P', 'Noto Sans TC', monospace;
+  --font-pixel-num: 'VT323', 'Courier New', monospace;
+  --font-pixel-en: 'Press Start 2P', 'Courier New', monospace;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+body[data-font-mode='readable'],
+body[data-font-mode='pixel'] {
+  --font-pixel-cjk: 'Cubic 11', 'Noto Sans TC', sans-serif;
+  --font-pixel-num: 'Cubic 11', 'VT323', 'Courier New', monospace;
+  --font-pixel-en: 'Cubic 11', 'Press Start 2P', 'Courier New', monospace;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: none;
+}
+
+body:not([data-font-mode]) .app-header h1,
+body[data-font-mode='classic'] .app-header h1 {
+  font-family: 'Press Start 2P', monospace;
 }
 
 /* Quiz reading area (stem / options / explanation / meta row / edge messages)
@@ -80,12 +109,10 @@ body .er-consult__explanation {
 
 /* Pixel mode opt-in — HelpMenu「字型偏好」 toggle writes `ui.fontMode='pixel'`
    to Dexie meta; App.tsx mirrors it to `<body data-font-mode>`. When active,
-   the quiz reading area reverts to Cubic 11 + no smoothing, matching the
-   original GBA aesthetic for players who prefer the pixel look.
+   the quiz reading area uses Cubic 11 + no smoothing, matching the stronger
+   GBA aesthetic for players who prefer the pixel look.
    `body[data-font-mode='pixel']` has specificity (0,2,1) so it beats the
-   `body` readable rule (0,1,1) above.
-   Scope: reading area only — UI chrome (header / buttons / partner / banners)
-   always stays pixel regardless of this preference. */
+   `body` readable rule (0,1,1) above. */
 body[data-font-mode='pixel'] .quiz-modal__stem,
 body[data-font-mode='pixel'] .quiz-modal__option,
 body[data-font-mode='pixel'] .quiz-modal__option-key,

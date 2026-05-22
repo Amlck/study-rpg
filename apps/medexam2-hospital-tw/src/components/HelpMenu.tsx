@@ -155,10 +155,10 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
   {
     id: 'font-mode',
     icon: '🔤',
-    title: '字型偏好（題目 / 選項 / 詳解）',
+    title: '字型偏好',
     body: [
-      '預設用易讀的 Noto Sans TC 顯示答題系統內的年份科別、題目、選項與詳解，方便長時間閱讀。如果想要原本 GBA 風的全像素字型，可以切到「像素 (Cubic 11)」。',
-      '這個設定只影響答題系統內的閱讀區域 — 標題、按鈕、招募 banner、醫師卡片等其他 UI 永遠保持像素字體，維持遊戲整體美術調性。偏好只存在當前裝置，不會雲端同步。',
+      '原本的字型堆疊是 VT323 / Press Start 2P / Noto Sans TC；中文會落到 Noto Sans TC，英文數字保留復古感。想要更強的 GBA 像素風，可以切到「全像素」。',
+      '偏好只存在當前裝置，不會雲端同步。',
     ],
   },
   {
@@ -360,11 +360,21 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                               <input
                                 type="radio"
                                 name="font-mode"
+                                value="classic"
+                                checked={fontMode === 'classic'}
+                                onChange={() => void handleFontModeChange('classic')}
+                              />
+                              <span>原本（VT323 / Press Start 2P / Noto Sans TC）</span>
+                            </label>
+                            <label className="help-menu__radio-row">
+                              <input
+                                type="radio"
+                                name="font-mode"
                                 value="readable"
                                 checked={fontMode === 'readable'}
                                 onChange={() => void handleFontModeChange('readable')}
                               />
-                              <span>易讀（Noto Sans TC，預設）</span>
+                              <span>易讀（Noto Sans TC，長文優先）</span>
                             </label>
                             <label className="help-menu__radio-row">
                               <input
@@ -374,7 +384,7 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                                 checked={fontMode === 'pixel'}
                                 onChange={() => void handleFontModeChange('pixel')}
                               />
-                              <span>像素（Cubic 11，GBA 風）</span>
+                              <span>全像素（Cubic 11，GBA 風）</span>
                             </label>
                           </div>
                         )}

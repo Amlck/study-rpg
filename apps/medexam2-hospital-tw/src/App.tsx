@@ -155,8 +155,8 @@ function App() {
   const backendConfig = getBackendConfig()
   const showMigrationBanner = backendConfig.writeR2 && supabase !== null && user !== null
 
-  // Font mode preference — drives `<body data-font-mode>` so CSS can flip the
-  // quiz reading area between readable Noto Sans TC (default) and pixel Cubic 11.
+  // Font mode preference — drives `<body data-font-mode>` so CSS can flip
+  // between the original fallback stack, readable Noto-heavy text, and Cubic 11.
   // Per-device only; not cloud-synced. Toggled in HelpMenu「字型偏好」section.
   const fontMode = useLiveQuery(() => getFontMode(), [], DEFAULT_FONT_MODE)
   useEffect(() => {
