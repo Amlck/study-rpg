@@ -1,0 +1,73 @@
+name: Deploy Cloudflare Pages
+
+# Deploys both apps to Cloudflare Pages (med-study-rpg.com/1st/ + /2nd/) when
+# main updates. The CF Pages project is configured in **Direct Upload** mode
+# (Git Provider: No), so the dashboard does NOT auto-deploy on git push —
+# this workflow is what bridges the gap.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   CF_API_TOKEN     Cloudflare API token. Scopes needed for THIS workflow:
+#                    Pages:Edit (in addition to the Worker scopes already
+#                    used by deploy-worker.yml). Regenerate token in CF
+#                    dashboard → My Profile → API Tokens if missing.
+#   CF_ACCOUNT_ID    Cloudflare account ID (already set for deploy-worker.yml).
+#
+# Two parallel deploys during the bake period (per openspec/specs/deploy-pipeline):
+#   - .github/workflows/deploy.yml         → GitHub Pages (legacy)
+#   - .github/workflows/deploy-cf-pages.yml → Cloudflare Pages (new home)
+# Both fire on main push; failures in one do NOT block the other.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cf-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies (monorepo)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build 一階 (medexam-tw) for /1st/
+        env:
+          VITE_DEPLOY_BASE: /1st/
+        run: pnpm --filter @study-rpg/medexam-tw build
+
+      - name: Build 二階 (medexam2-hospital-tw) for /2nd/
+        env:
+          VITE_DEPLOY_BASE: /2nd/
+          VITE_SYNC_WORKER_URL: https://api.med-study-rpg.com
+        run: pnpm --filter @study-rpg/medexam2-hospital-tw build
+
+      - name: Assemble dist-cf
+        run: node scripts/build-cf-pages-dist.mjs
+
+      - name: Deploy via Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: pages deploy dist-cf --project-name med-study-rpg --branch main
+          packageManager: pnpm
