@@ -22,6 +22,16 @@ import { runBackupCron } from "./backup";
 import { handleLeaderboard, runLeaderboardCron } from "./leaderboard";
 import { corsHeaders, preflightResponse } from "./cors";
 
+// Cron expressions — MUST stay byte-for-byte identical with the strings in
+// `cloudflare/sync-worker/wrangler.jsonc` `triggers.crons` array. Cloudflare
+// passes the literal wrangler expression as `event.cron` to scheduled(), so
+// the switch below dispatches on string equality. If wrangler.jsonc changes
+// a cron schedule, update the matching constant here AND redeploy — otherwise
+// the dispatch falls to the default branch and emits a console.error (loud
+// failure, surfaces in Workers Logs).
+const CRON_BACKUP_DAILY = "0 0 * * *" as const;
+const CRON_LEADERBOARD_30MIN = "0,30 * * * *" as const;
+
 export interface Env {
   // R2 bindings
   R2_PRIMARY: R2Bucket;
@@ -90,17 +100,23 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     // Dispatch by cron expression so a single scheduled() handler can serve
-    // both the daily R2 backup and the hourly leaderboard pre-compute.
-    // Cron strings come from wrangler.jsonc `triggers.crons` array.
+    // both the daily R2 backup and the every-30-min leaderboard pre-compute.
+    // Cron strings come from wrangler.jsonc `triggers.crons` array and MUST
+    // match the module-scope constants declared above; if mismatched, the
+    // default branch logs a loud error (see `fix-leaderboard-cron-dispatch-
+    // case-mismatch` change).
     switch (event.cron) {
-      case "0 0 * * *":
+      case CRON_BACKUP_DAILY:
         ctx.waitUntil(runBackupCron(env));
         return;
-      case "0 * * * *":
+      case CRON_LEADERBOARD_30MIN:
         ctx.waitUntil(runLeaderboardCron(env));
         return;
       default:
-        console.warn("[scheduled] unknown cron trigger", { cron: event.cron });
+        console.error(
+          "[scheduled] unknown cron trigger — wrangler.jsonc may be out of sync with src/index.ts",
+          { cron: event.cron, knownCrons: [CRON_BACKUP_DAILY, CRON_LEADERBOARD_30MIN] },
+        );
     }
   },
 };
