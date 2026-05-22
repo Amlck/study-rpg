@@ -97,9 +97,17 @@ This SHALL allow the same source tree to produce GitHub Pages and Cloudflare Pag
 
 #### Scenario: Hard-coded /study-rpg/ asset references replaced
 
-- **WHEN** the source tree contains any `<img src="/study-rpg/...">` or hard-coded `/study-rpg/` asset path
-- **THEN** that reference SHALL be replaced with a Vite-base-aware pattern (`import.meta.env.BASE_URL + 'sprites/x.png'` or a `?url` import)
-- **AND** running `grep -r '"/study-rpg/' apps/*/src/` SHALL return zero asset-path occurrences (doc comments may remain)
+- **WHEN** the source tree contains any `<img src="/study-rpg/...">` or hard-coded `/study-rpg/` asset path used at runtime
+- **THEN** that reference SHALL be replaced with a Vite-base-aware pattern (`import.meta.env.BASE_URL + 'sprites/x.png'` or a `?url` import) OR paired with a base-aware runtime override (e.g. a runtime-injected `@font-face` block that ships alongside a kept-for-fallback static `@font-face` so browsers try both URLs and use whichever loads)
+- **AND** running `grep -r '"/study-rpg/' apps/*/src/` SHALL return only: (a) doc comments / strings used in comments, and (b) intentional fallback URLs that are paired with a base-aware override at runtime AND documented as such in code comments
+
+#### Scenario: Runtime base-aware override covers new deploy targets
+
+- **GIVEN** the source tree retains a hard-coded `/study-rpg/...` static asset URL paired with a runtime base-aware override
+- **WHEN** the app is built and served under a non-default base (e.g. `/1st/` or `/2nd/`)
+- **THEN** the runtime override SHALL inject the correct base-prefixed URL (e.g. via `import.meta.env.BASE_URL`)
+- **AND** the browser SHALL successfully load the asset from the new base path
+- **AND** the static fallback URL MAY 404 silently on the new domain; the runtime path is the source of truth
 
 ### Requirement: `VITE_SYNC_WORKER_URL` switches per deploy target
 
@@ -127,10 +135,12 @@ Both apps SHALL render a migration banner only on GitHub Pages deploys, gated by
 
 - A one-line announcement that the site is moving to `med-study-rpg.com`
 - A primary CTA linking to the corresponding new-domain URL (`https://med-study-rpg.com/1st/` for 一階, `/2nd/` for 二階)
-- A secondary CTA to export the user's data as JSON (reusing the existing Export hook from the `cloud-sync` capability's Export Account Data requirement)
-- A dismiss button persisting `migration-banner-dismissed-v1=true` in localStorage
+- A secondary CTA to export the user's data as JSON. Because the existing cloud Export hook from the `cloud-sync` capability's Export Account Data requirement requires sign-in and the migration banner must serve anonymous local-only users too, the banner SHALL ship a self-contained local Dexie snapshot exporter that works regardless of sign-in state. Authed users retain access to the cleaner cloud Export inside `SettingsPanel`; the banner CTA does not replace that path
+- A dismiss button persisting a versioned key in localStorage (e.g. `domain-migration-banner-dismissed-v1`; the key SHALL be distinct from other banner dismissal keys in the app — notably the R2 backend `migration-banner-dismiss-log` — to avoid collision)
 
 The GitHub Pages workflow (`.github/workflows/deploy.yml`) SHALL set `VITE_DEPLOY_TARGET=gh-pages` as a build-time env var. The Cloudflare Pages build SHALL NOT set this env var, so the banner SHALL be hidden on `med-study-rpg.com`.
+
+The banner component SHALL be named to avoid collision with the existing R2 backend `MigrationBanner` component (e.g. `DomainMigrationBanner`). Two banners SHALL coexist gracefully — both render top-of-viewport, both dismissible independently.
 
 #### Scenario: Banner appears on GitHub Pages 一階
 
@@ -138,7 +148,15 @@ The GitHub Pages workflow (`.github/workflows/deploy.yml`) SHALL set `VITE_DEPLO
 - **WHEN** a user opens `https://fireman333.github.io/study-rpg/`
 - **THEN** the migration banner SHALL render at the top of the layout
 - **AND** the primary CTA SHALL link to `https://med-study-rpg.com/1st/`
-- **AND** the secondary CTA SHALL trigger the existing JSON export flow
+- **AND** the secondary CTA SHALL trigger a JSON export of the user's local Dexie snapshot (works regardless of sign-in state)
+
+#### Scenario: Banner export CTA works for anonymous user
+
+- **GIVEN** a user opens GitHub Pages 一階 without signing in (anonymous play with only local Dexie data)
+- **WHEN** the user clicks the banner's "匯出本機 JSON" / Export CTA
+- **THEN** the app SHALL produce a downloadable JSON file containing the local Dexie snapshot (cloud-synced tables) tagged with `app: 'medexam-tw'` and the current `origin`
+- **AND** the export SHALL succeed without requiring sign-in
+- **AND** the user SHALL be able to import this JSON on the new domain (manual step; future bake-end change may add an in-app importer)
 
 #### Scenario: Banner hidden on Cloudflare Pages
 
@@ -152,7 +170,7 @@ The GitHub Pages workflow (`.github/workflows/deploy.yml`) SHALL set `VITE_DEPLO
 - **GIVEN** a user on GitHub Pages has clicked dismiss
 - **WHEN** the same user reloads the GitHub Pages URL within the same browser profile
 - **THEN** the banner SHALL NOT re-render
-- **AND** the localStorage flag `migration-banner-dismissed-v1=true` SHALL be present
+- **AND** a localStorage flag SHALL be present at a versioned, banner-scoped key (e.g. `domain-migration-banner-dismissed-v1=true`); the exact key SHALL be distinct from other banner keys in the app to avoid collision
 
 ### Requirement: Root landing page at `med-study-rpg.com/`
 
