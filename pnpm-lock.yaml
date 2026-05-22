@@ -11,6 +11,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.105.4
         version: 2.105.4
+      aws4fetch:
+        specifier: ^1.0.20
+        version: 1.0.20
       tsx:
         specifier: ^4.19.0
         version: 4.21.0

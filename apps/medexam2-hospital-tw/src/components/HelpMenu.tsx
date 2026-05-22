@@ -13,11 +13,14 @@ import { useEffect, useState } from 'react'
 import { TIER_UPGRADE_THRESHOLDS } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
 import { BugReportModal } from './BugReportModal'
+import { EmojiIcon } from './EmojiIcon'
 import {
   discardActiveERConsult,
   getERConsultSettings,
   setERConsultSettings,
 } from '../services/er-consultation'
+import { getFontMode, setFontMode, type FontMode } from '../services/font-mode'
+import { LeaderboardSettingsControls } from './LeaderboardSettingsControls'
 
 interface AccordionSection {
   id: string
@@ -112,6 +115,26 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'leaderboard-info',
+    icon: '🏆',
+    title: '排名 — 全二階玩家對位',
+    body: [
+      'Opt-in 流程：從 HomePage 點「排名」進「🏆 排名」頁面，第一次會跳同意視窗列出 5 個公開欄位（醫院 tier / 聲望 / 醫師數 / 累積唸書時間 / 2–12 字元暱稱）。同意後雲端同步成功時會自動上傳，Cloudflare cron 每小時整點重算 Top 100 快照（複合 / 聲望 / 醫師數 / 唸書時間 4 個分頁）。',
+      '隱私：除這 5 個欄位以外的存檔（科別掌握度、SRS、收藏、bug report、Google email）都不公開。資料只存 Cloudflare D1（亞太節點），公開列表只有 4 個分頁的 Top 100；上不了榜的玩家完全不可見。',
+      '改名：在下一格「公開到排行榜」section 的暱稱欄位直接編輯 + 送出，會檢查跟現有暱稱是否撞名（NFKC + lowercase 比對）。長度限制 2–12 個 Unicode codepoint，emoji 與 ZWJ sequence 也算長度。',
+      '停用：把下一格的 toggle 關掉就行 — 下次 cron 過後從快照消失，D1 紀錄保留（之後重新打開不必再同意一次）。要完全刪除請走「♻ 重置此帳號進度」— 會 DELETE D1 row 並清掉本機 profile（暱稱重新可供他人使用）。',
+    ],
+  },
+  {
+    id: 'leaderboard-settings',
+    icon: '⚙️',
+    title: '公開到排行榜（設定）',
+    body: [
+      '公開後，全二階玩家可以在「排名」頁面看到你的醫院 tier、聲望、醫師數、累積唸書時間和你設定的暱稱。',
+      '隨時可以在下方關掉公開（紀錄保留，再次打開不必重新同意）；想完全刪除排行榜紀錄請走「重置此帳號進度」。還沒加入排行榜的話請到「🏆 排名」頁面開啟流程。',
+    ],
+  },
+  {
     id: 'bug-report',
     icon: '💬',
     title: '回報問題 / 建議',
@@ -127,6 +150,15 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     body: [
       '唸書 session 期間，急診醫師會不定時跳出一題「冷門科別」的考古題請你 consult。答對給 1.8× 加成的營收 + 聲望（高於一般答題），可從下方關閉。',
       '冷門科別 = 你最近 7 天答比較少 + 掌握度比較低的科。10 分鐘內沒回應會自動跳過、不會扣分。',
+    ],
+  },
+  {
+    id: 'font-mode',
+    icon: '🔤',
+    title: '字型偏好（題目 / 選項 / 詳解）',
+    body: [
+      '預設用易讀的 Noto Sans TC 顯示答題系統內的年份科別、題目、選項與詳解，方便長時間閱讀。如果想要原本 GBA 風的全像素字型，可以切到「像素 (Cubic 11)」。',
+      '這個設定只影響答題系統內的閱讀區域 — 標題、按鈕、招募 banner、醫師卡片等其他 UI 永遠保持像素字體，維持遊戲整體美術調性。偏好只存在當前裝置，不會雲端同步。',
     ],
   },
   {
@@ -156,6 +188,7 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
   const [resetting, setResetting] = useState(false)
   const [bugReportOpen, setBugReportOpen] = useState(false)
   const [erConsultEnabled, setErConsultEnabledState] = useState<boolean | null>(null)
+  const [fontMode, setFontModeState] = useState<FontMode | null>(null)
   const [accountResetMsg, setAccountResetMsg] = useState<string | null>(null)
   const [accountResetting, setAccountResetting] = useState(false)
 
@@ -198,6 +231,8 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
     void (async () => {
       const settings = await getERConsultSettings()
       setErConsultEnabledState(settings.enabled)
+      const mode = await getFontMode()
+      setFontModeState(mode)
     })()
   }, [])
 
@@ -209,6 +244,13 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
       // not "skip this one". No log row written.
       await discardActiveERConsult()
     }
+  }
+
+  async function handleFontModeChange(next: FontMode): Promise<void> {
+    setFontModeState(next)
+    await setFontMode(next)
+    // body[data-font-mode] is driven by App.tsx live-query effect; no manual
+    // DOM write needed here.
   }
 
   function toggle(id: string) {
@@ -244,7 +286,7 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
         aria-label="開啟說明選單"
         title="說明"
       >
-        ❓
+        <EmojiIcon char="❓" size={28} />
       </button>
       {open && (
         <div className="modal-backdrop" onClick={() => setOpen(false)}>
@@ -276,7 +318,9 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                       onClick={() => toggle(section.id)}
                       aria-expanded={expanded}
                     >
-                      <span className="help-menu__icon" aria-hidden>{section.icon}</span>
+                      <span className="help-menu__icon" aria-hidden>
+                        <EmojiIcon char={section.icon} size={24} />
+                      </span>
                       <span className="help-menu__title">{section.title}</span>
                       <span className="help-menu__chevron" aria-hidden>{expanded ? '▼' : '▶'}</span>
                     </button>
@@ -285,13 +329,16 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                         {section.body.map((paragraph, i) => (
                           <p key={i}>{paragraph}</p>
                         ))}
+                        {section.id === 'leaderboard-settings' && (
+                          <LeaderboardSettingsControls />
+                        )}
                         {section.id === 'bug-report' && (
                           <button
                             type="button"
                             className="settings-modal__reset-btn"
                             onClick={() => setBugReportOpen(true)}
                           >
-                            💬 開啟回報表單
+                            <EmojiIcon char="💬" size={18} /> 開啟回報表單
                           </button>
                         )}
                         {section.id === 'er-consult' && erConsultEnabled !== null && (
@@ -306,6 +353,30 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                               {erConsultEnabled ? '✓ 已啟用急診照會' : '✗ 已關閉急診照會'}
                             </span>
                           </label>
+                        )}
+                        {section.id === 'font-mode' && fontMode !== null && (
+                          <div className="help-menu__radio-group" role="radiogroup" aria-label="字型偏好">
+                            <label className="help-menu__radio-row">
+                              <input
+                                type="radio"
+                                name="font-mode"
+                                value="readable"
+                                checked={fontMode === 'readable'}
+                                onChange={() => void handleFontModeChange('readable')}
+                              />
+                              <span>易讀（Noto Sans TC，預設）</span>
+                            </label>
+                            <label className="help-menu__radio-row">
+                              <input
+                                type="radio"
+                                name="font-mode"
+                                value="pixel"
+                                checked={fontMode === 'pixel'}
+                                onChange={() => void handleFontModeChange('pixel')}
+                              />
+                              <span>像素（Cubic 11，GBA 風）</span>
+                            </label>
+                          </div>
                         )}
                         {section.id === 'account-reset' && (
                           <>
@@ -322,7 +393,13 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                                     : '重置此帳號進度（雙重確認）'
                               }
                             >
-                              {accountResetting ? '重置中…' : '🔁 重置此帳號進度'}
+                              {accountResetting ? (
+                                '重置中…'
+                              ) : (
+                                <>
+                                  <EmojiIcon char="🔁" size={18} /> 重置此帳號進度
+                                </>
+                              )}
                             </button>
                             {accountResetMsg && (
                               <p className="settings-modal__reset-msg">{accountResetMsg}</p>

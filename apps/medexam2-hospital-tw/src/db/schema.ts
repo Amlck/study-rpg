@@ -305,6 +305,42 @@ export interface BookmarkRow {
   _updatedAt?: number
 }
 
+/**
+ * Per-user local leaderboard opt-in / dismiss state. Device-local only —
+ * NOT cloud-synced. Lifecycle:
+ *   - First leaderboard visit, no row → opt-in modal shown
+ *   - User dismisses「不再顯示」→ row written with dismissed_at = now
+ *   - User opt-in submits → row written with opted_in = true + nickname
+ *   - Settings toggle off (Phase 7) → opted_in stays true (cloud row flips
+ *     is_public via Worker); we don't mutate this table on opt-out so the
+ *     player can re-enable without re-consent
+ *
+ * PK = supabase auth.uid() so multi-account on same device stays isolated.
+ */
+export interface LeaderboardProfileRow {
+  user_id: string
+  /** Player's chosen nickname (case-preserved). `null` until opted in. */
+  nickname: string | null
+  /**
+   * Consent flag — set true after the first successful `/leaderboard/upsert`.
+   * Once true, never goes false (settings toggle uses `is_public` instead so
+   * re-enabling doesn't force a re-consent flow per design D5).
+   */
+  opted_in: boolean
+  /**
+   * Settings-panel toggle state (true = visible on public leaderboard, false =
+   * row preserved but is_public=0 server-side). Defaults to true on opt-in.
+   * Optional in TS because v14 rows shipped before this field existed; treat
+   * undefined as `true` at read sites (the safe default — already-consented
+   * players were public).
+   */
+  is_public?: boolean
+  /** ms timestamp of「不再顯示」dismiss; null = never dismissed. */
+  dismissed_at: number | null
+  /** ms timestamp of last successful upsert; null = never pushed. */
+  last_pushed_at: number | null
+}
+
 // v5 cloud-sync support tables — meta (migration choice/paused flags) +
 // localBackup (snapshot before destructive sign-in resolution).
 export interface HospitalMetaRow {
@@ -373,6 +409,7 @@ export class HospitalDB extends Dexie {
   equipmentTickets!: EntityTable<EquipmentTicketsRow, 'id'>
   equipmentGachaStats!: EntityTable<GachaStatsRow, 'id'>
   equipmentMaterials!: EntityTable<EquipmentMaterialsRow, 'id'>
+  leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -786,6 +823,33 @@ export class HospitalDB extends Dexie {
           await materialsTable.put({ id: 'global', parts: 0 })
         }
       })
+    // v14: add-hospital-leaderboard — local-only leaderboardProfile table for
+    // per-user opt-in / dismissed-forever / last-pushed bookkeeping (Phase
+    // 5.5). Additive; no upgrade hook needed.
+    this.version(14).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+      leaderboardProfile: '&user_id',
+    })
   }
 }
 

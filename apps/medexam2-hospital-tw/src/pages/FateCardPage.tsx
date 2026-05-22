@@ -23,6 +23,7 @@ import {
 import { FATE_CARD_ART } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB } from '../db/schema'
 import { drawFateCardAtTier, type FateCardResolvedDraw } from '../services/fate-card'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { TargetedTicketPicker } from '../components/TargetedTicketPicker'
 import {
@@ -124,7 +125,7 @@ export function FateCardPage() {
       <header className="app-header">
         <h1>命運卡</h1>
         <div className="app-header__meta">
-          <span className="ticket-counter">⭐ {fmt(counters.reputation)} 聲望</span>
+          <span className="ticket-counter"><EmojiIcon char="⭐" size={18} /> {fmt(counters.reputation)} 聲望</span>
           <Link to="/" className="nav-link">
             ← 回首頁
           </Link>
@@ -153,7 +154,7 @@ export function FateCardPage() {
           }}
           aria-label="開啟 targeted ticket 指派"
         >
-          🎫 {pendingTickets.length} 張待指派 targeted ticket — 解鎖 banner 後可指派
+          <EmojiIcon char="🎫" size={18} /> {pendingTickets.length} 張待指派 targeted ticket — 解鎖 banner 後可指派
         </button>
       )}
 
@@ -221,9 +222,13 @@ export function FateCardPage() {
           >
             <header className="fate-outcome-modal__head">
               <h2>
-                {outcome.draw.kind === 'badLuck' ? '⚡ 衰運' : '🎁 獲得獎勵'}
+                {outcome.draw.kind === 'badLuck' ? (
+                  <><EmojiIcon char="⚡" size={20} /> 衰運</>
+                ) : (
+                  <><EmojiIcon char="🎁" size={20} /> 獲得獎勵</>
+                )}
                 {outcome.draw.kind === 'reward' && outcome.draw.pityTriggered && (
-                  <span className="fate-pity-tag"> 🎯 保底</span>
+                  <span className="fate-pity-tag"> <EmojiIcon char="🎯" size={16} /> 保底</span>
                 )}
               </h2>
             </header>
@@ -316,7 +321,14 @@ export function FateCardPage() {
               >
                 <span className="fate-cards-history__tier">{FATE_CARD_LABELS[row.tier]}</span>
                 <span className="fate-cards-history__reward">
-                  {row.wasBadLuck ? '⚡ 衰運' : `🎁 ${row.rewardKey}${row.pityTriggered ? ' 🎯' : ''}`}
+                  {row.wasBadLuck ? (
+                    <><EmojiIcon char="⚡" size={14} /> 衰運</>
+                  ) : (
+                    <>
+                      <EmojiIcon char="🎁" size={14} /> {row.rewardKey}
+                      {row.pityTriggered && <> <EmojiIcon char="🎯" size={14} /></>}
+                    </>
+                  )}
                 </span>
                 <span className="fate-cards-history__cost">−{fmt(row.cost)} 聲望</span>
                 <span className="fate-cards-history__time">

@@ -1,6 +1,7 @@
 import type { Subject } from '@study-rpg/core'
 import type { MasteryRow } from '../db/schema'
 import { formatMasteryPercent } from '../lib/mastery'
+import { EmojiIcon } from './EmojiIcon'
 
 interface Props {
   subject: Subject
@@ -60,7 +61,7 @@ export function RecruitmentBanner({
         <span className="banner__mastery">{formatMasteryPercent(mastery)}</span>
         {dueCount > 0 && (
           <span className="banner__due-chip" title={`今日待複習 ${dueCount} 題`}>
-            🔴 {dueCount > 99 ? '99+' : dueCount}
+            <EmojiIcon char="🔴" size={16} /> {dueCount > 99 ? '99+' : dueCount}
           </span>
         )}
         {completion && (
@@ -68,7 +69,7 @@ export function RecruitmentBanner({
             className={`banner__completion-chip ${completion.answered === completion.total ? 'banner__completion-chip--complete' : ''}`}
             title={`本科題庫進度：${completion.answered} / ${completion.total}`}
           >
-            {completion.answered === completion.total ? '🏆' : '✅'}{' '}
+            <EmojiIcon char={completion.answered === completion.total ? '🏆' : '✅'} size={16} />{' '}
             {completion.answered} / {completion.total}
           </span>
         )}
@@ -82,7 +83,7 @@ export function RecruitmentBanner({
           disabled={quizDisabled}
           title={quizDisabled ? quizDisabledReason : undefined}
         >
-          📚 學習
+          <EmojiIcon char="📚" size={20} /> 學習
         </button>
         <button
           type="button"
@@ -97,11 +98,11 @@ export function RecruitmentBanner({
               : `再答對 ${missing} 題${subject.displayName}解鎖`
           }
         >
-          🎫 招募
+          <EmojiIcon char="🎫" size={20} /> 招募
         </button>
       </div>
       {quizDisabled && quizDisabledReason && (
-        <p className="banner-quiz-disabled-note">📷 {quizDisabledReason}</p>
+        <p className="banner-quiz-disabled-note"><EmojiIcon char="📷" size={16} /> {quizDisabledReason}</p>
       )}
       {!unlocked && (
         <p className="banner__locked-msg">

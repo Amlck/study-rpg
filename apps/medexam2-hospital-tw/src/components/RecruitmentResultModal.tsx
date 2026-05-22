@@ -7,6 +7,7 @@ import type { DoctorRow } from '../db/schema'
 import lobbySprite from '../assets/recruitment/lobby.png'
 import doorLeftSprite from '../assets/recruitment/door-left.png'
 import doorRightSprite from '../assets/recruitment/door-right.png'
+import { EmojiIcon } from './EmojiIcon'
 
 // entry → hospital doors → rarity-flash → (900ms) → silhouette → (1100ms) → revealed → (tap) → close
 type RevealStep = 'entry' | 'rarity-flash' | 'silhouette' | 'revealed'
@@ -95,6 +96,9 @@ function HospitalEntrance({ doctor, rarityVar, spriteUrl, onOpen }: EntranceProp
         </span>
       </button>
     </motion.div>
+        <EmojiIcon char="📞" size={48} />
+      </motion.button>
+    </div>
   )
 }
 
@@ -221,7 +225,7 @@ export function RecruitmentResultModal({ doctor, wasPity, onClose }: Props) {
                         className={`modal-card__sprite-emoji${step === 'silhouette' ? ' recruit-ceremony__sprite--silhouette' : ''}`}
                         aria-hidden
                       >
-                        🩺
+                        <EmojiIcon char="🩺" size={64} />
                       </span>
                     )
                   })()}

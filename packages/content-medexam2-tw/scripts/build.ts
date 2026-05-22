@@ -185,6 +185,21 @@ function extractGradingNote(optionText: string): { cleaned: string; note: string
   return { cleaned: optionText.slice(0, m.index).trimEnd(), note: m[1].trim() }
 }
 
+// Upstream PDF→Markdown extractor inlines image references of the form
+// `![Q<N> 圖](../../_images/<paper>/<file>.png)` inside question stems. The
+// figure is also extracted as a PNG file picked up by `imageExists` (see
+// `buildQuestion`), so the markdown text is pure noise — runtime renders the
+// image via `<img>` driven by `imagePath`, then the stem's literal markdown
+// text appears as visible garbage below it. Strip the image syntax + collapse
+// the residual blank line. Stem-only — options/explanation have been
+// post-build scanned and contain zero hits.
+function stripMarkdownImages(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+}
+
 // ─── File system walking ─────────────────────────────────────────────────────
 
 function* walkSourceDir(): Generator<string> {
@@ -295,7 +310,7 @@ function parseQuestionBlocks(body: string): ParseResult {
       }
     }
 
-    const stem = stemLines.join('\n').trim()
+    const stem = stripMarkdownImages(stemLines.join('\n'))
 
     if (!stem) { skips.push({ qNum: block.qNum, reason: 'empty stem' }); continue }
     if (Object.keys(options).length < 2) { skips.push({ qNum: block.qNum, reason: `<2 options (got ${Object.keys(options).length})` }); continue }
@@ -440,14 +455,30 @@ function buildQuestion(parsed: ParsedQuestion, fm: Frontmatter, sourcePath: stri
   if (exp?.oeHitRate !== undefined) meta.oeHitRate = exp.oeHitRate
   if (exp?.confidence) meta.explanationConfidence = exp.confidence
 
-  // Only attach imagePath when the question genuinely needs an image (hasImage
-  // true). Files for false-positive PNGs may exist on disk from earlier
-  // extraction runs against a looser regex — ignore them.
+  // imagePath: file presence is the source of truth. If an image is on disk
+  // (extracted from moex PDF in moex_原始題目_pdf/_images/ → ingested via
+  // /tmp/ingest_to_medexam2.py), treat the question as having an image even
+  // if `parsed.hasImage` (the .md stem-text regex match) was false. This
+  // catches Case A: 45 questions where the stem says e.g. "眼振圖" /
+  // "所附影像檢查圖" — image-bearing phrasings the regex above doesn't enumerate.
+  // Trust the ingest pipeline's PDF-driven attribution over the stem-text
+  // regex.
   const imageFilename = `${id}.png`
-  const imagePath =
-    parsed.hasImage && existsSync(join(APP_IMAGE_DIR, imageFilename))
-      ? `${APP_IMAGE_REL}/${imageFilename}`
-      : null
+  const imageExists = existsSync(join(APP_IMAGE_DIR, imageFilename))
+  const imagePath = imageExists ? `${APP_IMAGE_REL}/${imageFilename}` : null
+  // Override: hasImage regex false-positives where stem references a figure
+  // concept but no image actually exists in the PDF. Without this override,
+  // QuizModal would render a misleading "（題目有附圖，但目前圖片缺失）"
+  // banner for these pure-text questions.
+  //   113-1-醫學五-外科-Q54: stem option ④ describes "膽道攝影 (cholangiogram) 圖像"
+  //     as a procedure concept, not a referenced figure in the question.
+  //   112-1-醫學三-內科-Q3:  stem says "心電圖為竇性頻脈" describing patient finding
+  //     (not "心電圖如下圖").
+  const KNOWN_NO_IMAGE = new Set<string>([
+    '113-1-醫學五-外科-Q54',
+    '112-1-醫學三-內科-Q3',
+  ])
+  const hasImage = KNOWN_NO_IMAGE.has(id) ? false : (parsed.hasImage || imageExists)
 
   return {
     id,
@@ -456,7 +487,7 @@ function buildQuestion(parsed: ParsedQuestion, fm: Frontmatter, sourcePath: stri
     options: parsed.options,
     answer: parsed.answer,
     explanation,
-    hasImage: parsed.hasImage,
+    hasImage,
     imagePath,
     hasOptionImages: parsed.hasOptionImages,
     disputed: parsed.disputed || undefined,
