@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { TIER_UPGRADE_THRESHOLDS, getNextTier, type HospitalTier } from '@study-rpg/content-medexam2-tw'
+import { EmojiIcon } from './EmojiIcon'
 
 interface UpgradeModalProps {
   isOpen: boolean
@@ -45,7 +46,7 @@ export function UpgradeModal({ isOpen, onClose, tier, reputation }: UpgradeModal
         </p>
 
         {isMaxTier ? (
-          <p className="upgrade-modal__max">已達最高 tier ⭐</p>
+          <p className="upgrade-modal__max">已達最高 tier <EmojiIcon char="⭐" size={16} /></p>
         ) : (
           <>
             <p className="upgrade-modal__next">

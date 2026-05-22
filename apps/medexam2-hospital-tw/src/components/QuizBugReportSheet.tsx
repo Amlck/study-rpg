@@ -10,6 +10,7 @@ import {
   submitQuizInlineBugReport,
   type QuizQuestionSnapshot,
 } from '../services/bug-report'
+import { EmojiIcon } from './EmojiIcon'
 
 const TARGET_LABEL: Record<QuizBugTarget, string> = {
   question: '📝 題目本身有錯',
@@ -93,7 +94,7 @@ export function QuizBugReportSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="quiz-bug-sheet__head">
-          <h2>🐞 回報這題</h2>
+          <h2><EmojiIcon char="🐞" size={22} /> 回報這題</h2>
           <button
             type="button"
             className="quiz-bug-sheet__close"

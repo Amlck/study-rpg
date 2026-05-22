@@ -28,6 +28,9 @@ import {
 } from './account-switch'
 import { checkAssignmentInvariants } from '../assignment'
 import { getBackendConfig } from './backend-config'
+import { pushLeaderboardIfOptedIn } from './leaderboard'
+import { deleteLeaderboardMe } from '../leaderboard/api'
+import { clearLeaderboardProfile, getLeaderboardProfile } from '../../services/leaderboard-profile'
 import { requestR2Cleanup } from './r2/account-lifecycle'
 import {
   applyResetPropagationIfNeeded,
@@ -248,6 +251,18 @@ export function useSync(): UseSyncReturn {
             // applied stale hospital_state.rooms (e.g. legacy non-null
             // assignedDoctorId values from pre-fix saves).
             onPullComplete: () => checkAssignmentInvariants().then(() => undefined),
+            // Post-push leaderboard chain — fires after every successful R2
+            // bundle push within the same 3s debounce window. Orchestrator
+            // skips silently for never-opted-in players; surface its tagged
+            // error result via console.warn so a broken Worker is observable
+            // (the chain itself must NEVER throw — leaderboard is best-effort
+            // and a Worker outage must not trip the engine's failure counter).
+            onPushComplete: () =>
+              pushLeaderboardIfOptedIn(user.id).then((result) => {
+                if (result.kind === 'error') {
+                  console.warn('[leaderboard] push failed:', result.message)
+                }
+              }),
           })
         }
         if (needsModal) engineRef.current.pause()
@@ -577,6 +592,21 @@ export function useSync(): UseSyncReturn {
     const db = getHospitalDB()
 
     await snapshotLocalToBackup(db, user.id, 'reset-account-data')
+
+    // Leaderboard D1 row cleanup — only if the player has a local profile
+    // (opted_in or dismissed). Skipping non-opted-in players avoids a wasted
+    // 200-with-deleted:0 Worker round-trip. Tolerate Worker failure here —
+    // leaderboard is best-effort, the rest of the reset shouldn't abort just
+    // because the Worker is down. Phase 7.5 + design.md §D5.
+    const lbProfile = await getLeaderboardProfile(user.id)
+    if (lbProfile) {
+      try {
+        await deleteLeaderboardMe()
+      } catch (err) {
+        console.warn('[safeResetAccountData] leaderboard delete failed; continuing', err)
+      }
+      await clearLeaderboardProfile(user.id)
+    }
 
     // R2 cleanup FIRST while JWT is still fresh. If this fails, abort — we
     // haven't touched Supabase yet, so user can retry without partial state.

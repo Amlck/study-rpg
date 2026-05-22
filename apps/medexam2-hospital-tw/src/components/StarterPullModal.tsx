@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Subject } from '@study-rpg/core'
 import { attemptStarterPull, type StarterPullOutcome } from '../services/starter-pull'
+import { EmojiIcon } from './EmojiIcon'
 
 interface Props {
   subjects: Subject[]
@@ -32,7 +33,7 @@ export function StarterPullModal({ subjects, onClose, onResult }: Props) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card modal-card--starter" onClick={(e) => e.stopPropagation()}>
         <header className="starter-modal__head">
-          <h2 className="starter-modal__title">⭐ 選擇首抽科別</h2>
+          <h2 className="starter-modal__title"><EmojiIcon char="⭐" size={22} /> 選擇首抽科別</h2>
           <p className="starter-modal__subtitle">保底 P4+（不消耗券、不需親密度）</p>
         </header>
 

@@ -13,11 +13,13 @@ import { useEffect, useState } from 'react'
 import { TIER_UPGRADE_THRESHOLDS } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
 import { BugReportModal } from './BugReportModal'
+import { EmojiIcon } from './EmojiIcon'
 import {
   discardActiveERConsult,
   getERConsultSettings,
   setERConsultSettings,
 } from '../services/er-consultation'
+import { LeaderboardSettingsControls } from './LeaderboardSettingsControls'
 
 interface AccordionSection {
   id: string
@@ -109,6 +111,26 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     body: [
       '消耗 reputation 抽 4 階卡包（普通 / 稀有 / 史詩 / 傳奇）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
       '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward。',
+    ],
+  },
+  {
+    id: 'leaderboard-info',
+    icon: '🏆',
+    title: '排名 — 全二階玩家對位',
+    body: [
+      'Opt-in 流程：從 HomePage 點「排名」進「🏆 排名」頁面，第一次會跳同意視窗列出 5 個公開欄位（醫院 tier / 聲望 / 醫師數 / 累積唸書時間 / 2–12 字元暱稱）。同意後雲端同步成功時會自動上傳，Cloudflare cron 每小時整點重算 Top 100 快照（複合 / 聲望 / 醫師數 / 唸書時間 4 個分頁）。',
+      '隱私：除這 5 個欄位以外的存檔（科別掌握度、SRS、收藏、bug report、Google email）都不公開。資料只存 Cloudflare D1（亞太節點），公開列表只有 4 個分頁的 Top 100；上不了榜的玩家完全不可見。',
+      '改名：在下一格「公開到排行榜」section 的暱稱欄位直接編輯 + 送出，會檢查跟現有暱稱是否撞名（NFKC + lowercase 比對）。長度限制 2–12 個 Unicode codepoint，emoji 與 ZWJ sequence 也算長度。',
+      '停用：把下一格的 toggle 關掉就行 — 下次 cron 過後從快照消失，D1 紀錄保留（之後重新打開不必再同意一次）。要完全刪除請走「♻ 重置此帳號進度」— 會 DELETE D1 row 並清掉本機 profile（暱稱重新可供他人使用）。',
+    ],
+  },
+  {
+    id: 'leaderboard-settings',
+    icon: '⚙️',
+    title: '公開到排行榜（設定）',
+    body: [
+      '公開後，全二階玩家可以在「排名」頁面看到你的醫院 tier、聲望、醫師數、累積唸書時間和你設定的暱稱。',
+      '隨時可以在下方關掉公開（紀錄保留，再次打開不必重新同意）；想完全刪除排行榜紀錄請走「重置此帳號進度」。還沒加入排行榜的話請到「🏆 排名」頁面開啟流程。',
     ],
   },
   {
@@ -244,7 +266,7 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
         aria-label="開啟說明選單"
         title="說明"
       >
-        ❓
+        <EmojiIcon char="❓" size={28} />
       </button>
       {open && (
         <div className="modal-backdrop" onClick={() => setOpen(false)}>
@@ -276,7 +298,9 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                       onClick={() => toggle(section.id)}
                       aria-expanded={expanded}
                     >
-                      <span className="help-menu__icon" aria-hidden>{section.icon}</span>
+                      <span className="help-menu__icon" aria-hidden>
+                        <EmojiIcon char={section.icon} size={24} />
+                      </span>
                       <span className="help-menu__title">{section.title}</span>
                       <span className="help-menu__chevron" aria-hidden>{expanded ? '▼' : '▶'}</span>
                     </button>
@@ -285,13 +309,16 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                         {section.body.map((paragraph, i) => (
                           <p key={i}>{paragraph}</p>
                         ))}
+                        {section.id === 'leaderboard-settings' && (
+                          <LeaderboardSettingsControls />
+                        )}
                         {section.id === 'bug-report' && (
                           <button
                             type="button"
                             className="settings-modal__reset-btn"
                             onClick={() => setBugReportOpen(true)}
                           >
-                            💬 開啟回報表單
+                            <EmojiIcon char="💬" size={18} /> 開啟回報表單
                           </button>
                         )}
                         {section.id === 'er-consult' && erConsultEnabled !== null && (
@@ -322,7 +349,13 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                                     : '重置此帳號進度（雙重確認）'
                               }
                             >
-                              {accountResetting ? '重置中…' : '🔁 重置此帳號進度'}
+                              {accountResetting ? (
+                                '重置中…'
+                              ) : (
+                                <>
+                                  <EmojiIcon char="🔁" size={18} /> 重置此帳號進度
+                                </>
+                              )}
                             </button>
                             {accountResetMsg && (
                               <p className="settings-modal__reset-msg">{accountResetMsg}</p>

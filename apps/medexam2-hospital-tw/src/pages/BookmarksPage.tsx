@@ -9,6 +9,7 @@ import {
 } from '../services/bookmarks'
 import { useWrongAnswers } from '../services/wrong-answers'
 import { loadQuestionsByIdMap } from '../lib/quiz'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { ExplanationMarkdown } from '../components/ExplanationMarkdown'
 
 type TabId = 'manual' | 'wrong'
@@ -45,7 +46,7 @@ export function BookmarksPage() {
   return (
     <main className="app-shell bookmarks-page">
       <header className="app-header">
-        <h1>📚 我的題目</h1>
+        <h1><EmojiIcon char="📚" size={28} /> 我的題目</h1>
         <div className="app-header__meta">
           <Link to="/" className="nav-link">
             ← 回首頁
@@ -61,7 +62,7 @@ export function BookmarksPage() {
           className={`bookmarks-tabs__tab${activeTab === 'manual' ? ' bookmarks-tabs__tab--active' : ''}`}
           onClick={() => setTab('manual')}
         >
-          ⭐ 手動收藏
+          <EmojiIcon char="⭐" size={18} /> 手動收藏
         </button>
         <button
           type="button"
@@ -70,7 +71,7 @@ export function BookmarksPage() {
           className={`bookmarks-tabs__tab${activeTab === 'wrong' ? ' bookmarks-tabs__tab--active' : ''}`}
           onClick={() => setTab('wrong')}
         >
-          ❌ 錯題
+          <EmojiIcon char="❌" size={18} /> 錯題
         </button>
       </nav>
 
@@ -115,7 +116,7 @@ function ManualBookmarksTab({
           onClick={handleExport}
           disabled={count === 0 || !questionsById}
         >
-          ⬇ 匯出 Markdown
+          <EmojiIcon char="⬇" size={16} /> 匯出 Markdown
         </button>
       </div>
 
@@ -166,7 +167,7 @@ function WrongAnswersTab({
   return (
     <section className="bookmarks-tab bookmarks-tab--wrong">
       <p className="bookmarks-tab__helper">
-        📌 <strong>錯題</strong> = 你最近一次答錯的題。下次答對會自動離開此清單。
+        <EmojiIcon char="📌" size={18} /> <strong>錯題</strong> = 你最近一次答錯的題。下次答對會自動離開此清單。
         <br />
         想永久保留？點任一題的 <strong>⭐</strong> 加入「手動收藏」。
       </p>
@@ -210,7 +211,7 @@ function PromoteStar({ questionId }: { questionId: string }) {
       aria-label={bookmarked ? '取消手動收藏' : '加入手動收藏'}
       title={bookmarked ? '已加入手動收藏' : '加入手動收藏'}
     >
-      {bookmarked ? '⭐ 已收藏' : '☆ 加入收藏'}
+      <EmojiIcon char={bookmarked ? '⭐' : '☆'} size={18} /> {bookmarked ? '已收藏' : '加入收藏'}
     </button>
   )
 }
@@ -245,7 +246,11 @@ function EntryRow({
           </ul>
           <p className="bookmarks-page__entry-answer">
             <strong>正解：</strong>
-            {question.disputed ? '⚖️ 送分題（考選部判定全部給分）' : `(${question.answer})`}
+            {question.disputed ? (
+              <><EmojiIcon char="⚖" size={16} /> 送分題（考選部判定全部給分）</>
+            ) : (
+              `(${question.answer})`
+            )}
           </p>
           <div className="bookmarks-page__entry-explanation">
             <strong>詳解：</strong>

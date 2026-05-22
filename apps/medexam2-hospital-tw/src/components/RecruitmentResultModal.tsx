@@ -4,6 +4,7 @@ import { RARITY_LABELS, getRoomHintForSubject } from '@study-rpg/content-medexam
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { lookupSprite } from '../lib/sprite-lookup'
 import type { DoctorRow } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 
 // entry → (swipe) → rarity-flash → (900ms) → silhouette → (1100ms) → revealed → (tap) → close
 type RevealStep = 'entry' | 'rarity-flash' | 'silhouette' | 'revealed'
@@ -74,7 +75,7 @@ function SwipeToAnswer({ onAnswer }: SwipeProps) {
           }
         }}
       >
-        📞
+        <EmojiIcon char="📞" size={48} />
       </motion.button>
     </div>
   )
@@ -143,7 +144,7 @@ export function RecruitmentResultModal({ doctor, wasPity, onClose }: Props) {
                     <span className="phone-sprite__ring" />
                     <span className="phone-sprite__ring" />
                     <span className="phone-sprite__ring" />
-                    <span className="phone-sprite__caller-icon">👤</span>
+                    <span className="phone-sprite__caller-icon"><EmojiIcon char="👤" size={24} /></span>
                   </div>
 
                   <p className="phone-sprite__caller-name">招募部門</p>
@@ -229,7 +230,7 @@ export function RecruitmentResultModal({ doctor, wasPity, onClose }: Props) {
                         className={`modal-card__sprite-emoji${step === 'silhouette' ? ' recruit-ceremony__sprite--silhouette' : ''}`}
                         aria-hidden
                       >
-                        🩺
+                        <EmojiIcon char="🩺" size={64} />
                       </span>
                     )
                   })()}

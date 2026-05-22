@@ -22,8 +22,11 @@ let cached: BackendConfig | null = null
 export function getBackendConfig(): BackendConfig {
   if (cached) return cached
 
-  const rawBackend = (import.meta.env.VITE_CLOUD_SYNC_BACKEND as string | undefined) ?? 'supabase'
-  const rawRead = (import.meta.env.VITE_CLOUD_SYNC_READ_BACKEND as string | undefined) ?? 'supabase'
+  // Treat empty string as unset. GitHub Actions exposes `${{ secrets.X }}`
+  // as "" when the secret is undefined, which would defeat the `?? 'supabase'`
+  // fallback. `nonEmpty()` collapses both `undefined` and `""` to defaults.
+  const rawBackend = nonEmpty(import.meta.env.VITE_CLOUD_SYNC_BACKEND) ?? 'supabase'
+  const rawRead = nonEmpty(import.meta.env.VITE_CLOUD_SYNC_READ_BACKEND) ?? 'supabase'
 
   const backend = normalizeBackend(rawBackend)
   const readBackend = normalizeReadBackend(rawRead)
@@ -58,6 +61,13 @@ function normalizeReadBackend(v: string): SyncReadBackend {
   throw new Error(
     `[sync] VITE_CLOUD_SYNC_READ_BACKEND must be 'supabase' | 'r2', got '${v}'`,
   )
+}
+
+// Treat empty string as unset so that `${{ secrets.MISSING }}` in GitHub
+// Actions (which exposes "" not undefined) still falls through to defaults.
+function nonEmpty(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined
+  return v.length > 0 ? v : undefined
 }
 
 // DEV-only hook for tests that need to reset the cache after mutating env.

@@ -8,6 +8,7 @@
 
 import { useState } from 'react'
 import { getHospitalDB } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 
 export const FIRST_EPIC_TARGETED_KEY = 'firstEpicTargetedDraw'
 export const FIRST_LEGENDARY_TARGETED_KEY = 'firstLegendaryTargetedDraw'
@@ -25,13 +26,15 @@ interface TargetedDrawTutorialOverlayProps {
   onDismiss: () => void
 }
 
-const COPY: Record<TargetedTier, { title: string; body: string }> = {
+const COPY: Record<TargetedTier, { icon: string; title: string; body: string }> = {
   epic: {
-    title: '🎫 你抽到了第一張史詩 targeted ticket！',
+    icon: '🎫',
+    title: '你抽到了第一張史詩 targeted ticket！',
     body: '選一科 unlocked 的 banner 指派給這張券，使用時保證 P3+ 等級。指派後不可改科 — 確認前會有再次提示，避免誤觸。',
   },
   legendary: {
-    title: '🌟 傳奇 targeted ticket！',
+    icon: '🌟',
+    title: '傳奇 targeted ticket！',
     body: '同樣選一科指派，這次保證 P2+ 等級。一旦指派就無法改科 — 點選後會跳出二次確認，仔細想清楚再按「確認指派」。',
   },
 }
@@ -42,7 +45,7 @@ export function TargetedDrawTutorialOverlay({
 }: TargetedDrawTutorialOverlayProps) {
   const [busy, setBusy] = useState(false)
   const key = firstTargetedMilestoneKey(tier)
-  const { title, body } = COPY[tier]
+  const { icon, title, body } = COPY[tier]
 
   async function handleDismiss() {
     setBusy(true)
@@ -74,7 +77,7 @@ export function TargetedDrawTutorialOverlay({
         aria-label="targeted ticket 教學"
       >
         <header className="targeted-tutorial-overlay__head">
-          <h2>{title}</h2>
+          <h2><EmojiIcon char={icon} size={24} /> {title}</h2>
         </header>
         <div className="targeted-tutorial-overlay__body">
           <p>{body}</p>

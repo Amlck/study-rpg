@@ -1,0 +1,85 @@
+## 1. Cloudflare backend setup
+
+- [x] 1.1 建 D1 database `study-rpg-leaderboard` via `wrangler d1 create`（`database_id = 365a3809-4960-4373-8b0f-f864b2323c65`）
+- [x] 1.2 建 KV namespace `LEADERBOARD_KV` via `wrangler kv namespace create`（`id = f0afc16989654688b5c98d420d468e28`）
+- [x] 1.3 撰寫 `cloudflare/sync-worker/migrations/0001_leaderboard.sql`（首個 Worker D1 migration，跟 supabase/ migrations 不共享 number space）：建 `leaderboard_m2` table + 4 indexes（composite / reputation / doctor_count / study_min），all WHERE `is_public = 1`
+- [x] 1.4 在 `cloudflare/sync-worker/wrangler.jsonc` 加 `d1_databases` array binding `LEADERBOARD_DB` + `kv_namespaces` array binding `LEADERBOARD_KV`（hourly cron `"0 * * * *"` 延到 Phase 2.8 加，避免在 `scheduled()` handler 還沒 dispatch 前每小時都跑既有 daily R2 backup）
+- [x] 1.5 跑 `wrangler d1 migrations apply study-rpg-leaderboard --local`（6 commands ✓）+ `--remote` deploy 到 production（6 commands in 0.99ms ✓）
+
+## 2. Worker endpoints
+
+- [x] 2.1 新增 `cloudflare/sync-worker/src/leaderboard.ts` module（重用 `auth.ts` 的 `extractBearer` + `verifyJWT`，並把 `Env` 從 `./index` import）
+- [x] 2.2 實作 `POST /leaderboard/upsert` — JWT verify → sanity bounds（tier ∈ [1,3], rep ≥ 0, doctor ∈ [0,50], study_min ≥ 0）→ pre-check unique conflict（409 if taken by another user_id）→ D1 UPSERT with `WHERE updated_at < excluded.updated_at` (LWW)
+- [x] 2.3 實作 `GET /leaderboard/:filter`（regex match composite / reputation / doctor / study）— 讀 KV `leaderboard:m2:top100:<filter>`；KV miss 回 `{rows: [], last_updated_at: null, total_count: 0}`
+- [x] 2.4 實作 `GET /leaderboard/nickname-check?n=<candidate>` — JWT verify（防 enumeration）→ NFKC + toLowerCase → D1 `SELECT 1 WHERE nickname_lower = ? LIMIT 1` → `{available: boolean}`
+- [x] 2.5 實作 `POST /leaderboard/opt-out` — JWT verify → `UPDATE is_public = 0, updated_at = Date.now() WHERE user_id = ?`（bump updated_at 防 client 舊 cache 還原 is_public=1）
+- [x] 2.6 實作 `DELETE /leaderboard/me` — JWT verify → `DELETE WHERE user_id = ?` → 回 `{ok: true, deleted: <changes>}`
+- [x] 2.7 在 `src/index.ts` `scheduled()` 加 dispatch by `event.cron`，分流到 `runBackupCron`（daily）或 `runLeaderboardCron`（hourly）；未知 cron 印 warn 不執行
+- [x] 2.8 在 `wrangler.jsonc` 把 `triggers.crons` 擴成 `["0 0 * * *", "0 * * * *"]`（2.7 dispatch 已就位後才加）
+- [x] 2.9 實作 `runLeaderboardCron` — 4 個 D1 query (`ORDER BY ... LIMIT 100 WHERE is_public = 1`) + 1 個 COUNT → 寫 4 個 KV keys + 一行 `console.log [leaderboard cron] computed snapshots`
+- [x] 2.10 加 `/leaderboard/*` startsWith match 進 `fetch()`，dispatch 給 `handleLeaderboard`（不影響既有 `/presign` `/delete-account` `/reset` `/health` routes）；`cors.ts` Allow-Methods 擴成 `GET, POST, DELETE, OPTIONS`
+- [x] 2.11 deploy Worker 到 production（version `3be17865-1d80-4110-aa03-913c3fc28e81`，77.12 KiB / 17.87 KiB gzip、2 cron schedules active）；smoke test 3 endpoints 全綠（composite snapshot cold-start / health regression-free / nickname-check 401 JWT-gated）
+
+## 3. Shared types (@study-rpg/core)
+
+- [x] 3.1 在 `packages/core/src/lib/leaderboard-types.ts`（沿用 `bug-report-types.ts` convention，非 root `types.ts`）加 `LeaderboardFilter` const array + `LeaderboardRow` + `LeaderboardSnapshot` + `LeaderboardUpsertPayload` + `LeaderboardNicknameCheckResponse` + `LEADERBOARD_FILTER_LABELS` (繁中)
+- [x] 3.2 在 `packages/core/src/index.ts` re-export 上述 11 個 symbol
+- [x] 3.3 加 `LEADERBOARD_NICKNAME_MIN_CODEPOINTS = 2` / `_MAX = 12` 常數 + `normalizeNickname()` (NFKC + toLowerCase) + `countNicknameCodepoints()` + `isValidNicknameLength()` helpers
+- [x] 3.4 `pnpm --filter @study-rpg/core build` ✓ (ESM 29.87 KB + DTS 46.81 KB); `pnpm -r typecheck` ✓ 全 8 packages clean
+
+## 4. Sync engine integration
+
+- [x] 4.1 `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` adapter — `buildLeaderboardAttributes()` reads tier (clamp 國家級教學醫院 → 3 to match Worker TIER_MAX) / reputation / doctor_count / total_study_min from `gameCounters` + `doctors.count()` + `monotonicCounters.totalStudyMinutes`
+- [x] 4.2 在 `apps/medexam2-hospital-tw/src/lib/sync/engine.ts` push pipeline hook：加 `onPushComplete?: () => void | Promise<void>` 進 `CreateSyncEngineOptions`（mirrors `onPullComplete` pattern, keeps engine content-pack-agnostic per add-cloud-sync §D4）→ engine 在 `firstError === null && !anyOffline` 時觸發 → useSync.ts 接 `pushLeaderboardIfOptedIn(user.id)` 順手 POST `/leaderboard/upsert`
+- [x] 4.3 三狀態分流 in `pushLeaderboardIfOptedIn`: `no-profile` skip / `not-opted-in` skip / `opted_in === true` push with `is_public: profile.is_public === false ? 0 : 1`（pre-`is_public` v14 rows 預設 true）。錯誤吞掉返回 `{kind:'error'}`，不算 sync engine consecutive-failure
+- [x] 4.4 加 `apps/medexam2-hospital-tw/src/lib/leaderboard/api.ts` client helper（5 exports: `checkNicknameAvailability` + `fetchLeaderboardSnapshot` + `upsertLeaderboard` + `optOutLeaderboard` + `deleteLeaderboardMe`，全部包 fetch + JWT bearer + body parse + 400ms debounce on NicknameField; 增量於 Phase 5.2 + 5.4 完成，checkbox 在 verify gate 補勾）
+
+## 5. Opt-in modal & nickname UX
+
+- [x] 5.1 建 `apps/medexam2-hospital-tw/src/components/LeaderboardOptInModal.tsx` — modal-backdrop + modal-card frame、列 5 個公開欄位 + unchecked checkbox「同意公開以上資訊」、嵌 `NicknameField`、submit/dismiss-forever buttons、登入 gate fallback、Google name fallback messaging
+- [x] 5.2 建 `apps/medexam2-hospital-tw/src/components/NicknameField.tsx` — controlled input + 400ms debounce + monotonic requestId 防 stale fetch result + 6 個 validity states（empty / invalid-length / checking / available / taken / error）+ `onValidityChange` ref-mirrored 防 parent callback identity 變化重觸發。額外建 `lib/leaderboard/api.ts` 含 `checkNicknameAvailability()`（Phase 4.4 的一小部分，全套 upsert/opt-out/delete 留 Phase 4）
+- [x] 5.3 加「不再顯示」二次選項 — `LeaderboardPage` wire `onDismissForever` → `markDismissedForever(userId)` 寫 `leaderboardProfile.dismissed_at = Date.now()`（IDB local state, 不上 cloud sync）
+- [x] 5.4 寫 nickname 提交 mutation — `LeaderboardPage` wire `onSubmit` → 讀 `buildLeaderboardAttributes()` 4-attr snapshot → POST `/leaderboard/upsert` → `markOptedIn(userId, nickname)` 寫 IDB profile + 紀錄 `last_pushed_at`。Phase 4.4 補的 `upsertLeaderboard` / `optOutLeaderboard` / `deleteLeaderboardMe` 3 個 helper 同檔
+- [x] 5.5 Dexie schema bump v13 → v14：新增 `leaderboardProfile` table（PK = `user_id`，欄位 `nickname / opted_in / dismissed_at / last_pushed_at`），additive 無 upgrade hook
+
+## 6. Leaderboard page UI
+
+- [x] 6.1 新增 route `/leaderboard` 進 `apps/medexam2-hospital-tw/src/App.tsx` router（HashRouter `<Route path="/leaderboard" element={<LeaderboardPage />} />`，2 行）
+- [x] 6.2 建 `apps/medexam2-hospital-tw/src/pages/LeaderboardPage.tsx` — 沿用 `BookmarksPage` `app-shell + app-header` 慣例；4 filter tabs (segmented control, role=tablist) + Top 100 list + my-rank chip + 「上次更新：HH:MM」timestamp + footer 二行 disclosure（自填無驗證 + V6 起算）
+- [x] 6.3 第一次進入 page 偵測「未 opted in 且未 dismissed」→ render LeaderboardOptInModal — `LeaderboardPage` mount 時 one-shot `getLeaderboardProfile(user.id)` → if no profile + no dismiss → setShowOptInModal(true)；submit / dismiss callbacks 收尾 setShowOptInModal(false)
+- [x] 6.4 Mount 時 `Promise.all` parallel fetch 4 個 filter snapshots、cache to local state；Tab 切換 = local state 切，不打網路。URL `?tab=` 同 `BookmarksPage` 模式
+- [x] 6.5 `total_count === 0` 時顯示「期待第一個上榜的玩家！」+ 上方 timestamp 行永遠顯示「目前 N 位玩家加入排行」counter
+- [x] 6.7（新加 task）`lib/leaderboard/api.ts` 加 `fetchLeaderboardSnapshot(filter)` — public read 不需 JWT，GET KV cache
+- [x] 6.6 HomePage `app-header__meta` 加「排名 →」`<Link to="/leaderboard">`，純 `.nav-link` 跟 唸書/醫院/進修/命運/醫師/收藏 同 convention（無 emoji、2 字標籤）。HelpMenu 說明 entry 留 Phase 9.1 跟其他 doc 一起加
+
+## 7. Settings & lifecycle
+
+- [x] 7.1 在 `HelpMenu.tsx`（**修正**: 二階 settings 在 HelpMenu accordion，不是 SettingsPanel — 那是一階 convention）加「公開到排行榜」section（9th，介於 命運卡 跟 回報問題 之間）— body 兩段說明 + 嵌入新建的 `LeaderboardSettingsControls.tsx` 元件，含三種狀態：未登入 / 未 opt-in（指引到 /leaderboard 頁面）/ 已 opt-in（顯示 toggle + 改暱稱）
+- [x] 7.2 Toggle off → `optOutLeaderboard()` (POST `/leaderboard/opt-out`) + `setLeaderboardPublic(userId, false)` 本地改 hidden
+- [x] 7.3 Toggle on（從 opt-out 重回）→ `setLeaderboardPublic(userId, true)` 改 IDB + 立即跑 `pushLeaderboardIfOptedIn(userId)` 直接 POST `/leaderboard/upsert` 帶 `is_public:1`（不等下次 R2 sync push，避免幾小時 stale）
+- [N/A] 7.4 `delete_my_account()` flow — 二階 沒有 delete-account 按鈕（只有 `safeResetAccountData` → `delete_my_data` 路徑；一階 SettingsPanel 才有 `delete_my_account`）。Cross-app account delete 留 orphan row 為可接受 trade-off（未來 cron 可清；nickname 仍被佔用屬已知 wart）。詳見 commit message
+- [x] 7.5 接 `safeResetAccountData` flow — `getLeaderboardProfile(user.id)` 偵測有 profile 才跑 `deleteLeaderboardMe()` (DELETE D1 row) + `clearLeaderboardProfile()`（清本地）；Worker 失敗用 `console.warn` 吞掉、不 abort reset 流程（leaderboard 是 best-effort，主流程不該因 Worker 掛掉中斷）
+
+## 8. Smoke testing
+
+- [x] 8.1 本機跑 `wrangler dev --local` Worker + vite on `:5173` + `.dev.vars`（`SUPABASE_JWKS_URL=https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`、`SUPABASE_PROJECT_REF=<ref>`，前者必須是 `.well-known` 路徑、`/auth/v1/keys` 會 401 要 apikey header）→ opt-in `wlksmoke` via React modal → `POST /leaderboard/upsert` 200 → local D1 row { user_id, nickname: wlksmoke, tier:1, rep:452, doctor:3, study_min:1, is_public:1 } ✓ → manual cron via `curl /cdn-cgi/handler/scheduled` 200 → KV `composite` snapshot now { rows:1, total_count:1 } with same row ✓
+- [x] 8.2 Chrome MCP preflight `list_connected_browsers`（1 browser connected）→ localhost SPA route 三件套全綠：(1) Direct URL `#/leaderboard` render ✓、(2) in-app nav 回首頁 link + h1 切換 ✓、(3) F5 on `?tab=study` URL + `aria-selected` 完整保留 ✓；console 零 leaderboard error（R2 future flag warn + Supabase refresh-token expired 是 app-wide pre-existing）。Polish: tab UI 從 plain `<button>` refactor 成既有 `.filter-bar` + `.filter-chip` + `aria-pressed` convention，跟年份/稀有度 filter 一套 design system（零新 CSS）
+- [x] 8.3 nickname 邊界 5/5 cases 全綠（via direct Worker fetch `/leaderboard/nickname-check`）— 1 char `a` → `{available:false, reason:invalid_length}` ✓ / 13 chars `abcdefghijklm` → `{available:false, reason:invalid_length}` ✓ / 12 chars `abcdefghijkl` → `{available:true}` ✓ / case collision `WLKSMOKE` vs taken `wlksmoke` → `{available:false}` ✓ / emoji ZWJ family ×2 = 14 codepoints → `{available:false, reason:invalid_length}` ✓
+- [x] 8.4 HelpMenu「公開到排行榜（設定）」toggle off → `POST /leaderboard/opt-out` 200 → D1 row `is_public:0` + `updated_at` bumped + row preserved ✓ → manual cron → KV `composite` now `{rows:0, total_count:0}` ✓ (per D5: opt-out 是隱藏不刪)
+- [x] 8.5 `DELETE /leaderboard/me` via direct Worker fetch with fresh JWT → `{ok:true, deleted:1}` 200 → D1 `SELECT COUNT(*) FROM leaderboard_m2` returns 0 rows ✓ (full `safeResetAccountData` UI flow not exercised — typing "RESET" + game-state wipe too destructive for smoke; client integration is direct `getLeaderboardProfile → deleteLeaderboardMe` wire per task 7.5, covered by code review)
+- [ ] 8.6 在 production prod URL 重跑 SPA 三件套（GH Pages 404.html redirect 已存在，但本 route 第一次驗）— deferred to post-merge dogfood (needs `track-m2 → main` + push first)
+
+## 9. Documentation & release notes
+
+- [x] 9.1 更新 `apps/medexam2-hospital-tw/src/components/HelpMenu.tsx` 加「排名」accordion section — opt-in 流程、隱私、改名、停用排行（新 `leaderboard-info` 4-paragraph doc section 插在 fate-cards 之後、leaderboard-settings 之前；後者 icon 改 ⚙️ + title 標「（設定）」以區隔）
+- [x] 9.2 在 root `CLAUDE.md` 的 hospital app 區段補 leaderboard endpoints / D1 / KV reference + Worker module pointer（新 section「Hospital leaderboard (M_2nd ext)」插在 Bug reporting 之後、Source data path 之前，含 5 endpoint table + resource IDs + migration apply 指令）
+- [x] 9.3 在 `openspec/project.md` Roadmap 加新 row「M_2nd ext — 排名 leaderboard」（插在 M4.5 之後、M5 之前，狀態標 🔄 in-progress，shipped 日期 archive 時改）
+- [x] 9.4 在 `docs/` 加 `LEADERBOARD.md`（類似 `BUG_REPORTING.md` 範本）：data model / endpoints / migration apply / monitoring（含 D1 schema + IDB v14 schema + 5 endpoint 詳解 + nickname 規則 + sync engine integration + owner read flow + monitoring + 4 known warts + 4 follow-up changes）
+
+## 10. Pre-archive verification
+
+- [x] 10.1 跑 `openspec validate add-hospital-leaderboard` — 三維檢查 completeness / correctness / coherence（"Change 'add-hospital-leaderboard' is valid" ✓ on 2026-05-22 evening, post-simplify）
+- [x] 10.2 跑 `/verify` Chrome MCP end-to-end smoke — SPA route 三件套全綠 (1) in-app nav: home `<Link to="/leaderboard">` click → `#/leaderboard` + h1 "排名" + 4 filter chips ✓ (2) direct URL `#/leaderboard?tab=study` → `aria-pressed=true` on 「累積唸書時間」 ✓ (3) F5 reload on tab=study → hash + active filter both preserved ✓；console errors all R2 `accessKeyId is a required option` pre-existing (local Worker 沒 R2 S3 secrets — 不阻擋 leaderboard 流程), zero leaderboard-related errors
+- [x] 10.3 確認 `pnpm -r typecheck` 全綠（含 worker package）（all 8 packages clean post-simplify ✓）
+- [x] 10.4 確認 D1 production 已 migrate；KV namespace production 已 bind；cron `0 * * * *` 在 production 已啟用（curl probes 2026-05-22 evening：`/health` 200 / `/leaderboard/composite` 200 with `last_updated_at: 1779386448416` = 38 min stale = cron OK / `/leaderboard/nickname-check` 401 JWT-gated / unknown filter 404）
+- [x] 10.5 跑 `/simplify` 對本 change 觸碰的程式碼做 final pass（commit `6a0d139` — 2 P1 bugs fixed + 5 P2 wins + 1 P3 doc; deferred follow-ups: workerFetch DRY / lazy snapshot fetch / JSX nesting）

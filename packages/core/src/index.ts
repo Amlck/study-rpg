@@ -162,3 +162,17 @@ export {
   type BugReportRow,
   type SyncDiagnosticSnapshot,
 } from './lib/bug-report-types'
+export {
+  LEADERBOARD_FILTERS,
+  LEADERBOARD_FILTER_LABELS,
+  LEADERBOARD_NICKNAME_MIN_CODEPOINTS,
+  LEADERBOARD_NICKNAME_MAX_CODEPOINTS,
+  normalizeNickname,
+  countNicknameCodepoints,
+  isValidNicknameLength,
+  type LeaderboardFilter,
+  type LeaderboardRow,
+  type LeaderboardSnapshot,
+  type LeaderboardUpsertPayload,
+  type LeaderboardNicknameCheckResponse,
+} from './lib/leaderboard-types'

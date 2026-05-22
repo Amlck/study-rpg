@@ -3,6 +3,7 @@
 // MigrationUploadPrompt / ConflictChooserModal in the modal stack.
 
 import { useState } from 'react'
+import { EmojiIcon } from './EmojiIcon'
 
 export type AccountSwitchChoice = 'clear-local' | 'keep-local' | 'signout'
 
@@ -72,7 +73,7 @@ export function AccountSwitchPrompt({
     >
       <div className="modal frame migration-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <span>⚠ 偵測到不同的 Google 帳號</span>
+          <span><EmojiIcon char="⚠" size={18} /> 偵測到不同的 Google 帳號</span>
         </div>
         <p className="migration-body">
           這個瀏覽器本機已有上一個帳號（
@@ -91,11 +92,11 @@ export function AccountSwitchPrompt({
 
         <div className="migration-compare">
           <div className="migration-compare-side">
-            <div className="migration-compare-label">📱 本機（上一個帳號）</div>
+            <div className="migration-compare-label"><EmojiIcon char="📱" size={16} /> 本機（上一個帳號）</div>
             <div className="migration-compare-ts">{formatTs(localMaxUpdatedAt)}</div>
           </div>
           <div className="migration-compare-side">
-            <div className="migration-compare-label">☁ 雲端（新帳號）</div>
+            <div className="migration-compare-label"><EmojiIcon char="☁" size={16} /> 雲端（新帳號）</div>
             <div className="migration-compare-ts">{cloudLabel}</div>
           </div>
         </div>
@@ -111,7 +112,11 @@ export function AccountSwitchPrompt({
             disabled={busy !== null || !online}
             onClick={() => handle('clear-local')}
           >
-            {busy === 'clear-local' ? '清空中…' : '🧹 清空本地、改用此帳號的雲端醫院進度'}
+            {busy === 'clear-local' ? (
+              '清空中…'
+            ) : (
+              <><EmojiIcon char="🧹" size={16} /> 清空本地、改用此帳號的雲端醫院進度</>
+            )}
             <span className="migration-hint">
               推薦：把上一個帳號的醫院、醫師、答題紀錄清掉，從此帳號的雲端開始。
               {!online && '（離線中無法執行）'}
@@ -124,7 +129,11 @@ export function AccountSwitchPrompt({
             disabled={busy !== null}
             onClick={() => handle('keep-local')}
           >
-            {busy === 'keep-local' ? '繼續中…' : '🔀 保留本地進度、合併到此帳號雲端'}
+            {busy === 'keep-local' ? (
+              '繼續中…'
+            ) : (
+              <><EmojiIcon char="🔀" size={16} /> 保留本地進度、合併到此帳號雲端</>
+            )}
             <span className="migration-hint">
               保留現在的醫院進度，等等再以 LWW（較新者勝）決定每筆資料。
               注意：上一個帳號的紀錄會變成此新帳號的雲端內容。
@@ -142,7 +151,7 @@ export function AccountSwitchPrompt({
           </button>
         </div>
 
-        {error && <div className="migration-error">⚠ {error}</div>}
+        {error && <div className="migration-error"><EmojiIcon char="⚠" size={16} /> {error}</div>}
       </div>
     </div>
   )

@@ -14,6 +14,7 @@ import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB, type ERConsultActiveState } from '../db/schema'
 import { pickQuestionById } from '../lib/quiz'
 import { lookupERDoctorSprite } from '../lib/sprite-lookup'
+import { EmojiIcon } from './EmojiIcon'
 import { ExplanationMarkdown } from './ExplanationMarkdown'
 import {
   ER_CONSULT_GREETINGS,
@@ -163,7 +164,7 @@ function ERConsultDialogInner({
     <div className="modal-backdrop modal-backdrop--er-consult">
       <div className="modal-card modal-card--er-consult" onClick={(e) => e.stopPropagation()}>
         <header className="er-consult__head">
-          <h2 className="er-consult__title">🚨 急診照會</h2>
+          <h2 className="er-consult__title"><EmojiIcon char="🚨" size={24} /> 急診照會</h2>
           <button
             type="button"
             className="er-consult__skip-btn"
@@ -178,7 +179,7 @@ function ERConsultDialogInner({
 
         {showOnboarding && (
           <div className="er-consult__onboarding" role="note">
-            💡 急診照會 = 隨機跨科 consult，可從說明 menu「急診照會設定」關閉
+            <EmojiIcon char="💡" size={18} /> 急診照會 = 隨機跨科 consult，可從說明 menu「急診照會設定」關閉
           </div>
         )}
 
@@ -187,7 +188,7 @@ function ERConsultDialogInner({
             {erDoctorSprite ? (
               <img src={erDoctorSprite} alt="急診醫師" />
             ) : (
-              <span aria-hidden>🩺</span>
+              <EmojiIcon char="🩺" size={32} />
             )}
           </span>
           <div className="er-consult__npc-bubble">
@@ -215,7 +216,7 @@ function ERConsultDialogInner({
               )}
               {question.hasImage && !question.imagePath && (
                 <div className="er-consult__image-missing">
-                  📷 此題含附圖但尚未補齊（{question.id}）
+                  <EmojiIcon char="📷" size={18} /> 此題含附圖但尚未補齊（{question.id}）
                 </div>
               )}
               <ul className="er-consult__options">

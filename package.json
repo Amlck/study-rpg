@@ -17,10 +17,12 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "gen-status": "node scripts/gen-status.mjs",
-    "reconcile": "tsx scripts/reconcile.ts"
+    "reconcile": "tsx scripts/reconcile.ts",
+    "bulk-migrate": "tsx scripts/bulk-migrate.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.105.4",
+    "aws4fetch": "^1.0.20",
     "tsx": "^4.19.0",
     "typescript": "^5.4.0"
   }

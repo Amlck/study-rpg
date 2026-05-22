@@ -46,6 +46,14 @@ jobs:
           # inside vite.config.ts when running through pnpm. VITE_COMMIT_SHA carries the git SHA.
           VITE_COMMIT_SHA: ${{ github.sha }}
           VITE_CLOUD_SYNC_ENABLED: 'true'
+          # R2 migration flags (add-r2-cloud-sync-migration). Optional —
+          # empty/unset secrets fall through to safe defaults via
+          # backend-config.ts + r2/client.ts nonEmpty() guards. Owner adds
+          # these to repo Secrets to flip Phase 3 (READ_BACKEND=r2) and
+          # Phase 4 (BACKEND=r2) without editing this workflow.
+          VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
+          VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
+          VITE_SYNC_WORKER_URL: ${{ secrets.VITE_SYNC_WORKER_URL }}
         run: pnpm --filter @study-rpg/medexam-tw build
 
       - name: Build 二階 app
@@ -54,6 +62,11 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_COMMIT_SHA: ${{ github.sha }}
           VITE_CLOUD_SYNC_ENABLED: 'true'
+          # R2 migration flags — same as 一階 build above; both apps share
+          # the Supabase project + Worker, so flag values are identical.
+          VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
+          VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
+          VITE_SYNC_WORKER_URL: ${{ secrets.VITE_SYNC_WORKER_URL }}
         run: pnpm --filter @study-rpg/medexam2-hospital-tw build
 
       - name: Merge 二階 dist into 一階 dist subpath

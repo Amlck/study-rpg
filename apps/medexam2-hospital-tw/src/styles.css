@@ -1,3 +1,12 @@
+@font-face {
+  font-family: 'Cubic 11';
+  src: url('/study-rpg/hospital/fonts/Cubic_11.woff2') format('woff2'),
+       url('/study-rpg/hospital/fonts/Cubic_11.woff') format('woff');
+  font-display: swap;
+  font-style: normal;
+  font-weight: normal;
+}
+
 :root {
   /* GBA palette, mirrors @study-rpg/theme-pixel-hospital cssVars */
   --bg-cream: #f4ecd8;
@@ -14,6 +23,14 @@
   --rarity-p3: #a06ac4;
   --rarity-p2: #d4a04d;
   --rarity-p1: #c44d4d;
+
+  /* Font tokens — Cubic 11 covers CJK + 拉丁 + 數字 with pixel glyphs.
+     CJK token = label/heading/button (UI chrome).
+     Body token = long-form text (quiz stems) — stays Noto for readability. */
+  --font-pixel-cjk: 'Cubic 11', 'Noto Sans TC', sans-serif;
+  --font-pixel-num: 'Cubic 11', 'VT323', 'Courier New', monospace;
+  --font-pixel-en: 'Cubic 11', 'Press Start 2P', 'Courier New', monospace;
+  --font-body-cjk: 'Noto Sans TC', system-ui, sans-serif;
 }
 
 * {
@@ -22,10 +39,29 @@
 
 body {
   margin: 0;
-  font-family: 'VT323', 'Press Start 2P', 'Noto Sans TC', monospace;
+  font-family: var(--font-pixel-cjk);
   background: var(--bg-cream);
   color: var(--ink);
   image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: none;
+}
+
+/* Long-form text (quiz stems / explanations / bookmarks entries / ER stems)
+   stays Noto Sans TC for readability — Cubic 11 at 11px gets tiring past ~30s. */
+.quiz-modal__stem,
+.quiz-modal__explanation,
+.explanation-markdown,
+.bookmarks-page__entry-stem,
+.bookmarks-page__entry-explanation,
+.er-consult__stem,
+.er-consult__explanation {
+  font-family: var(--font-body-cjk);
+}
+
+img {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
 }
 
 /* Mobile: disable pull-to-refresh on body so swipe-down inside a modal that
@@ -70,7 +106,7 @@ body:has(.modal-backdrop) {
 
 .app-header h1 {
   margin: 0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 20px;
   color: var(--frame-dark);
 }
@@ -79,6 +115,36 @@ body:has(.modal-backdrop) {
   display: flex;
   align-items: center;
   gap: 16px;
+  /* Allow horizontal scroll when 7 nav tabs overflow narrow viewports (iPhone < 390px). */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+
+/* Prevent nav tabs from shrinking — force horizontal scroll instead of squishing. */
+.app-header__meta > .nav-link {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
+
+/* Slim affordance scrollbar on desktop / large mouse viewports. Mobile OS hides natively. */
+.app-header__meta::-webkit-scrollbar {
+  height: 4px;
+}
+
+.app-header__meta::-webkit-scrollbar-thumb {
+  background: var(--frame-dark);
+  border-radius: 2px;
+}
+
+/* Fade right edge on narrow viewports to hint that more nav tabs exist to the right. */
+@media (max-width: 480px) {
+  .app-header__meta {
+    -webkit-mask-image: linear-gradient(to right, black 92%, transparent 100%);
+    mask-image: linear-gradient(to right, black 92%, transparent 100%);
+  }
 }
 
 .ticket-counter-row {
@@ -99,6 +165,7 @@ body:has(.modal-backdrop) {
 .nav-link {
   color: var(--frame-dark);
   text-decoration: none;
+  font-family: var(--font-pixel-cjk);
   font-size: 18px;
   padding: 4px 10px;
   border: 2px solid var(--frame-dark);
@@ -160,7 +227,7 @@ body:has(.modal-backdrop) {
 
 .banner__title {
   margin: 0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 14px;
   color: var(--banner-color);
 }
@@ -301,7 +368,7 @@ body:has(.modal-backdrop) {
 }
 
 .modal-card__rarity-tier {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 22px;
   color: var(--rarity-color);
 }
@@ -401,7 +468,7 @@ body:has(.modal-backdrop) {
 
 .modal-card__name {
   margin: 0 0 12px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 14px;
   color: var(--frame-dark);
 }
@@ -513,7 +580,7 @@ body:has(.modal-backdrop) {
 
 .phone-sprite__caller-name {
   margin: 0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 11px;
   color: #e8e0d0;
   text-align: center;
@@ -602,7 +669,7 @@ body:has(.modal-backdrop) {
 }
 
 .recruit-ceremony__rarity-text {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: clamp(64px, 18vw, 112px);
   color: #fff;
   text-shadow:
@@ -932,7 +999,7 @@ body:has(.modal-backdrop) {
 
 .dev-panel__badge {
   padding: 2px 8px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 12px;
   background: var(--accent-rose);
   color: #fff;
@@ -1132,7 +1199,7 @@ body:has(.modal-backdrop) {
 }
 
 .doctor-card__rarity {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 14px;
   color: var(--rarity-color);
 }
@@ -1152,7 +1219,7 @@ body:has(.modal-backdrop) {
 
 .doctor-card__name {
   margin: 6px 0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 12px;
   color: var(--frame-dark);
   display: inline-flex;
@@ -1312,7 +1379,7 @@ body:has(.modal-backdrop) {
 }
 
 .room-card__type {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 12px;
 }
 
@@ -1345,7 +1412,7 @@ body:has(.modal-backdrop) {
 }
 
 .room-card__name {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 12px;
   color: var(--frame-dark);
   text-align: center;
@@ -1422,7 +1489,7 @@ body:has(.modal-backdrop) {
 
 .assign-modal__title {
   margin: 0 0 6px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 16px;
   color: var(--frame-dark);
 }
@@ -1509,7 +1576,7 @@ body:has(.modal-backdrop) {
 }
 
 .assign-modal__name {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 12px;
   color: var(--frame-dark);
 }
@@ -1639,7 +1706,7 @@ body:has(.modal-backdrop) {
   transform: translateX(-50%);
   z-index: 250;
   padding: 14px 22px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 16px;
   color: var(--ink);
   background: linear-gradient(180deg, #fff4d6 0%, var(--accent-gold) 100%);
@@ -1676,7 +1743,7 @@ body:has(.modal-backdrop) {
 .home-counters-banner__value {
   display: block;
   margin-top: 4px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 18px;
   color: var(--frame-dark);
 }
@@ -1701,7 +1768,7 @@ body:has(.modal-backdrop) {
 }
 
 .home-tier-line strong {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 14px;
   color: var(--accent-rose);
 }
@@ -1778,7 +1845,7 @@ body:has(.modal-backdrop) {
   align-items: baseline;
   gap: 8px;
   padding: 0 4px;
-  font-family: 'Cubic 11', 'Noto Sans TC', sans-serif;
+  font-family: var(--font-pixel-cjk);
 }
 
 .doctor-shelf__group-label {
@@ -1791,7 +1858,7 @@ body:has(.modal-backdrop) {
 .doctor-shelf__group-count {
   font-size: 11px;
   color: rgba(0, 0, 0, 0.55);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
 }
 
 .doctor-shelf__row {
@@ -1813,7 +1880,7 @@ body:has(.modal-backdrop) {
   background: var(--bg-paper);
   border: 2px solid var(--frame-wood-dark, var(--frame-dark));
   border-radius: 4px;
-  font-family: 'Cubic 11', 'Noto Sans TC', sans-serif;
+  font-family: var(--font-pixel-cjk);
   text-align: center;
 }
 
@@ -1891,7 +1958,7 @@ body:has(.modal-backdrop) {
   font-size: 28px;
   font-weight: 700;
   color: rgba(0, 0, 0, 0.35);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
 }
 
 .doctor-shelf__name {
@@ -1945,13 +2012,13 @@ body:has(.modal-backdrop) {
   max-width: 420px;
   width: 100%;
   color: var(--frame-dark);
-  font-family: 'VT323', 'Courier New', monospace;
+  font-family: var(--font-pixel-cjk);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .upgrade-modal__title {
   margin: 0 0 12px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 14px;
   color: var(--accent-rose);
   text-align: center;
@@ -1965,7 +2032,7 @@ body:has(.modal-backdrop) {
 
 .upgrade-modal__current strong,
 .upgrade-modal__next strong {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 13px;
   color: var(--accent-rose);
 }
@@ -1997,7 +2064,7 @@ body:has(.modal-backdrop) {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 11px;
   color: var(--frame-dark);
   text-shadow: 0 0 4px var(--bg-cream);
@@ -2015,7 +2082,7 @@ body:has(.modal-backdrop) {
   font-size: 20px;
   color: var(--accent-gold);
   text-align: center;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
 }
 
 .upgrade-modal__actions {
@@ -2031,7 +2098,7 @@ body:has(.modal-backdrop) {
   border: 2px solid var(--frame-wood-dark, var(--frame-dark));
   border-radius: 4px;
   color: var(--frame-dark);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-pixel-cjk);
   font-size: 12px;
   cursor: pointer;
 }
@@ -4410,7 +4477,7 @@ body:has(.modal-backdrop) {
 .quiz-bug-sheet__head h2 {
   margin: 0;
   font-size: 16px;
-  font-family: 'Cubic 11', 'Noto Sans TC', sans-serif;
+  font-family: var(--font-pixel-cjk);
 }
 .quiz-bug-sheet__close {
   background: transparent;

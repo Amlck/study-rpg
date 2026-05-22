@@ -54,8 +54,8 @@
     },
     "小兒科": {
       "totalQuestions": 710,
-      "explainedQuestions": 710,
-      "coveragePercent": 100,
+      "explainedQuestions": 709,
+      "coveragePercent": 99.9,
       "perYearCounts": {
         "106-1": 34,
         "106-2": 38,
@@ -158,8 +158,8 @@
     },
     "外科": {
       "totalQuestions": 1154,
-      "explainedQuestions": 1154,
-      "coveragePercent": 100,
+      "explainedQuestions": 1153,
+      "coveragePercent": 99.9,
       "perYearCounts": {
         "106-1": 60,
         "106-2": 63,
@@ -367,5 +367,5 @@
   },
   "totalQuestions": 6080,
   "totalSubjects": 14,
-  "builtAt": "2026-05-19T23:58:38.808Z"
+  "builtAt": "2026-05-21T14:39:52.174Z"
 }

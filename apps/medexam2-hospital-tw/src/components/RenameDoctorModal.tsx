@@ -5,6 +5,7 @@ import {
   renameDoctor,
   restoreDefaultDoctorName,
 } from '../services/rename-doctor'
+import { EmojiIcon } from './EmojiIcon'
 
 interface Props {
   doctor: DoctorRow
@@ -62,7 +63,7 @@ export function RenameDoctorModal({ doctor, onClose }: Props) {
         onSubmit={handleSubmit}
       >
         <div className="modal-header">
-          <h2>✏️ 為醫師改名</h2>
+          <h2><EmojiIcon char="✏" size={22} /> 為醫師改名</h2>
           <button
             type="button"
             className="rename-modal__close"
@@ -96,7 +97,7 @@ export function RenameDoctorModal({ doctor, onClose }: Props) {
           </span>
         </label>
 
-        {error && <p className="rename-modal__error">⚠️ {error}</p>}
+        {error && <p className="rename-modal__error"><EmojiIcon char="⚠" size={16} /> {error}</p>}
 
         <div className="rename-modal__actions">
           <button

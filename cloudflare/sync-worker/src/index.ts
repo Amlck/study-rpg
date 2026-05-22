@@ -19,12 +19,17 @@
 import { handlePresign } from "./presign";
 import { handleDeleteOrReset } from "./delete";
 import { runBackupCron } from "./backup";
+import { handleLeaderboard, runLeaderboardCron } from "./leaderboard";
 import { corsHeaders, preflightResponse } from "./cors";
 
 export interface Env {
   // R2 bindings
   R2_PRIMARY: R2Bucket;
   R2_BACKUP: R2Bucket;
+
+  // D1 + KV bindings (hospital leaderboard)
+  LEADERBOARD_DB: D1Database;
+  LEADERBOARD_KV: KVNamespace;
 
   // Secrets (wrangler secret put)
   SUPABASE_JWKS_URL: string;
@@ -54,6 +59,12 @@ export default {
     const headers = corsHeaders(origin, corsAllowed);
 
     try {
+      // Leaderboard routes are sub-path matched (/leaderboard/*) — dispatch
+      // to the module which handles its own sub-routing.
+      if (url.pathname.startsWith("/leaderboard/")) {
+        return await handleLeaderboard(request, env, headers);
+      }
+
       switch (url.pathname) {
         case "/presign":
           return await handlePresign(request, env, headers);
@@ -77,7 +88,19 @@ export default {
     }
   },
 
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runBackupCron(env));
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Dispatch by cron expression so a single scheduled() handler can serve
+    // both the daily R2 backup and the hourly leaderboard pre-compute.
+    // Cron strings come from wrangler.jsonc `triggers.crons` array.
+    switch (event.cron) {
+      case "0 0 * * *":
+        ctx.waitUntil(runBackupCron(env));
+        return;
+      case "0 * * * *":
+        ctx.waitUntil(runLeaderboardCron(env));
+        return;
+      default:
+        console.warn("[scheduled] unknown cron trigger", { cron: event.cron });
+    }
   },
 };

@@ -12,6 +12,7 @@ import {
   detectAllBundlesMigrationNeeded,
   migrateAllBundlesFromSupabase,
 } from '../lib/sync/r2/migrate-from-supabase'
+import { EmojiIcon } from './EmojiIcon'
 
 interface Props {
   supabase: SupabaseClient
@@ -150,7 +151,7 @@ export function MigrationBanner({ supabase, userId }: Props) {
       <div className="migration-banner-body">
         {visibility === 'visible' && (
           <>
-            <span className="migration-banner-icon">🔄</span>
+            <span className="migration-banner-icon"><EmojiIcon char="🔄" size={20} /></span>
             <div className="migration-banner-text">
               <strong>
                 {escalated
@@ -184,7 +185,7 @@ export function MigrationBanner({ supabase, userId }: Props) {
 
         {visibility === 'migrating' && (
           <>
-            <span className="migration-banner-icon">⏳</span>
+            <span className="migration-banner-icon"><EmojiIcon char="⏳" size={20} /></span>
             <div className="migration-banner-text">
               <strong>正在遷移你的雲端存檔…</strong>
               <span className="migration-banner-sub">不要關閉分頁，幾秒內完成。</span>
@@ -194,7 +195,7 @@ export function MigrationBanner({ supabase, userId }: Props) {
 
         {visibility === 'done' && (
           <>
-            <span className="migration-banner-icon">✅</span>
+            <span className="migration-banner-icon"><EmojiIcon char="✅" size={20} /></span>
             <div className="migration-banner-text">
               <strong>遷移完成</strong>
               <span className="migration-banner-sub">你的存檔已移到新雲端架構。</span>
@@ -204,7 +205,7 @@ export function MigrationBanner({ supabase, userId }: Props) {
 
         {visibility === 'error' && (
           <>
-            <span className="migration-banner-icon">⚠</span>
+            <span className="migration-banner-icon"><EmojiIcon char="⚠" size={20} /></span>
             <div className="migration-banner-text">
               <strong>遷移失敗</strong>
               <span className="migration-banner-sub">{errorMsg}</span>
