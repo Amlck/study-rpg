@@ -69,5 +69,11 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: pages deploy dist-cf --project-name med-study-rpg --branch main
+          # workingDirectory hops into cloudflare/sync-worker so wrangler-action
+          # can locate the wrangler devDep already pinned there — avoids the
+          # ERR_PNPM_ADDING_TO_ROOT error that fires when the action tries
+          # `pnpm add wrangler` against the monorepo root. The deploy command
+          # path is relative to that subdir.
+          workingDirectory: cloudflare/sync-worker
+          command: pages deploy ../../dist-cf --project-name med-study-rpg --branch main
           packageManager: pnpm
