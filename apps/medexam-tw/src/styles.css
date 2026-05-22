@@ -2841,7 +2841,12 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  /* Reserve 280px right padding so banner CTAs don't slide under the
+     position: fixed `.header-controls` chip (AuthButton + SyncStatusChip,
+     ~250px wide, anchored top-right with z-index 100). Without this the
+     dismiss button + Export CTA are hidden behind the auth chip on
+     desktop widths. */
+  padding: 10px 280px 10px 14px;
   background: linear-gradient(90deg, #f3d35a 0%, #f6c84d 100%);
   color: #2a1f00;
   border-bottom: 1px solid #c89b1c;
