@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  base: '/study-rpg/',
+  base: process.env.VITE_DEPLOY_BASE || '/study-rpg/',
   plugins: [react()],
   server: { port: 5173 },
   define: {

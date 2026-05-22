@@ -117,12 +117,46 @@ curl -X POST http://localhost:8787/__scheduled?cron=0+0+*+*+*
 `wrangler.jsonc` → `vars.CORS_ALLOWED_ORIGINS` is a comma-separated list:
 
 ```
-https://fireman333.github.io,http://localhost:5173,http://localhost:4173
+https://fireman333.github.io,https://med-study-rpg.com,http://localhost:5173,http://localhost:4173
 ```
+
+`med-study-rpg.com` was added 2026-05-22 when the app started moving off GitHub Pages onto Cloudflare Pages (see change `add-med-study-rpg-domain-migration`). The legacy `fireman333.github.io` origin stays during the 2–4 week bake; a follow-up change removes it once GH Pages flips to redirect-only.
 
 To add a new origin (e.g. Vite fallback port `localhost:5174`), edit `wrangler.jsonc` + `wrangler deploy`. **No need to redeploy R2 bucket CORS policy** — that's set once at bucket creation (see `cloudflare/sync-worker/cors.json` for reference).
 
 Known gotcha: Vite auto-fallback ports outside the allowlist (`localhost:5175` etc.) get CORS-blocked at preflight, manifesting as `r2_push_exhausted: Failed to fetch` in browser console. Workaround: `pnpm exec vite --port 5173 --strictPort` to force the documented port.
+
+## Custom Domain — `api.med-study-rpg.com`
+
+The Worker is reachable under two URLs that hit the same Worker code (no traffic split, no version skew):
+
+| URL | Origin |
+|---|---|
+| `https://study-rpg-sync-worker.tony85314.workers.dev` | Legacy `workers.dev` route (GitHub Pages clients use this) |
+| `https://api.med-study-rpg.com` | Cloudflare Custom Domain binding (Cloudflare Pages clients use this) |
+
+Binding lives in `wrangler.jsonc`:
+
+```jsonc
+"routes": [
+  { "pattern": "api.med-study-rpg.com", "custom_domain": true }
+]
+```
+
+`custom_domain: true` is the modern syntax — Cloudflare auto-provisions DNS + TLS on the matching zone (no separate `zone_name` needed since the host already pins the zone). Within ~60s of `wrangler deploy` the new URL is live with a valid cert.
+
+**Gotcha — wrangler 4.x defaults `workers_dev: false` whenever you add `routes`.** That silently kills the legacy `workers.dev` URL, which breaks the GH Pages clients during the migration bake. The fix is explicit:
+
+```jsonc
+"workers_dev": true,
+```
+
+Without it, `https://study-rpg-sync-worker.tony85314.workers.dev` starts 404'ing immediately after deploy. (Tripped this once on 2026-05-22 — ~30s outage before the explicit flag was added and re-deployed.)
+
+Client-side env (`VITE_SYNC_WORKER_URL`):
+
+- GitHub Pages workflow `.github/workflows/deploy.yml` → defaults to `https://study-rpg-sync-worker.tony85314.workers.dev` (via `secrets.VITE_SYNC_WORKER_URL` or fallback in `apps/*/src/lib/sync/r2/client.ts`)
+- Cloudflare Pages dashboard env → `https://api.med-study-rpg.com`
 
 ## GitHub Actions secrets
 

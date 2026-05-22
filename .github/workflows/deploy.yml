@@ -54,6 +54,10 @@ jobs:
           VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
           VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
           VITE_SYNC_WORKER_URL: ${{ secrets.VITE_SYNC_WORKER_URL }}
+          # Bake-period flag: surfaces the migration banner that points
+          # users at https://med-study-rpg.com/{1st,2nd}/. CF Pages build
+          # does NOT set this so the banner stays hidden on the new domain.
+          VITE_DEPLOY_TARGET: gh-pages
         run: pnpm --filter @study-rpg/medexam-tw build
 
       - name: Build 二階 app
@@ -67,6 +71,8 @@ jobs:
           VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
           VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
           VITE_SYNC_WORKER_URL: ${{ secrets.VITE_SYNC_WORKER_URL }}
+          # Bake-period flag — see 一階 build step for rationale.
+          VITE_DEPLOY_TARGET: gh-pages
         run: pnpm --filter @study-rpg/medexam2-hospital-tw build
 
       - name: Merge 二階 dist into 一階 dist subpath

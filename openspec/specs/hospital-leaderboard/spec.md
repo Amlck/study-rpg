@@ -7,9 +7,7 @@ Defines the opt-in global leaderboard for 二階 `apps/medexam2-hospital-tw`: a 
 Strict opt-in (unchecked consent checkbox + nickname required), case-insensitive unique nicknames (2–12 codepoints), full-trust anti-cheat (sanity bounds only + 「自填無驗證」UI disclosure), and toggle-based opt-out that preserves the D1 row while excluding it from KV snapshots. Account deletion is the only path that removes the leaderboard row entirely.
 
 The capability is independent of the M4 cloud sync data plane and the R2 migration — it does not write any Supabase tables and shares only the existing Cloudflare sync Worker for auth + endpoints.
-
 ## Requirements
-
 ### Requirement: Opt-in flow on first leaderboard visit
 
 The system SHALL present a one-time opt-in modal the first time an authenticated player opens the leaderboard tab. The modal MUST explicitly list the data fields that will be made public (醫院 tier、聲望、醫師個數、累積唸書時間、暱稱), MUST include an unchecked checkbox labelled「同意公開以上資訊」, and MUST require the checkbox be checked before the "加入排行榜" submit button becomes enabled. The modal MUST NOT auto-submit and MUST NOT pre-check the consent checkbox.
@@ -283,3 +281,43 @@ The hospital app HomePage SHALL render a dismissible promo banner at the top of 
 
 - **WHEN** localStorage read / write throws (e.g., private mode, quota exceeded, disabled by browser policy)
 - **THEN** the banner SHALL treat the error as「not dismissed」 and render the banner; the dismiss ✕ button SHALL still hide the banner for the current page lifetime via React state, but the dismiss SHALL NOT persist across page loads
+
+### Requirement: Leaderboard endpoints accept requests from new domain via `api.med-study-rpg.com`
+
+The leaderboard endpoints (`/leaderboard/upsert`, `/leaderboard/:filter`, `/leaderboard/nickname-check`, `/leaderboard/opt-out`, `/leaderboard/me`) are hosted by the same Worker as the R2 sync API. Per the `cloud-sync` capability's new `Worker Custom Domain` requirement, those endpoints SHALL also be reachable under `https://api.med-study-rpg.com/leaderboard/...` once the Custom Domain binding is in place.
+
+Browser clients on `https://med-study-rpg.com/2nd/` SHALL issue leaderboard requests to `https://api.med-study-rpg.com/leaderboard/...` (constructed by concatenating `VITE_SYNC_WORKER_URL` + `/leaderboard/...`).
+
+The Worker's CORS allowed origins SHALL include `https://med-study-rpg.com` per the `cloud-sync` modification. No leaderboard-specific CORS configuration is required beyond what `cloud-sync` already covers — the Worker uses a single allowed-origins list for all routes.
+
+#### Scenario: 二階 client on new domain reads leaderboard
+
+- **GIVEN** a user on `https://med-study-rpg.com/2nd/` opens the leaderboard page
+- **WHEN** the leaderboard hook fetches `/leaderboard/composite`
+- **THEN** the network request SHALL be a GET to `https://api.med-study-rpg.com/leaderboard/composite`
+- **AND** the Worker SHALL return the same KV-cached top-100 snapshot as the workers.dev URL returns
+- **AND** the response SHALL include `Access-Control-Allow-Origin: https://med-study-rpg.com`
+
+#### Scenario: 二階 client on new domain pushes leaderboard row after successful sync
+
+- **GIVEN** an opted-in user on `https://med-study-rpg.com/2nd/` completes a sync push with `firstError === null && !anyOffline`
+- **WHEN** the `onPushComplete` callback fires
+- **THEN** the leaderboard upsert SHALL POST to `https://api.med-study-rpg.com/leaderboard/upsert`
+- **AND** the Worker SHALL verify the JWT, apply sanity bounds, and UPSERT into D1 (existing leaderboard write logic unchanged)
+- **AND** subsequent KV cron refresh SHALL pick up the new row in the snapshot
+
+#### Scenario: Nickname uniqueness check works on new domain
+
+- **GIVEN** a user on `https://med-study-rpg.com/2nd/` is choosing a nickname during opt-in
+- **WHEN** the nickname field debounces and calls `/leaderboard/nickname-check?n=<candidate>`
+- **THEN** the request SHALL go to `https://api.med-study-rpg.com/leaderboard/nickname-check?n=<candidate>`
+- **AND** the Worker SHALL respond with the same availability verdict as the workers.dev URL would
+
+#### Scenario: Account reset hard-deletes leaderboard row from new domain
+
+- **GIVEN** an opted-in user on `https://med-study-rpg.com/2nd/` triggers in-place account reset
+- **WHEN** `safeResetAccountData` calls `deleteLeaderboardMe`
+- **THEN** the request SHALL be a DELETE to `https://api.med-study-rpg.com/leaderboard/me` with a valid JWT
+- **AND** the Worker SHALL hard-delete the user's row from D1 (existing logic unchanged)
+- **AND** subsequent reads SHALL no longer surface that user in the leaderboard
+
