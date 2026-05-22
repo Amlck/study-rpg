@@ -174,7 +174,7 @@ export default function App() {
 
   // Load content pack at mount
   useEffect(() => {
-    getContentPack('/study-rpg/content/medexam-tw')
+    getContentPack(`${import.meta.env.BASE_URL}content/medexam-tw`)
       .then((pack) => {
         // Forward-compat filter: drop unrenderable option-image questions
         // before they reach QuizModal / BossModal / MentorDialog. 一階 corpus

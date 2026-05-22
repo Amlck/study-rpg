@@ -80,12 +80,30 @@ async function copyTree(srcRel, destRel) {
 }
 
 async function writeRedirects() {
-  // `200!` is the CF Pages "force" flag — bypasses the static-file lookup and
-  // the per-app `404.html` so SPA routes (`/1st/skills`, `/2nd/dorm`, etc.)
-  // serve the route's index.html with HTTP 200 instead of falling through to
-  // the 一階 / 二階 GH-Pages-style 404.html (which would respond 404 even on
-  // a "rewritten" path).
-  const lines = ROUTES.map(({ dest }) => `/${dest}/*  /${dest}/index.html  200!`)
+  // CF Pages SPA rewrite for two co-located apps.
+  //
+  // The `/<dest>/*  /<dest>/  200` rule serves the app's index.html for any
+  // path under /<dest>/. But it also rewrites real static files (JSON, JS,
+  // CSS, fonts, images) when those paths happen to share the prefix —
+  // because the directory-canonical destination doesn't preserve the file
+  // existence check (unlike the standard `/* /index.html 200` SPA pattern,
+  // which is what CF Pages docs reference but only works on a single-app
+  // site at the root).
+  //
+  // Workaround: explicitly pass through asset directories FIRST (using
+  // `:splat` to preserve the original subpath), then fall through to the
+  // SPA catch-all. Rule ordering matters — first match wins per CF docs.
+  //
+  // The per-app `404.html` (GH-Pages SPA-fallback helper) is stripped from
+  // dist-cf/<dest>/ in copyTree() so it doesn't intercept before this fires.
+  const assetDirs = ['assets', 'content', 'fonts', 'icons', 'images']
+  const lines = []
+  for (const { dest } of ROUTES) {
+    for (const dir of assetDirs) {
+      lines.push(`/${dest}/${dir}/*  /${dest}/${dir}/:splat  200`)
+    }
+    lines.push(`/${dest}/*  /${dest}/  200`)
+  }
   const body = lines.join('\n') + '\n'
   await fs.writeFile(path.join(repoRoot, OUTPUT_DIR, '_redirects'), body, 'utf8')
 }
