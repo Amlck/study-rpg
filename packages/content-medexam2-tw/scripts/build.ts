@@ -185,6 +185,21 @@ function extractGradingNote(optionText: string): { cleaned: string; note: string
   return { cleaned: optionText.slice(0, m.index).trimEnd(), note: m[1].trim() }
 }
 
+// Upstream PDF→Markdown extractor inlines image references of the form
+// `![Q<N> 圖](../../_images/<paper>/<file>.png)` inside question stems. The
+// figure is also extracted as a PNG file picked up by `imageExists` (see
+// `buildQuestion`), so the markdown text is pure noise — runtime renders the
+// image via `<img>` driven by `imagePath`, then the stem's literal markdown
+// text appears as visible garbage below it. Strip the image syntax + collapse
+// the residual blank line. Stem-only — options/explanation have been
+// post-build scanned and contain zero hits.
+function stripMarkdownImages(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+}
+
 // ─── File system walking ─────────────────────────────────────────────────────
 
 function* walkSourceDir(): Generator<string> {
@@ -295,7 +310,7 @@ function parseQuestionBlocks(body: string): ParseResult {
       }
     }
 
-    const stem = stemLines.join('\n').trim()
+    const stem = stripMarkdownImages(stemLines.join('\n'))
 
     if (!stem) { skips.push({ qNum: block.qNum, reason: 'empty stem' }); continue }
     if (Object.keys(options).length < 2) { skips.push({ qNum: block.qNum, reason: `<2 options (got ${Object.keys(options).length})` }); continue }
