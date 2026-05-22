@@ -11,7 +11,7 @@
 
 ## 2. Supabase Auth allowlist update
 
-- [ ] 2.1 Open Supabase dashboard → Authentication → URL Configuration
+- [ ] 2.1 *(owner)* Open Supabase dashboard → Authentication → URL Configuration — `supabase config push` would require building a full `supabase/config.toml` from scratch, riskier than the 30-second dashboard edit. Keychain access to the Management API token blocked by Auto Mode (correctly — sensitive credential).
 - [ ] 2.2 Confirm "Site URL" is `https://fireman333.github.io/study-rpg/` (leave unchanged for bake)
 - [ ] 2.3 Add `https://med-study-rpg.com/1st/**` to Additional Redirect URLs
 - [ ] 2.4 Add `https://med-study-rpg.com/2nd/**` to Additional Redirect URLs
@@ -70,15 +70,15 @@
 
 ## 8. Cloudflare Pages site setup (dashboard)
 
-- [ ] 8.1 In CF dashboard → Workers & Pages → Create application → Pages → Connect to Git → select the `study-rpg` repo
-- [ ] 8.2 Project name: `med-study-rpg` (or owner's preference); Production branch: `main`
-- [ ] 8.3 Framework preset: `None` (custom build)
-- [ ] 8.4 Build command: `pnpm install --frozen-lockfile && VITE_DEPLOY_BASE=/1st/ pnpm --filter @study-rpg/medexam-tw build && VITE_DEPLOY_BASE=/2nd/ pnpm --filter @study-rpg/medexam2-hospital-tw build && node scripts/build-cf-pages-dist.mjs`
-- [ ] 8.5 Build output directory: `dist-cf`
-- [ ] 8.6 Environment variables (Production): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com`, `VITE_CLOUD_SYNC_ENABLED=true`, `VITE_SYNC_DEBOUNCE_MS=3000`, `VITE_CLOUD_SYNC_BACKEND=dual`, `VITE_CLOUD_SYNC_READ_BACKEND=supabase`, `VITE_APP_VERSION` (mirror the `package.json` version or wire via build script), `VITE_COMMIT_SHA=${CF_PAGES_COMMIT_SHA}` (CF Pages provides this var natively). **Do NOT set `VITE_DEPLOY_TARGET`** — leaving it unset keeps the migration banner hidden on the new domain
-- [ ] 8.7 Environment variables (Preview): same as Production
-- [ ] 8.8 Trigger initial build via dashboard → verify build logs clean, output `dist-cf/` produced
-- [ ] 8.9 Note the assigned `*.pages.dev` preview URL; verify landing page loads (OAuth/sync won't work on `*.pages.dev` because allowlist doesn't include it — that's expected)
+- [x] 8.1 Created CF Pages project `med-study-rpg` via `wrangler pages project create med-study-rpg --production-branch main` (faster than dashboard GitHub integration; owner can wire GitHub integration later for auto-deploys if desired)
+- [x] 8.2 Project name `med-study-rpg`, production branch `main`
+- [x] 8.3 Custom build (no framework preset)
+- [x] 8.4 Build command applied locally — same shape as planned: `VITE_DEPLOY_BASE=/1st/ pnpm --filter ... build && VITE_DEPLOY_BASE=/2nd/ pnpm --filter ... build && node scripts/build-cf-pages-dist.mjs`. Used direct upload via `wrangler pages deploy` instead of dashboard GitHub auto-build for the first ship
+- [x] 8.5 Output directory `dist-cf` confirmed (assembly script writes there)
+- [x] 8.6 Env vars baked into the local production build (since direct upload): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com`, `VITE_CLOUD_SYNC_ENABLED=true`, `VITE_SYNC_DEBOUNCE_MS=3000`, `VITE_CLOUD_SYNC_BACKEND=dual`, `VITE_CLOUD_SYNC_READ_BACKEND=supabase`, `VITE_COMMIT_SHA=<git HEAD>`, `VITE_APP_VERSION=<package.json>`. **`VITE_DEPLOY_TARGET` intentionally unset** so the `DomainMigrationBanner` stays hidden on the new domain. If owner later connects GitHub integration, these env vars need to be set in the dashboard for future builds
+- [ ] 8.7 *(deferred, only matters when GitHub integration enabled)* Environment variables (Preview): same as Production
+- [x] 8.8 Initial deploy succeeded via wrangler; live at `https://med-study-rpg.pages.dev/`
+- [x] 8.9 `https://med-study-rpg.pages.dev/`, `/1st/`, `/2nd/`, `/1st/skills`, `/2nd/dorm` all return HTTP 200. Two SPA-fallback debugging gotchas resolved + documented in `scripts/build-cf-pages-dist.mjs`: (a) `_redirects` rule needs `200!` (force flag) to bypass static-file precedence; (b) per-app `404.html` (GH Pages SPA-fallback helper) must be stripped from `dist-cf/` or CF Pages serves it with HTTP 404 instead of applying the rewrite rule
 
 ## 9. Custom domain attach
 

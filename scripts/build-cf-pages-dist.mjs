@@ -71,10 +71,21 @@ async function copyTree(srcRel, destRel) {
   const src = path.join(repoRoot, srcRel)
   const dest = path.join(repoRoot, OUTPUT_DIR, destRel)
   await fs.cp(src, dest, { recursive: true })
+  // Strip GH-Pages-only SPA fallback helper. CF Pages handles SPA routing
+  // via the top-level _redirects file; leaving 404.html in place makes CF
+  // Pages serve it (with status 404) instead of applying the rewrite rule,
+  // so a direct hit on `/1st/skills` would 404 the SPA route.
+  const fourOhFour = path.join(dest, '404.html')
+  await fs.rm(fourOhFour, { force: true })
 }
 
 async function writeRedirects() {
-  const lines = ROUTES.map(({ dest }) => `/${dest}/*    /${dest}/index.html   200`)
+  // `200!` is the CF Pages "force" flag — bypasses the static-file lookup and
+  // the per-app `404.html` so SPA routes (`/1st/skills`, `/2nd/dorm`, etc.)
+  // serve the route's index.html with HTTP 200 instead of falling through to
+  // the 一階 / 二階 GH-Pages-style 404.html (which would respond 404 even on
+  // a "rewritten" path).
+  const lines = ROUTES.map(({ dest }) => `/${dest}/*  /${dest}/index.html  200!`)
   const body = lines.join('\n') + '\n'
   await fs.writeFile(path.join(repoRoot, OUTPUT_DIR, '_redirects'), body, 'utf8')
 }
