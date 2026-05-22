@@ -22,6 +22,7 @@ import { useSync } from './lib/sync/useSync'
 import { AuthButton } from './components/AuthButton'
 import { MigrationUploadPrompt } from './components/MigrationUploadPrompt'
 import { MigrationBanner } from './components/MigrationBanner'
+import { DomainMigrationBanner } from './components/DomainMigrationBanner'
 import { getSupabase } from './lib/auth/client'
 import { getBackendConfig } from './lib/sync/backend-config'
 import { ConflictChooserModal } from './components/ConflictChooserModal'
@@ -185,6 +186,7 @@ function App() {
 
   return (
     <HashRouter>
+      <DomainMigrationBanner />
       <div className="header-controls">
         <AuthButton />
         {user && (

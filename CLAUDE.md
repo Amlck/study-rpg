@@ -53,6 +53,22 @@ M2（一階）+ M_2nd（二階 hospital mode）並行用 git worktree 隔離。�
 - `packages/core/` stays content-agnostic — medical terms belong in theme / content packs, never in core
 <!-- END: spec skill -->
 
+## Deploy targets (in-flight migration)
+
+Two parallel deploys during the 2–4 week migration bake (started 2026-05-22, change `add-med-study-rpg-domain-migration`):
+
+| Target | URL — 一階 | URL — 二階 | Pipeline |
+|---|---|---|---|
+| **GitHub Pages** (legacy) | `https://fireman333.github.io/study-rpg/` | `https://fireman333.github.io/study-rpg/hospital/` | `.github/workflows/deploy.yml`; sets `VITE_DEPLOY_TARGET=gh-pages` so `DomainMigrationBanner` surfaces |
+| **Cloudflare Pages** (new home) | `https://med-study-rpg.com/1st/` | `https://med-study-rpg.com/2nd/` | CF Pages dashboard GitHub integration; build = `pnpm install && VITE_DEPLOY_BASE=/1st/ pnpm --filter @study-rpg/medexam-tw build && VITE_DEPLOY_BASE=/2nd/ pnpm --filter @study-rpg/medexam2-hospital-tw build && node scripts/build-cf-pages-dist.mjs`; output = `dist-cf/` |
+
+Both deploys hit the same Cloudflare Worker `study-rpg-sync-worker` via two URLs (same backend, no traffic split):
+
+- Legacy: `https://study-rpg-sync-worker.tony85314.workers.dev` (GH Pages clients)
+- New: `https://api.med-study-rpg.com` (CF Pages clients; Custom Domain binding)
+
+OAuth redirect URI allowlist + Supabase Site URL inventory is in [docs/AUTH_REDIRECT_URIS.md](docs/AUTH_REDIRECT_URIS.md). Bake-end follow-up change will flip GH Pages to redirect-only and remove the legacy entries.
+
 ## Repo-specific build / dev quick reference
 
 ```bash

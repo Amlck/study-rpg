@@ -48,6 +48,7 @@ import { getContentPack } from '@study-rpg/content-medexam-tw'
 import { AuthButton } from './components/AuthButton'
 import { MigrationUploadPrompt } from './components/MigrationUploadPrompt'
 import { MigrationBanner } from './components/MigrationBanner'
+import { DomainMigrationBanner } from './components/DomainMigrationBanner'
 import { getSupabase } from './lib/auth/client'
 import { getBackendConfig } from './lib/sync/backend-config'
 import { ConflictChooserModal } from './components/ConflictChooserModal'
@@ -904,6 +905,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <DomainMigrationBanner />
       <header className="app-header">
         <h1>一階國考 RPG</h1>
         <div className="tag">study-rpg · pixel-medical · medexam-tw</div>
