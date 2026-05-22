@@ -1,5 +1,5 @@
 /**
- * Hospital leaderboard — endpoints + hourly snapshot cron.
+ * Hospital leaderboard — endpoints + 30-min snapshot cron.
  *
  * Endpoints (all under /leaderboard/*):
  *   POST   /leaderboard/upsert           → JWT verify → sanity bounds → D1 UPSERT (LWW)
@@ -9,7 +9,7 @@
  *   POST   /leaderboard/opt-out          → JWT verify → set is_public = 0
  *   DELETE /leaderboard/me               → JWT verify → DELETE row (account deletion)
  *
- * Scheduled trigger (cron "0 * * * *", wired in index.ts):
+ * Scheduled trigger (cron "0,30 * * * *", wired in index.ts):
  *   runLeaderboardCron(env)              → 4 D1 queries → 4 KV snapshots
  *
  * Design decisions live in:

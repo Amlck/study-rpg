@@ -47,12 +47,12 @@
 		}
 	],
 	// Cron triggers (dispatched in src/index.ts scheduled() by cron expression):
-	//   "0 0 * * *"  — daily R2-to-R2 backup           → runBackupCron
-	//   "0 * * * *"  — hourly leaderboard pre-compute  → runLeaderboardCron
+	//   "0 0 * * *"     — daily R2-to-R2 backup                → runBackupCron
+	//   "0,30 * * * *"  — every-30-min leaderboard pre-compute → runLeaderboardCron
 	"triggers": {
 		"crons": [
 			"0 0 * * *",
-			"0 * * * *"
+			"0,30 * * * *"
 		]
 	},
 	// Observability — Workers Logs (no separate logpush needed at this scale)
