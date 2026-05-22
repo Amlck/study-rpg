@@ -23,6 +23,7 @@ import {
 import { ROOM_SCENES } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB } from '../db/schema'
 import { getStudySessionController, useStudySessionTick } from '../lib/tick'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
 
@@ -108,9 +109,15 @@ export function StudySessionPage() {
 
       <section className="study-session__banner" aria-label="Session 狀態">
         <div className={`study-session__state study-session__state--${state}`}>
-          {state === 'idle' && '🌙 醫院休息中（沒有念書，零產出）'}
-          {state === 'active' && '📖 念書中 — 醫師看診、聲望累積中'}
-          {state === 'paused' && '⏸️ 已暫停'}
+          {state === 'idle' && (
+            <><EmojiIcon char="🌙" size={18} /> 醫院休息中（沒有念書，零產出）</>
+          )}
+          {state === 'active' && (
+            <><EmojiIcon char="📖" size={18} /> 念書中 — 醫師看診、聲望累積中</>
+          )}
+          {state === 'paused' && (
+            <><EmojiIcon char="⏸" size={18} /> 已暫停</>
+          )}
         </div>
 
         <div className="study-session__controls">

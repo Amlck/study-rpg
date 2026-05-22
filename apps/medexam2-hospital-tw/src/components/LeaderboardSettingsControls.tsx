@@ -24,6 +24,7 @@ import {
 } from '../lib/leaderboard/api'
 import { buildLeaderboardAttributes, pushLeaderboardIfOptedIn } from '../lib/sync/leaderboard'
 import type { LeaderboardProfileRow } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 import { NicknameField, type NicknameValidity } from './NicknameField'
 
 type ToggleStatus = 'idle' | 'flipping' | 'error'
@@ -70,7 +71,7 @@ export function LeaderboardSettingsControls() {
     return (
       <p>
         你還沒加入排行榜。前往{' '}
-        <Link to="/leaderboard">🏆 排名</Link>{' '}
+        <Link to="/leaderboard"><EmojiIcon char="🏆" size={16} /> 排名</Link>{' '}
         頁面開啟加入流程。
       </p>
     )
@@ -183,7 +184,7 @@ export function LeaderboardSettingsControls() {
           className="settings-modal__reset-btn"
           onClick={startEditingNickname}
         >
-          ✏️ 修改暱稱
+          <EmojiIcon char="✏" size={16} /> 修改暱稱
         </button>
       ) : (
         <div className="leaderboard-settings__nickname-editor">

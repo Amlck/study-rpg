@@ -14,6 +14,7 @@ import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
 import { lookupSprite } from '../lib/sprite-lookup'
 import { formatMasteryPercent } from '../lib/mastery'
+import { EmojiIcon } from '../components/EmojiIcon'
 import { RenameDoctorModal } from '../components/RenameDoctorModal'
 
 const RARITY_FILTER_OPTIONS: Rarity[] = [...RARITY_ORDER].reverse()
@@ -132,7 +133,7 @@ export function DoctorRoster() {
                     return spriteUrl ? (
                       <img src={spriteUrl} alt="" className="doctor-card__sprite-img" />
                     ) : (
-                      <span aria-hidden>🩺</span>
+                      <EmojiIcon char="🩺" size={32} />
                     )
                   })()}
                 </div>
@@ -144,7 +145,7 @@ export function DoctorRoster() {
                     aria-label={`為 ${d.name} 改名`}
                     onClick={() => setRenaming(d)}
                   >
-                    ✏️
+                    <EmojiIcon char="✏" size={16} />
                   </button>
                 </h3>
                 {(() => {
