@@ -90,6 +90,11 @@ export interface EquipmentRow {
   equippedDoctorId: string | null
 }
 
+export interface EquipmentMaterialsRow {
+  id: 'global'
+  parts: number
+}
+
 export type RoomRow = Room
 
 export interface GameCountersRow {
@@ -332,6 +337,8 @@ export interface HospitalLocalBackupRecord {
   equipment?: EquipmentRow[]
   equipmentTickets?: EquipmentTicketsRow | null
   equipmentGachaStats?: GachaStatsRow | null
+  /** Optional local-only equipment materials (added v16). */
+  equipmentMaterials?: EquipmentMaterialsRow | null
   /**
    * Optional — present on backups taken post add-monotonic-counters-to-sync
    * (2026-05-19). Older snapshots (taken before this field shipped) MAY omit
@@ -365,6 +372,7 @@ export class HospitalDB extends Dexie {
   equipment!: EntityTable<EquipmentRow, 'id'>
   equipmentTickets!: EntityTable<EquipmentTicketsRow, 'id'>
   equipmentGachaStats!: EntityTable<GachaStatsRow, 'id'>
+  equipmentMaterials!: EntityTable<EquipmentMaterialsRow, 'id'>
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -740,6 +748,44 @@ export class HospitalDB extends Dexie {
           await monoTable.put({ ...mono, lastEquipmentTicketStudyMinutes: mono.totalStudyMinutes })
         }
       })
+
+    // v16: equipment rarity upgrade path — local-only material singleton used
+    // by deterministic equipment upgrades. Existing equipment rows are not
+    // modified; upgrades continue to use their existing rarity field.
+    this.version(16)
+      .stores({
+        affinity: '&subjectId',
+        doctors: '&id, subjectId, rarity, obtainedAt',
+        gachaStats: '&id',
+        tickets: '&id',
+        rooms: '&id, type, slot',
+        gameCounters: '&id',
+        mastery: '&subjectId',
+        questionHistory:
+          '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+        meta: '&key',
+        localBackup: '&key, takenAt',
+        monotonicCounters: '&id',
+        trainingHistory: '++id, doctorId, attemptedAt',
+        eventLog: '++id, triggeredAt',
+        fateCardHistory: '++id, drawnAt',
+        retirementLog: '++id, retiredAt, doctorId',
+        bookmarks: '&questionId, addedAt',
+        bannerUnlockBonusLog: '&subjectId',
+        targetedTickets: '&id, status, subjectId, obtainedAt',
+        targetedTicketHistory: '++id, ticketId, at, event',
+        erConsultLog: '++id, triggeredAt, subjectId',
+        equipment: '&id, rarity, category, obtainedAt, equippedDoctorId',
+        equipmentTickets: '&id',
+        equipmentGachaStats: '&id',
+        equipmentMaterials: '&id',
+      })
+      .upgrade(async (tx) => {
+        const materialsTable = tx.table<EquipmentMaterialsRow, 'global'>('equipmentMaterials')
+        if (!(await materialsTable.get('global'))) {
+          await materialsTable.put({ id: 'global', parts: 0 })
+        }
+      })
   }
 }
 
@@ -780,6 +826,7 @@ export async function ensureSeed(): Promise<void> {
       db.gachaStats,
       db.equipmentTickets,
       db.equipmentGachaStats,
+      db.equipmentMaterials,
       db.rooms,
       db.gameCounters,
       db.doctors,
@@ -824,6 +871,10 @@ export async function ensureSeed(): Promise<void> {
       if (!equipmentStats) {
         const init = initialGachaStats(EQUIPMENT_GACHA_CONFIG)
         await db.equipmentGachaStats.put({ id: 'global', ...init })
+      }
+      const equipmentMaterials = await db.equipmentMaterials.get('global')
+      if (!equipmentMaterials) {
+        await db.equipmentMaterials.put({ id: 'global', parts: 0 })
       }
       const roomCount = await db.rooms.count()
       if (roomCount === 0) {

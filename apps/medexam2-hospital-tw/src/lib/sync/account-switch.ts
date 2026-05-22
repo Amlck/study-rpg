@@ -65,6 +65,7 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       db.equipment,
       db.equipmentTickets,
       db.equipmentGachaStats,
+      db.equipmentMaterials,
       db.meta,
     ],
     async () => {
@@ -82,6 +83,7 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       await db.equipment.clear()
       await db.equipmentTickets.clear()
       await db.equipmentGachaStats.clear()
+      await db.equipmentMaterials.clear()
       const all = await db.meta.toArray()
       const toDelete = all
         .filter(

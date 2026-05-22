@@ -5,9 +5,15 @@ import { RARITY_LABELS, RARITY_ORDER, type Rarity } from '@study-rpg/content-med
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import {
   EQUIPMENT_CATEGORY_LABELS,
+  EQUIPMENT_PARTS_BY_RARITY,
   EQUIPMENT_RARITY_LABELS,
   EQUIPMENT_TICKET_CAP,
+  EQUIPMENT_UPGRADE_COSTS,
+  getNextEquipmentDefinition,
+  getNextEquipmentRarity,
+  isUpgradeableEquipmentCategory,
   type EquipmentCategory,
+  type EquipmentUpgradeSourceRarity,
 } from '../data/equipment'
 import {
   DEFAULT_STETHOSCOPE_SPRITE_LAYOUT,
@@ -23,11 +29,15 @@ import { EquipmentArtwork, hasEquipmentHeroArt } from '../components/EquipmentAr
 import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { lookupSprite } from '../lib/sprite-lookup'
 import {
+  dismantleEquipment,
   describeEquipment,
   equipItem,
   rollEquipment,
   unequipItem,
+  upgradeEquipment,
+  type EquipmentDismantleResult,
   type EquipmentRollOutcome,
+  type EquipmentUpgradeResult,
 } from '../services/equipment'
 
 type SortMode = 'newest' | 'rarity' | 'category' | 'equipped'
@@ -46,6 +56,10 @@ const RARITY_RANK = new Map<Rarity, number>(RARITY_ORDER.map((r, index) => [r, i
 const EQUIPMENT_DRAG_TYPE = 'application/x-study-rpg-equipment'
 const EQUIPMENT_SLOTS = [{ id: 'main', label: '主要器材' }] as const
 const SPRITE_TUNER_CATEGORIES: EquipmentCategory[] = ['stethoscope', 'scalpel', 'chart', 'coat']
+
+function fmt(n: number): string {
+  return Math.round(n).toLocaleString('zh-TW')
+}
 
 function isSpriteTunerEnabled() {
   return import.meta.env.DEV &&
@@ -74,6 +88,8 @@ export function EquipmentPage() {
   const equipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.orderBy('obtainedAt').reverse().toArray(), []) ?? []
   const tickets = useLiveQuery(() => db.equipmentTickets.get('global'), [])
+  const materials = useLiveQuery(() => db.equipmentMaterials.get('global'), [])
+  const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const rollInFlight = useRef(false)
   const [rolling, setRolling] = useState(false)
   const [rollOutcome, setRollOutcome] = useState<Extract<EquipmentRollOutcome, { ok: true }> | null>(null)
@@ -263,6 +279,12 @@ export function EquipmentPage() {
           <p className="equipment-draw-panel__label">器材券</p>
           <p className="equipment-draw-panel__tickets">
             🧰 {tickets?.available ?? 0} / {EQUIPMENT_TICKET_CAP}
+          </p>
+        </div>
+        <div>
+          <p className="equipment-draw-panel__label">器材零件</p>
+          <p className="equipment-draw-panel__tickets">
+            ⚙ {fmt(materials?.parts ?? 0)}
           </p>
         </div>
         <button
@@ -464,6 +486,17 @@ export function EquipmentPage() {
           doctors={doctors}
           equippedDoctor={selectedEquippedDoctor}
           wasPity={selectedWasPity}
+          availableParts={materials?.parts ?? 0}
+          availableRevenue={counters?.revenue ?? 0}
+          onAfterUpgrade={(equipmentItem, message) => {
+            setSelectedItem(equipmentItem)
+            setToast(message)
+          }}
+          onAfterDismantle={(message) => {
+            setSelectedItem(null)
+            setRollOutcome(null)
+            setToast(message)
+          }}
           onClose={() => {
             setSelectedItem(null)
             setRollOutcome(null)
@@ -742,11 +775,41 @@ function EquipmentSpriteTuner({ category, layout, onCategoryChange, onChange }: 
   )
 }
 
+function describeUpgradeAbort(result: Extract<EquipmentUpgradeResult, { kind: 'aborted' }>): string {
+  switch (result.reason) {
+    case 'not-found':
+      return '找不到這件器材'
+    case 'unsupported-category':
+      return '此類器材尚未開放升級'
+    case 'terminal-rarity':
+      return '已達 P1 傳說級'
+    case 'missing-definition':
+      return '缺少下一階器材定義'
+    case 'insufficient-parts':
+      return `零件不足（需要 ${fmt(result.requiredParts)}）`
+    case 'insufficient-revenue':
+      return `營收不足（需要 ${fmt(result.requiredRevenue)} 💰）`
+  }
+}
+
+function describeDismantleAbort(result: Extract<EquipmentDismantleResult, { kind: 'aborted' }>): string {
+  switch (result.reason) {
+    case 'not-found':
+      return '找不到這件器材'
+    case 'equipped':
+      return '已裝備的器材需先卸下才能拆解'
+  }
+}
+
 interface EquipmentDetailModalProps {
   item: EquipmentRow
   doctors: DoctorRow[]
   equippedDoctor: DoctorRow | null
   wasPity: boolean
+  availableParts: number
+  availableRevenue: number
+  onAfterUpgrade: (item: EquipmentRow, message: string) => void
+  onAfterDismantle: (message: string) => void
   onClose: () => void
 }
 
@@ -755,15 +818,42 @@ function EquipmentDetailModal({
   doctors,
   equippedDoctor,
   wasPity,
+  availableParts,
+  availableRevenue,
+  onAfterUpgrade,
+  onAfterDismantle,
   onClose,
 }: EquipmentDetailModalProps) {
   const meta = describeEquipment(item)
   const [pendingDoctorId, setPendingDoctorId] = useState<string | null>(null)
   const [isUnequipping, setIsUnequipping] = useState(false)
+  const [isUpgrading, setIsUpgrading] = useState(false)
+  const [isDismantling, setIsDismantling] = useState(false)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const nextRarity = getNextEquipmentRarity(item.rarity)
+  const nextDefinition = getNextEquipmentDefinition(item.category, item.rarity)
+  const upgradeCost =
+    item.rarity === 'P1' ? null : EQUIPMENT_UPGRADE_COSTS[item.rarity as EquipmentUpgradeSourceRarity]
+  const canShowUpgrade = isUpgradeableEquipmentCategory(item.category)
+  const upgradeDisabledReason =
+    !canShowUpgrade
+      ? '此類器材尚未開放升級'
+      : item.rarity === 'P1'
+        ? '已達 P1 傳說級'
+        : !nextDefinition
+          ? '缺少下一階器材定義'
+          : upgradeCost && availableParts < upgradeCost.parts
+            ? `零件不足（需要 ${fmt(upgradeCost.parts)}）`
+            : upgradeCost && availableRevenue < upgradeCost.revenue
+              ? `營收不足（需要 ${fmt(upgradeCost.revenue)} 💰）`
+              : null
+  const partsFromDismantle = EQUIPMENT_PARTS_BY_RARITY[item.rarity]
+  const busy = pendingDoctorId !== null || isUnequipping || isUpgrading || isDismantling
 
   async function handleEquip(doctorId: string) {
-    if (pendingDoctorId || isUnequipping) return
+    if (busy) return
     setPendingDoctorId(doctorId)
+    setActionMessage(null)
     try {
       await equipItem(item.id, doctorId)
     } finally {
@@ -772,12 +862,55 @@ function EquipmentDetailModal({
   }
 
   async function handleUnequip() {
-    if (pendingDoctorId || isUnequipping) return
+    if (busy) return
     setIsUnequipping(true)
+    setActionMessage(null)
     try {
       await unequipItem(item.id)
     } finally {
       setIsUnequipping(false)
+    }
+  }
+
+  async function handleUpgrade() {
+    if (busy || upgradeDisabledReason) return
+    setIsUpgrading(true)
+    setActionMessage(null)
+    try {
+      const result = await upgradeEquipment(item.id)
+      if (result.kind === 'success') {
+        const upgradedMeta = describeEquipment(result.equipment)
+        onAfterUpgrade(
+          result.equipment,
+          `${upgradedMeta.name} 已升級為 ${result.toRarity}（-${fmt(result.partsSpent)} 零件 / -${fmt(result.revenueSpent)} 💰）`,
+        )
+        return
+      }
+      setActionMessage(describeUpgradeAbort(result))
+    } finally {
+      setIsUpgrading(false)
+    }
+  }
+
+  async function handleDismantle() {
+    if (busy || equippedDoctor) return
+    const isHighRarity = item.rarity === 'P1' || item.rarity === 'P2'
+    const message = isHighRarity
+      ? `確定要拆解 ${item.rarity} ${meta.name}？高稀有度器材很難再取得，拆解後無法復原。`
+      : `確定要拆解 ${item.rarity} ${meta.name}？拆解後無法復原。`
+    if (typeof window !== 'undefined' && !window.confirm(message)) return
+
+    setIsDismantling(true)
+    setActionMessage(null)
+    try {
+      const result = await dismantleEquipment(item.id)
+      if (result.kind === 'success') {
+        onAfterDismantle(`${meta.name} 已拆解，獲得 ${fmt(result.partsGained)} 零件`)
+        return
+      }
+      setActionMessage(describeDismantleAbort(result))
+    } finally {
+      setIsDismantling(false)
     }
   }
 
@@ -800,6 +933,41 @@ function EquipmentDetailModal({
         </p>
         <p className="equipment-detail__effect">{meta.effectText}</p>
 
+        <section className="equipment-detail__upgrade" aria-label="器材升級">
+          <h3>器材升級</h3>
+          {canShowUpgrade && nextRarity && nextDefinition && upgradeCost ? (
+            <>
+              <div className="equipment-upgrade-preview">
+                <span>
+                  目前 <strong>{item.rarity}</strong>
+                </span>
+                <span aria-hidden>→</span>
+                <span>
+                  下一階 <strong>{nextRarity}</strong> {nextDefinition.name}
+                </span>
+              </div>
+              <p className="equipment-detail__effect">{nextDefinition.effectText}</p>
+              <div className="equipment-upgrade-costs" aria-label="升級成本">
+                <span>⚙ {fmt(availableParts)} / {fmt(upgradeCost.parts)}</span>
+                <span>💰 {fmt(availableRevenue)} / {fmt(upgradeCost.revenue)}</span>
+              </div>
+              <button
+                type="button"
+                className="primary-btn equipment-upgrade-btn"
+                disabled={busy || upgradeDisabledReason !== null}
+                onClick={() => void handleUpgrade()}
+              >
+                {isUpgrading ? '升級中...' : `升級到 ${nextRarity}`}
+              </button>
+            </>
+          ) : (
+            <p className="equipment-upgrade-terminal">{upgradeDisabledReason}</p>
+          )}
+          {upgradeDisabledReason && canShowUpgrade && item.rarity !== 'P1' && (
+            <p className="equipment-detail__status" role="status">{upgradeDisabledReason}</p>
+          )}
+        </section>
+
         <section className="equipment-detail__equip-list" aria-label="裝備給醫師">
           <h3>裝備對象</h3>
           {doctors.length === 0 ? (
@@ -811,7 +979,7 @@ function EquipmentDetailModal({
                 type="button"
                 className="equipment-detail__doctor-btn"
                 aria-pressed={equippedDoctor?.id === doctor.id}
-                disabled={pendingDoctorId !== null || isUnequipping}
+                disabled={busy}
                 onClick={() => void handleEquip(doctor.id)}
               >
                 <span>{doctor.name}</span>
@@ -823,17 +991,28 @@ function EquipmentDetailModal({
           )}
         </section>
 
+        {actionMessage && <p className="equipment-detail__status" role="alert">{actionMessage}</p>}
+
         <div className="equipment-detail__actions">
           {equippedDoctor && (
             <button
               type="button"
               className="ghost-btn"
-              disabled={pendingDoctorId !== null || isUnequipping}
+              disabled={busy}
               onClick={() => void handleUnequip()}
             >
               {isUnequipping ? '卸下中...' : '卸下'}
             </button>
           )}
+          <button
+            type="button"
+            className="ghost-btn equipment-dismantle-btn"
+            disabled={busy || equippedDoctor !== null}
+            title={equippedDoctor ? '已裝備的器材需先卸下才能拆解' : `拆解取得 ${fmt(partsFromDismantle)} 零件`}
+            onClick={() => void handleDismantle()}
+          >
+            {isDismantling ? '拆解中...' : `拆解 +${fmt(partsFromDismantle)} ⚙`}
+          </button>
           <button type="button" className="modal-card__close" onClick={onClose}>
             收下
           </button>

@@ -1,12 +1,18 @@
 import { initialGachaStats, randomId, rollGacha } from '@study-rpg/core'
 import type { Rarity, RoomType } from '@study-rpg/content-medexam2-tw'
 import {
+  EQUIPMENT_PARTS_BY_RARITY,
   EQUIPMENT_PITY_RULES,
   EQUIPMENT_ROLL_DEFINITIONS,
+  EQUIPMENT_UPGRADE_COSTS,
   EQUIPMENT_WEIGHTS,
   getDefinitionsByRarity,
   getEquipmentDefinition,
+  getNextEquipmentDefinition,
+  getNextEquipmentRarity,
+  isUpgradeableEquipmentCategory,
   type EquipmentCategory,
+  type EquipmentUpgradeSourceRarity,
 } from '../data/equipment'
 import { getHospitalDB, type EquipmentRow } from '../db/schema'
 
@@ -18,6 +24,41 @@ const EQUIPMENT_GACHA_CONFIG = {
 export type EquipmentRollOutcome =
   | { ok: true; equipment: EquipmentRow; wasPity: boolean }
   | { ok: false; reason: 'no-tickets' | 'empty-pool' }
+
+export type EquipmentUpgradeResult =
+  | {
+      kind: 'success'
+      equipment: EquipmentRow
+      fromRarity: EquipmentUpgradeSourceRarity
+      toRarity: Rarity
+      revenueSpent: number
+      partsSpent: number
+    }
+  | {
+      kind: 'aborted'
+      reason:
+        | 'not-found'
+        | 'unsupported-category'
+        | 'terminal-rarity'
+        | 'missing-definition'
+        | 'insufficient-parts'
+        | 'insufficient-revenue'
+      requiredParts: number
+      requiredRevenue: number
+    }
+
+export type EquipmentDismantleResult =
+  | {
+      kind: 'success'
+      itemId: string
+      partsGained: number
+      rarity: Rarity
+    }
+  | {
+      kind: 'aborted'
+      reason: 'not-found' | 'equipped'
+      partsGained: number
+    }
 
 export async function rollEquipment(): Promise<EquipmentRollOutcome> {
   const db = getHospitalDB()
@@ -83,6 +124,120 @@ export async function unequipItem(itemId: string): Promise<void> {
     if (!item) return
     await db.equipment.put({ ...item, equippedDoctorId: null })
   })
+}
+
+export async function dismantleEquipment(itemId: string): Promise<EquipmentDismantleResult> {
+  const db = getHospitalDB()
+  return db.transaction('rw', [db.equipment, db.equipmentMaterials], async () => {
+    const item = await db.equipment.get(itemId)
+    if (!item) return { kind: 'aborted', reason: 'not-found', partsGained: 0 }
+    if (item.equippedDoctorId) return { kind: 'aborted', reason: 'equipped', partsGained: 0 }
+
+    const partsGained = EQUIPMENT_PARTS_BY_RARITY[item.rarity]
+    const materials = (await db.equipmentMaterials.get('global')) ?? { id: 'global', parts: 0 }
+    await db.equipment.delete(item.id)
+    await db.equipmentMaterials.put({
+      ...materials,
+      parts: materials.parts + partsGained,
+    })
+
+    return {
+      kind: 'success',
+      itemId: item.id,
+      partsGained,
+      rarity: item.rarity,
+    }
+  })
+}
+
+export async function upgradeEquipment(itemId: string): Promise<EquipmentUpgradeResult> {
+  const db = getHospitalDB()
+  return db.transaction(
+    'rw',
+    [db.equipment, db.equipmentMaterials, db.gameCounters],
+    async () => {
+      const item = await db.equipment.get(itemId)
+      if (!item) {
+        return {
+          kind: 'aborted',
+          reason: 'not-found',
+          requiredParts: 0,
+          requiredRevenue: 0,
+        }
+      }
+
+      if (!isUpgradeableEquipmentCategory(item.category)) {
+        return {
+          kind: 'aborted',
+          reason: 'unsupported-category',
+          requiredParts: 0,
+          requiredRevenue: 0,
+        }
+      }
+
+      const toRarity = getNextEquipmentRarity(item.rarity)
+      if (!toRarity) {
+        return {
+          kind: 'aborted',
+          reason: 'terminal-rarity',
+          requiredParts: 0,
+          requiredRevenue: 0,
+        }
+      }
+
+      const fromRarity = item.rarity as EquipmentUpgradeSourceRarity
+      const cost = EQUIPMENT_UPGRADE_COSTS[fromRarity]
+      const targetDefinition = getNextEquipmentDefinition(item.category, item.rarity)
+      if (!targetDefinition) {
+        return {
+          kind: 'aborted',
+          reason: 'missing-definition',
+          requiredParts: cost.parts,
+          requiredRevenue: cost.revenue,
+        }
+      }
+
+      const materials = (await db.equipmentMaterials.get('global')) ?? { id: 'global', parts: 0 }
+      if (materials.parts < cost.parts) {
+        return {
+          kind: 'aborted',
+          reason: 'insufficient-parts',
+          requiredParts: cost.parts,
+          requiredRevenue: cost.revenue,
+        }
+      }
+
+      const counters = await db.gameCounters.get('singleton')
+      if (!counters || counters.revenue < cost.revenue) {
+        return {
+          kind: 'aborted',
+          reason: 'insufficient-revenue',
+          requiredParts: cost.parts,
+          requiredRevenue: cost.revenue,
+        }
+      }
+
+      const upgraded: EquipmentRow = {
+        ...item,
+        definitionId: targetDefinition.id,
+        category: targetDefinition.category,
+        rarity: targetDefinition.rarity,
+      }
+
+      await db.equipmentMaterials.put({ ...materials, parts: materials.parts - cost.parts })
+      await db.gameCounters.put({ ...counters, revenue: counters.revenue - cost.revenue })
+      await db.equipment.put(upgraded)
+
+      return {
+        kind: 'success',
+        equipment: upgraded,
+        fromRarity,
+        toRarity,
+        revenueSpent: cost.revenue,
+        partsSpent: cost.parts,
+      }
+    },
+  )
 }
 
 export function describeEquipment(item: EquipmentRow): {
