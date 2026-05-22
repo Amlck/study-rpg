@@ -39,6 +39,7 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
     opts.onError ?? ((err: unknown, ctx: string) => console.error(`[sync:${ctx}]`, err))
   const onConsecutiveFailure = opts.onConsecutiveFailure
   const onPullComplete = opts.onPullComplete
+  const onPushComplete = opts.onPushComplete
   const r2Bundles = opts.r2Bundles ?? []
   // Cache backend config once per engine. Reads env at construction; throws on
   // invalid combinations so misconfigured deploys surface immediately.
@@ -269,6 +270,17 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
     } else {
       _lastPushAt = Date.now()
       status = 'idle'
+    }
+
+    // Fire post-push hook only when the cycle fully succeeded — never on
+    // partial failures or offline. Callback failures are caught so they
+    // can't corrupt sync status. Used by 二階 leaderboard adapter (Phase 4.2).
+    if (firstError === null && !anyOffline && onPushComplete) {
+      try {
+        await onPushComplete()
+      } catch (err) {
+        onError(err, 'onPushComplete')
+      }
     }
   }
 

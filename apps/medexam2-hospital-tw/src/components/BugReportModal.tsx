@@ -14,6 +14,7 @@ import {
   submitBugReport,
   type BugReportAutoKey,
 } from '../services/bug-report'
+import { EmojiIcon } from './EmojiIcon'
 
 interface Props {
   isOpen: boolean
@@ -210,7 +211,7 @@ export function BugReportModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h2>💬 回報問題 / 建議</h2>
+          <h2><EmojiIcon char="💬" size={24} /> 回報問題 / 建議</h2>
           <button
             type="button"
             className="bug-report-modal__close"

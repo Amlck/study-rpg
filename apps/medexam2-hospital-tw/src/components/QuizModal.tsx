@@ -17,6 +17,7 @@ import {
 } from '../services/quiz-companion'
 import { effectiveYearSet, getYearFilter } from '../services/year-filter'
 import { BugReportModal } from './BugReportModal'
+import { EmojiIcon } from './EmojiIcon'
 import { ExplanationMarkdown } from './ExplanationMarkdown'
 import { QuizBugReportSheet } from './QuizBugReportSheet'
 import { buildQuestionSnapshot, type QuizQuestionSnapshot } from '../services/bug-report'
@@ -280,7 +281,7 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card modal-card--quiz" onClick={(e) => e.stopPropagation()}>
         <header className="quiz-modal__head">
-          <h2 className="quiz-modal__title">📚 {subjectId}</h2>
+          <h2 className="quiz-modal__title"><EmojiIcon char="📚" size={24} /> {subjectId}</h2>
           <button type="button" className="quiz-modal__close" onClick={onClose} aria-label="關閉">
             ✕
           </button>
@@ -306,7 +307,8 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
                     THEME_PIXEL_HOSPITAL.sprites,
                     boundDoctor.rarity,
                   )
-                  return url ? <img src={url} alt="" /> : <span aria-hidden>🩺</span>
+                  return url ? <img src={url} alt="" /> : <EmojiIcon char="🩺" size={32} />
+
                 })()}
               </span>
               <span className="quiz-modal__partner-info">
@@ -317,7 +319,7 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
               </span>
               {specialtyMultiplier > 1.0 && (
                 <span className="quiz-modal__partner-bonus" title={`同科 ${boundDoctor.subjectId} 醫師 — 掌握加成 ${specialtyMultiplier}×`}>
-                  ✨ {specialtyMultiplier}×
+                  <EmojiIcon char="✨" size={16} /> {specialtyMultiplier}×
                 </span>
               )}
               {doctors.length > 1 && (
@@ -398,12 +400,12 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
               )}
               {question.hasImage && !question.imagePath && (
                 <div className="quiz-modal__image-missing">
-                  📷 此題含附圖但尚未補齊（{question.id}）
+                  <EmojiIcon char="📷" size={18} /> 此題含附圖但尚未補齊（{question.id}）
                 </div>
               )}
               {question.disputed && revealed && (
                 <p className="quiz-modal__disputed">
-                  ⚖️ 送分題（考選部判定全部給分，任何選項都算對）
+                  <EmojiIcon char="⚖" size={18} /> 送分題（考選部判定全部給分，任何選項都算對）
                 </p>
               )}
               <ul className="quiz-modal__options">
@@ -464,7 +466,7 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
             title="回報這題"
             disabled={!question}
           >
-            🐞
+            <EmojiIcon char="🐞" size={20} />
           </button>
           <button
             type="button"
@@ -524,7 +526,7 @@ function QuestionMetaRow({ questionId }: { questionId: string }) {
         className="quiz-modal__bookmark-toggle"
         onClick={() => void toggleBookmark(questionId)}
       >
-        {bookmarked ? '⭐' : '☆'}
+        <EmojiIcon char={bookmarked ? '⭐' : '☆'} size={20} />
       </button>
     </div>
   )
@@ -561,7 +563,7 @@ function InlinePromote({ questionId, wasWrong }: { questionId: string; wasWrong:
         }`}
         onClick={() => void toggleBookmark(questionId)}
       >
-        {bookmarked ? '⭐ 已收藏' : '☆ 加入收藏'}
+        <EmojiIcon char={bookmarked ? '⭐' : '☆'} size={18} /> {bookmarked ? '已收藏' : '加入收藏'}
       </button>
     </div>
   )

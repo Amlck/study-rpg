@@ -12,6 +12,7 @@ import {
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { lookupSprite } from '../lib/sprite-lookup'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 import { assignDoctor, unassignDoctor, getUnassignedDoctors } from '../lib/assignment'
 import { upgradeFacility } from '../services/facility'
 
@@ -128,7 +129,7 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, onClose }:
                     style={{ ['--rarity-color' as string]: `var(--rarity-${d.rarity.toLowerCase()})` } as React.CSSProperties}
                   >
                     <span className="assign-modal__sprite">
-                      {spriteUrl ? <img src={spriteUrl} alt="" /> : <span aria-hidden>🩺</span>}
+                      {spriteUrl ? <img src={spriteUrl} alt="" /> : <EmojiIcon char="🩺" size={32} />}
                     </span>
                     <span className="assign-modal__info">
                       <span className="assign-modal__name">{d.name}</span>
@@ -158,7 +159,7 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, onClose }:
               <p className="assign-modal__facility-next">
                 升級至 <strong>Lv.{nextLevel}</strong>（×{nextMultiplier.toFixed(1)}）
                 {'　成本 '}
-                <strong>{fmt(upgradeCost)} 💰</strong>
+                <strong>{fmt(upgradeCost)} <EmojiIcon char="💰" size={14} /></strong>
               </p>
               <button
                 type="button"
@@ -167,7 +168,11 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, onClose }:
                 disabled={busy || !canAffordUpgrade}
                 title={canAffordUpgrade ? '' : `營收不足（需要 ${fmt(upgradeCost)} 💰）`}
               >
-                {canAffordUpgrade ? '升級設施' : `需要 ${fmt(upgradeCost)} 💰`}
+                {canAffordUpgrade ? (
+                  '升級設施'
+                ) : (
+                  <>需要 {fmt(upgradeCost)} <EmojiIcon char="💰" size={14} /></>
+                )}
               </button>
               {facilityError && <p className="assign-modal__facility-error">{facilityError}</p>}
             </>

@@ -183,6 +183,41 @@ Force sign-in gate: modal shows a login CTA instead of the form when `useAuth().
 
 Apply the migration manually once: `supabase db push` or paste `0004_bug_reports.sql` into the dashboard SQL editor. Sanity SQL in `supabase/sanity/bug_reports_rls.sql`. Full reference: `docs/BUG_REPORTING.md`.
 
+## Hospital leaderboard (M_2nd ext)
+
+`apps/medexam2-hospital-tw` ships an opt-in global leaderboard for 二階 — 5 public fields (hospital tier / reputation / doctor count / total study minutes / 2–12 codepoint nickname). Backend is **Cloudflare D1 + KV via the existing sync Worker**, not Supabase (chosen for zero egress at ~1k-player scale and to keep `add-r2-cloud-sync-migration` cutover unblocked).
+
+Worker module: `cloudflare/sync-worker/src/leaderboard.ts` (endpoints + hourly cron). Endpoints:
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/leaderboard/upsert` | JWT verify → sanity bounds → D1 UPSERT (LWW on `updated_at`) |
+| GET | `/leaderboard/:filter` | Public read of pre-computed KV snapshot; `filter ∈ {composite, reputation, doctor, study}` |
+| GET | `/leaderboard/nickname-check?n=<candidate>` | JWT verify → NFKC + lowercase D1 lookup |
+| POST | `/leaderboard/opt-out` | JWT verify → flip `is_public = 0`, bump `updated_at` |
+| DELETE | `/leaderboard/me` | JWT verify → hard delete D1 row (account-reset flow) |
+
+| Resource | Value |
+|---|---|
+| D1 database | `study-rpg-leaderboard` (id `365a3809-4960-4373-8b0f-f864b2323c65`) |
+| KV namespace | `LEADERBOARD_KV` (id `f0afc16989654688b5c98d420d468e28`) |
+| Migration | `cloudflare/sync-worker/migrations/0001_leaderboard.sql` (NOT in supabase/migrations/ namespace) |
+| Hourly cron | `0 * * * *` → `runLeaderboardCron` writes 4 KV snapshot keys `leaderboard:m2:top100:<filter>` |
+| Daily cron (existing) | `0 0 * * *` → `runBackupCron` (R2-to-R2 backup, unrelated) |
+| Active Worker version | `3be17865-1d80-4110-aa03-913c3fc28e81` |
+
+Client side: opt-in push hooked into sync engine's `onPushComplete` (only fires when `firstError === null && !anyOffline`). Per-user profile lives in Dexie v14 `leaderboardProfile` table (`user_id` PK, `nickname / opted_in / is_public / dismissed_at / last_pushed_at`). Push helper `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` clamps 國家級教學醫院 tier → 3 to match Worker's `TIER_MAX`.
+
+Apply D1 migration:
+
+```bash
+cd cloudflare/sync-worker
+wrangler d1 migrations apply study-rpg-leaderboard --local   # dev
+wrangler d1 migrations apply study-rpg-leaderboard --remote  # prod
+```
+
+Full reference: `docs/LEADERBOARD.md`.
+
 ## Source data path
 
 題庫原始 .md 在使用者本機（**不在 repo 內**）：

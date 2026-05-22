@@ -26,6 +26,7 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import { EVENT_ICONS } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB } from '../db/schema'
+import { EmojiIcon } from './EmojiIcon'
 import {
   resolveAudit,
   resolveEmergencyShift,
@@ -168,7 +169,7 @@ export function EventModal() {
       <div className="modal-backdrop" role="dialog" aria-label="未知事件" aria-modal="true">
         <div className="modal frame event-modal">
           <header className="event-modal__head">
-            <h2>⚠️ 未知事件</h2>
+            <h2><EmojiIcon char="⚠" size={24} /> 未知事件</h2>
           </header>
           <div className="event-modal__body">
             <p>
@@ -204,7 +205,7 @@ export function EventModal() {
                   className="event-modal__icon"
                 />
               )}
-              <h2>⚠️ 醫療糾紛</h2>
+              <h2><EmojiIcon char="⚠" size={24} /> 醫療糾紛</h2>
             </header>
             <div className="event-modal__body">
               <p>一位病患的家屬對於診療結果有疑慮，已向院方提出申訴。你決定如何處理？</p>
@@ -257,7 +258,7 @@ export function EventModal() {
                   className="event-modal__icon"
                 />
               )}
-              <h2>🌟 VIP 病人</h2>
+              <h2><EmojiIcon char="🌟" size={24} /> VIP 病人</h2>
             </header>
             <div className="event-modal__body">
               <p>
@@ -290,7 +291,7 @@ export function EventModal() {
                   className="event-modal__icon"
                 />
               )}
-              <h2>🚑 急診加開</h2>
+              <h2><EmojiIcon char="🚑" size={24} /> 急診加開</h2>
             </header>
             <div className="event-modal__body">
               <p>
@@ -323,7 +324,7 @@ export function EventModal() {
                   className="event-modal__icon"
                 />
               )}
-              <h2>📋 醫療評鑑</h2>
+              <h2><EmojiIcon char="📋" size={24} /> 醫療評鑑</h2>
             </header>
             <div className="event-modal__body">
               <p>
