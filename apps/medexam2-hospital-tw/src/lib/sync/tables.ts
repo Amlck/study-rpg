@@ -21,6 +21,7 @@ import type {
   GachaStatsRow,
   GameCountersRow,
   HospitalDB,
+  LeaderboardProfileRow,
   MasteryRow,
   MonotonicCountersRow,
   QuestionHistoryRow,
@@ -591,6 +592,54 @@ const HOSPITAL_MONOTONIC_COUNTERS: TableAdapter = {
   },
 }
 
+/**
+ * leaderboardProfile singleton — added 2026-05-22 to close a migration scope
+ * gap surfaced after med-study-rpg.com domain migration: opt-in state lived
+ * only in Dexie, so cross-origin sign-in landed in an empty
+ * `leaderboardProfile` table and re-prompted opt-in even when D1 already had
+ * the user's row. Including it in the m2 bundle hydrates the opt-in state
+ * cross-origin on first pull.
+ *
+ * Shape mirrors HOSPITAL_MONOTONIC_COUNTERS — singleton keyed by user_id,
+ * entire row stored as opaque payload, LWW against `_updatedAt` Dexie hook
+ * timestamp.
+ */
+const LEADERBOARD_PROFILE: TableAdapter = {
+  postgresTable: 'leaderboard_profile',
+  shape: 'singleton',
+  dexieTable: 'leaderboardProfile',
+  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
+    if (!dirtyPks.size) return []
+    const row = await (db as HospitalDB).leaderboardProfile.get(userId)
+    if (!row) return []
+    return [{ user_id: userId, updated_at: updatedAt, app_version: appVersion, data: row }]
+  },
+  async snapshotAll(db, userId, updatedAt, appVersion) {
+    const row = await (db as HospitalDB).leaderboardProfile.get(userId)
+    if (!row) return []
+    return [{ user_id: userId, updated_at: updatedAt, app_version: appVersion, data: row }]
+  },
+  async applyToLocal(db, cloudRow, opts) {
+    const data = cloudRow.data as WithUpdatedAt<LeaderboardProfileRow> | undefined
+    if (!data) return false
+    const force = opts?.force ?? false
+    const cloudMs = Date.parse(cloudRow.updated_at)
+    if (!Number.isFinite(cloudMs)) return false
+    if (!force) {
+      const local = (await (db as HospitalDB).leaderboardProfile.get(cloudRow.user_id)) as
+        | WithUpdatedAt<LeaderboardProfileRow>
+        | undefined
+      const localMs = local?._updatedAt
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+    }
+    // Preserve user_id PK + stamp `_updatedAt` matching cloud row.
+    const next = { ...data, user_id: cloudRow.user_id, _updatedAt: cloudMs }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as HospitalDB).leaderboardProfile.put(next as any)
+    return true
+  },
+}
+
 export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
   HOSPITAL_DOCTORS,
@@ -600,6 +649,7 @@ export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   TARGETED_TICKETS,
   TARGETED_TICKET_HISTORY,
   HOSPITAL_MONOTONIC_COUNTERS,
+  LEADERBOARD_PROFILE,
 ]
 
 /**
@@ -624,6 +674,7 @@ export const M2_ADAPTERS: readonly TableAdapter[] = [
   TARGETED_TICKETS,
   TARGETED_TICKET_HISTORY,
   HOSPITAL_MONOTONIC_COUNTERS,
+  LEADERBOARD_PROFILE,
 ]
 
 export const BOOKMARKS_ADAPTERS: readonly TableAdapter[] = [QUESTION_BOOKMARKS]

@@ -136,6 +136,13 @@ export async function handleLeaderboard(
   if (path === "/leaderboard/me" && method === "DELETE") {
     return handleDeleteMe(request, env, headers);
   }
+  if (path === "/leaderboard/me" && method === "GET") {
+    return handleGetMe(request, env, headers);
+  }
+  // NOTE: handleGetMe added 2026-05-22 but Worker deploy currently blocked by
+  // CF entitlements.not_available 10007 (account-level issue, unrelated).
+  // Endpoint is dormant until deploy unblocks; client-side seed-on-sign-in
+  // path is guarded by feature detection (404 → fall back to opt-in modal).
   if (path === "/leaderboard/nickname-check" && method === "GET") {
     return handleNicknameCheck(request, env, headers);
   }
@@ -319,6 +326,65 @@ async function handleOptOut(
     .run();
 
   return jsonResponse({ ok: true }, 200, headers);
+}
+
+async function handleGetMe(
+  request: Request,
+  env: Env,
+  headers: Record<string, string>,
+): Promise<Response> {
+  // Cross-origin seed-back: a client on a new origin (e.g. post-domain-
+  // migration `med-study-rpg.com`) whose IndexedDB has no `leaderboardProfile`
+  // row can call this to discover whether the user already has a server-
+  // side row from a prior session and rehydrate their local opted_in /
+  // nickname / is_public state — avoiding a redundant opt-in modal.
+  //
+  // Returns 200 + { row: null } when the user has never opted in (this is
+  // an expected state, not an error — clients should treat it as "show
+  // opt-in modal on first visit"). Returns 200 + row when found.
+  let userSub: string;
+  try {
+    userSub = await authUser(request, env);
+  } catch {
+    return jsonResponse({ error: "unauthenticated" }, 401, headers);
+  }
+
+  const row = await env.LEADERBOARD_DB
+    .prepare(
+      "SELECT user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at FROM leaderboard_m2 WHERE user_id = ?",
+    )
+    .bind(userSub)
+    .first<{
+      user_id: string;
+      nickname: string;
+      hospital_tier: number;
+      reputation: number;
+      doctor_count: number;
+      total_study_min: number;
+      is_public: number;
+      updated_at: number;
+    }>();
+
+  if (!row) {
+    return jsonResponse({ row: null }, 200, headers);
+  }
+
+  return jsonResponse(
+    {
+      row: {
+        user_id: row.user_id,
+        nickname: row.nickname,
+        hospital_tier: row.hospital_tier,
+        reputation: row.reputation,
+        doctor_count: row.doctor_count,
+        total_study_min: row.total_study_min,
+        is_public: row.is_public === 1,
+        updated_at: row.updated_at,
+      },
+    },
+    200,
+    headers,
+  );
 }
 
 async function handleDeleteMe(
