@@ -23,12 +23,14 @@ export const LEADERBOARD_FILTERS = ['composite', 'reputation', 'doctor', 'study'
 
 export type LeaderboardFilter = (typeof LEADERBOARD_FILTERS)[number]
 
-/** Display labels (繁中) for the UI filter tab bar. */
+/** Display labels (繁中) for the UI filter tab bar. Short form to fit
+ * mobile width without wrapping. Long-form descriptions still used in
+ * opt-in modal / HelpMenu where space allows. */
 export const LEADERBOARD_FILTER_LABELS: Record<LeaderboardFilter, string> = {
-  composite: '綜合排名',
+  composite: '綜合',
   reputation: '聲望',
-  doctor: '醫師個數',
-  study: '累積唸書時間',
+  doctor: '醫師',
+  study: '唸書',
 }
 
 // ─── Nickname rules ──────────────────────────────────────────────────────────
