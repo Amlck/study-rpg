@@ -44,6 +44,7 @@ import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
 import { TargetedTicketSection } from '../components/TargetedTicketSection'
 import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
+import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
 
@@ -172,6 +173,8 @@ export function HomePage() {
           </Link>
         </div>
       </header>
+
+      <LeaderboardPromoBanner />
 
       <div className="ticket-counter-row">
         <span
