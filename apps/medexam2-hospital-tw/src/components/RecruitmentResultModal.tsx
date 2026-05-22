@@ -96,9 +96,6 @@ function HospitalEntrance({ doctor, rarityVar, spriteUrl, onOpen }: EntranceProp
         </span>
       </button>
     </motion.div>
-        <EmojiIcon char="📞" size={48} />
-      </motion.button>
-    </div>
   )
 }
 
