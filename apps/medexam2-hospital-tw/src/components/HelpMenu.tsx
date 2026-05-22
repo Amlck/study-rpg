@@ -9,9 +9,10 @@
  * fallback for emergent confusion. Modal can be opened from any route.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { TIER_UPGRADE_THRESHOLDS } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { snapshotLocalToBackup } from '../lib/sync/migration'
 import { BugReportModal } from './BugReportModal'
 import { EmojiIcon } from './EmojiIcon'
 import {
@@ -162,6 +163,15 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'data-import',
+    icon: '📥',
+    title: '跨網域搬遷 — 匯入本機 JSON',
+    body: [
+      '從舊網址（fireman333.github.io/study-rpg/hospital/）的搬遷公告匯出的本機 JSON 可以在這裡匯入到新網址。本機 IndexedDB 是 per-origin 的、不會自動跟著搬遷，需要這個手動匯入步驟。',
+      '匯入會覆寫本機所有醫院 sync 資料（19 個表 — tier / 收益 / 聲望 / 醫師 / 答題記錄 / 命運卡 / SRS / 收藏 / 排行榜 profile 等）。匯入前會先快照到 localBackup 安全網（但這個安全網只包含 11 個核心表，非完整覆蓋）。',
+    ],
+  },
+  {
     id: 'account-reset',
     icon: '♻',
     title: '重置此帳號進度',
@@ -191,6 +201,143 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
   const [fontMode, setFontModeState] = useState<FontMode | null>(null)
   const [accountResetMsg, setAccountResetMsg] = useState<string | null>(null)
   const [accountResetting, setAccountResetting] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+
+  function triggerImport(): void {
+    const input = importInputRef.current
+    if (!input) return
+    input.value = ''
+    input.click()
+  }
+
+  async function handleImportFile(file: File): Promise<void> {
+    setImportMsg(null)
+    setImporting(true)
+    try {
+      const text = await file.text()
+      let payload: Record<string, unknown>
+      try {
+        payload = JSON.parse(text) as Record<string, unknown>
+      } catch {
+        throw new Error('檔案不是合法 JSON')
+      }
+      if (payload.schema_version !== 'local-bake-export-v1') {
+        throw new Error(`不支援的 schema 版本：${String(payload.schema_version ?? '未知')}`)
+      }
+      if (payload.app !== 'medexam2-hospital-tw') {
+        throw new Error(`此 JSON 是給 ${String(payload.app ?? '未知 app')} 用的，無法匯入二階`)
+      }
+      const ok = window.confirm(
+        '⚠ 匯入會覆寫本機所有 19 個醫院 sync 表（聲望 / 醫師 / 答題 / 命運卡 / SRS / 收藏 等）。\n\n' +
+          '匯入前會先快照 localBackup 安全網（但只覆蓋 11 個核心表）。\n' +
+          '建議在乾淨裝置或先匯出當前資料後再匯入。\n\n' +
+          '確定要匯入嗎？',
+      )
+      if (!ok) {
+        setImportMsg('已取消')
+        return
+      }
+      const db = getHospitalDB()
+      await snapshotLocalToBackup(db, 'anonymous-import', 'before-domain-migration-import')
+      await db.transaction(
+        'rw',
+        [
+          db.affinity,
+          db.doctors,
+          db.gachaStats,
+          db.tickets,
+          db.rooms,
+          db.gameCounters,
+          db.mastery,
+          db.questionHistory,
+          db.bookmarks,
+          db.monotonicCounters,
+          db.trainingHistory,
+          db.eventLog,
+          db.fateCardHistory,
+          db.retirementLog,
+          db.targetedTickets,
+          db.targetedTicketHistory,
+          db.erConsultLog,
+          db.leaderboardProfile,
+          db.bannerUnlockBonusLog,
+        ],
+        async () => {
+          await Promise.all([
+            db.affinity.clear(),
+            db.doctors.clear(),
+            db.gachaStats.clear(),
+            db.tickets.clear(),
+            db.rooms.clear(),
+            db.gameCounters.clear(),
+            db.mastery.clear(),
+            db.questionHistory.clear(),
+            db.bookmarks.clear(),
+            db.monotonicCounters.clear(),
+            db.trainingHistory.clear(),
+            db.eventLog.clear(),
+            db.fateCardHistory.clear(),
+            db.retirementLog.clear(),
+            db.targetedTickets.clear(),
+            db.targetedTicketHistory.clear(),
+            db.erConsultLog.clear(),
+            db.leaderboardProfile.clear(),
+            db.bannerUnlockBonusLog.clear(),
+          ])
+          const rows = (key: string): unknown[] | null => {
+            const v = payload[key]
+            return Array.isArray(v) && v.length > 0 ? v : null
+          }
+          const affinityRows = rows('affinity')
+          if (affinityRows) await db.affinity.bulkPut(affinityRows as Parameters<typeof db.affinity.bulkPut>[0])
+          const doctorsRows = rows('doctors')
+          if (doctorsRows) await db.doctors.bulkPut(doctorsRows as Parameters<typeof db.doctors.bulkPut>[0])
+          const gachaStatsRows = rows('gachaStats')
+          if (gachaStatsRows) await db.gachaStats.bulkPut(gachaStatsRows as Parameters<typeof db.gachaStats.bulkPut>[0])
+          const ticketsRows = rows('tickets')
+          if (ticketsRows) await db.tickets.bulkPut(ticketsRows as Parameters<typeof db.tickets.bulkPut>[0])
+          const roomsRows = rows('rooms')
+          if (roomsRows) await db.rooms.bulkPut(roomsRows as Parameters<typeof db.rooms.bulkPut>[0])
+          const gameCountersRows = rows('gameCounters')
+          if (gameCountersRows) await db.gameCounters.bulkPut(gameCountersRows as Parameters<typeof db.gameCounters.bulkPut>[0])
+          const masteryRows = rows('mastery')
+          if (masteryRows) await db.mastery.bulkPut(masteryRows as Parameters<typeof db.mastery.bulkPut>[0])
+          const questionHistoryRows = rows('questionHistory')
+          if (questionHistoryRows) await db.questionHistory.bulkPut(questionHistoryRows as Parameters<typeof db.questionHistory.bulkPut>[0])
+          const bookmarksRows = rows('bookmarks')
+          if (bookmarksRows) await db.bookmarks.bulkPut(bookmarksRows as Parameters<typeof db.bookmarks.bulkPut>[0])
+          const monotonicCountersRows = rows('monotonicCounters')
+          if (monotonicCountersRows) await db.monotonicCounters.bulkPut(monotonicCountersRows as Parameters<typeof db.monotonicCounters.bulkPut>[0])
+          const trainingHistoryRows = rows('trainingHistory')
+          if (trainingHistoryRows) await db.trainingHistory.bulkPut(trainingHistoryRows as Parameters<typeof db.trainingHistory.bulkPut>[0])
+          const eventLogRows = rows('eventLog')
+          if (eventLogRows) await db.eventLog.bulkPut(eventLogRows as Parameters<typeof db.eventLog.bulkPut>[0])
+          const fateCardHistoryRows = rows('fateCardHistory')
+          if (fateCardHistoryRows) await db.fateCardHistory.bulkPut(fateCardHistoryRows as Parameters<typeof db.fateCardHistory.bulkPut>[0])
+          const retirementLogRows = rows('retirementLog')
+          if (retirementLogRows) await db.retirementLog.bulkPut(retirementLogRows as Parameters<typeof db.retirementLog.bulkPut>[0])
+          const targetedTicketsRows = rows('targetedTickets')
+          if (targetedTicketsRows) await db.targetedTickets.bulkPut(targetedTicketsRows as Parameters<typeof db.targetedTickets.bulkPut>[0])
+          const targetedTicketHistoryRows = rows('targetedTicketHistory')
+          if (targetedTicketHistoryRows) await db.targetedTicketHistory.bulkPut(targetedTicketHistoryRows as Parameters<typeof db.targetedTicketHistory.bulkPut>[0])
+          const erConsultLogRows = rows('erConsultLog')
+          if (erConsultLogRows) await db.erConsultLog.bulkPut(erConsultLogRows as Parameters<typeof db.erConsultLog.bulkPut>[0])
+          const leaderboardProfileRows = rows('leaderboardProfile')
+          if (leaderboardProfileRows) await db.leaderboardProfile.bulkPut(leaderboardProfileRows as Parameters<typeof db.leaderboardProfile.bulkPut>[0])
+          const bannerUnlockBonusLogRows = rows('bannerUnlockBonusLog')
+          if (bannerUnlockBonusLogRows) await db.bannerUnlockBonusLog.bulkPut(bannerUnlockBonusLogRows as Parameters<typeof db.bannerUnlockBonusLog.bulkPut>[0])
+        },
+      )
+      setImportMsg('✓ 匯入完成，重新載入中…')
+      window.location.reload()
+    } catch (err) {
+      setImportMsg(`✗ 匯入失敗：${err instanceof Error ? err.message : '未知錯誤'}`)
+    } finally {
+      setImporting(false)
+    }
+  }
 
   async function handleAccountReset(): Promise<void> {
     if (!onResetProgress) return
@@ -377,6 +524,37 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                               <span>像素（Cubic 11，GBA 風）</span>
                             </label>
                           </div>
+                        )}
+                        {section.id === 'data-import' && (
+                          <>
+                            <button
+                              type="button"
+                              className="settings-modal__reset-btn"
+                              onClick={triggerImport}
+                              disabled={importing}
+                            >
+                              {importing ? (
+                                '匯入中…'
+                              ) : (
+                                <>
+                                  <EmojiIcon char="📥" size={18} /> 選擇本機 JSON 匯入
+                                </>
+                              )}
+                            </button>
+                            <input
+                              ref={importInputRef}
+                              type="file"
+                              accept="application/json,.json"
+                              style={{ display: 'none' }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) void handleImportFile(file)
+                              }}
+                            />
+                            {importMsg && (
+                              <p className="settings-modal__reset-msg">{importMsg}</p>
+                            )}
+                          </>
                         )}
                         {section.id === 'account-reset' && (
                           <>
