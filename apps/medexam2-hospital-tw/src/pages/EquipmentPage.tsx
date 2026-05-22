@@ -228,21 +228,6 @@ export function EquipmentPage() {
     }
   }
 
-  async function equipByClick(item: EquipmentRow) {
-    if (!selectedDoctor || actionBusy) {
-      setToast('請先選擇醫師')
-      return
-    }
-    if (item.equippedDoctorId === selectedDoctor.id) return
-    setActionBusy(true)
-    setToast(null)
-    try {
-      await equipItem(item.id, selectedDoctor.id)
-    } finally {
-      setActionBusy(false)
-    }
-  }
-
   function resolveSelectedItem(): EquipmentRow | null {
     if (!selectedItem) return null
     return equipment.find((item) => item.id === selectedItem.id) ?? selectedItem
@@ -458,7 +443,7 @@ export function EquipmentPage() {
                     item={item}
                     doctor={doctor ?? null}
                     disabled={actionBusy}
-                    onClick={() => void equipByClick(item)}
+                    onClick={() => setSelectedItem(item)}
                     onDragStart={(event) => handleDragStart(event, item)}
                     onDragEnd={() => setDraggedItemId(null)}
                   />

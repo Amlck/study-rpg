@@ -823,31 +823,13 @@ export class HospitalDB extends Dexie {
           await materialsTable.put({ id: 'global', parts: 0 })
         }
       })
-    // v14: add-hospital-leaderboard — local-only leaderboardProfile table for
+    // v17: add-hospital-leaderboard — local-only leaderboardProfile table for
     // per-user opt-in / dismissed-forever / last-pushed bookkeeping (Phase
-    // 5.5). Additive; no upgrade hook needed.
-    this.version(14).stores({
-      affinity: '&subjectId',
-      doctors: '&id, subjectId, rarity, obtainedAt',
-      gachaStats: '&id',
-      tickets: '&id',
-      rooms: '&id, type, slot',
-      gameCounters: '&id',
-      mastery: '&subjectId',
-      questionHistory:
-        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
-      meta: '&key',
-      localBackup: '&key, takenAt',
-      monotonicCounters: '&id',
-      trainingHistory: '++id, doctorId, attemptedAt',
-      eventLog: '++id, triggeredAt',
-      fateCardHistory: '++id, drawnAt',
-      retirementLog: '++id, retiredAt, doctorId',
-      bookmarks: '&questionId, addedAt',
-      bannerUnlockBonusLog: '&subjectId',
-      targetedTickets: '&id, status, subjectId, obtainedAt',
-      targetedTicketHistory: '++id, ticketId, at, event',
-      erConsultLog: '++id, triggeredAt, subjectId',
+    // 5.5). Additive store; no upgrade hook needed.
+    // NOTE: Originally landed as a second this.version(14) on the DrSu-Local
+    // branch (conflict with the equipment v14). Renumbered to v17 so there is
+    // exactly one definition per version number.
+    this.version(17).stores({
       leaderboardProfile: '&user_id',
     })
   }
