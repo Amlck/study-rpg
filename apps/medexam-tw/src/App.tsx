@@ -53,6 +53,7 @@ import { getSupabase } from './lib/auth/client'
 import { getBackendConfig } from './lib/sync/backend-config'
 import { ConflictChooserModal } from './components/ConflictChooserModal'
 import { AccountSwitchPrompt } from './components/AccountSwitchPrompt'
+import { LocalDataImportButton } from './components/LocalDataImportButton'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SyncStatusChip } from './components/SyncStatusChip'
 import { SyncErrorToast } from './components/SyncErrorToast'
@@ -629,6 +630,7 @@ export default function App() {
   const homeView = (
     <>
       <div className="header-controls">
+        <LocalDataImportButton />
         <AuthButton onOpenSettings={() => setSettingsOpen(true)} />
         {authUser && (
           <SyncStatusChip
