@@ -28,7 +28,7 @@ Player → [LeaderboardOptInModal] → upsertLeaderboard()
         sync engine                D1 UPSERT (LWW on updated_at)
         onPushComplete            ─────────────────────────────
         (firstError===null
-         && !anyOffline)           Cron "0 * * * *":
+         && !anyOffline)           Cron "0,30 * * * *":
               ↓                    runLeaderboardCron
        pushLeaderboardIfOptedIn      → 4 D1 SELECTs (Top 100)
        (best-effort, errors swallowed)→ 4 KV writes (leaderboard:m2:top100:<filter>)
@@ -142,9 +142,9 @@ JWT verify → `DELETE FROM leaderboard_m2 WHERE user_id = <jwt.sub>`. Returns `
 
 Called by `safeResetAccountData` in `useSync.ts` when player confirms「重置此帳號進度」. Worker failure is swallowed via `console.warn` — leaderboard delete is best-effort, must not abort the reset flow.
 
-## Hourly cron — `runLeaderboardCron`
+## 30-min cron — `runLeaderboardCron`
 
-Schedule: `0 * * * *` (top of every hour, UTC). Dispatched in `src/index.ts` `scheduled()` by matching `event.cron` against the schedule string.
+Schedule: `0,30 * * * *` (every 30 min at `:00` and `:30`, UTC). Dispatched in `src/index.ts` `scheduled()` by matching `event.cron` against the schedule string.
 
 Per invocation:
 1. 4 D1 SELECTs against partial indexes — `ORDER BY <filter-specific column(s)> DESC LIMIT 100 WHERE is_public = 1`.
@@ -152,7 +152,7 @@ Per invocation:
 3. 4 KV writes — `leaderboard:m2:top100:<filter>` ← `{rows, last_updated_at: Date.now(), total_count}`.
 4. One structured log line: `[leaderboard cron] computed snapshots`.
 
-No D1 writes from cron — read-only. Hourly cadence picked over per-upsert because: (a) KV write rate quota matters at edge, (b) Top 100 visibility lag of ≤ 60 min is acceptable for a personal-dogfood scale leaderboard, (c) hourly avoids hot-spotting the index when many players push within minutes of each other.
+No D1 writes from cron — read-only. 30-min cadence picked over per-upsert because: (a) KV write rate quota matters at edge (steady state 8 writes/hr = 192/day ≈ 19% of free-tier 1K/day), (b) Top 100 visibility lag of ≤ 30 min is acceptable for a personal-dogfood scale leaderboard, (c) avoids hot-spotting the index when many players push within minutes of each other. Original hourly cadence (`"0 * * * *"`) bumped to 30-min post-MVP per dogfood feedback that 60-min staleness felt too slow during active play sessions.
 
 ## Nickname normalization
 
@@ -236,10 +236,10 @@ wrangler kv key get --binding LEADERBOARD_KV "leaderboard:m2:top100:composite" -
 
 ## Monitoring
 
-- **Cron health**: Workers dashboard → study-rpg-sync-worker → Logs. Filter for `[leaderboard cron]` once per hour. Missing log row for > 2 hours = cron broken.
+- **Cron health**: Workers dashboard → study-rpg-sync-worker → Logs. Filter for `[leaderboard cron]` every 30 min. Missing log row for > 1 hour = cron broken.
 - **Drop-rate**: search Worker logs for `[leaderboard] dropped upsert:` patterns. A sudden spike means client is sending out-of-bounds payloads (likely Dexie schema drift or tier-clamp regression).
 - **D1 size**: `wrangler d1 info study-rpg-leaderboard --remote` shows DB size. At ~50 bytes/row × 1k users projected = ~50 KB. Free-tier ceiling is 5 GB.
-- **KV ops**: Workers dashboard → KV → `LEADERBOARD_KV`. Expected steady-state: 4 writes/hour (cron) + N reads/hour (player page loads). Read spikes during marketing pushes are fine — KV reads are free at edge.
+- **KV ops**: Workers dashboard → KV → `LEADERBOARD_KV`. Expected steady-state: 8 writes/hour (cron, 4 keys × 2 fires) + N reads/hour (player page loads). Read spikes during marketing pushes are fine — KV reads are free at edge.
 
 ## Known warts
 

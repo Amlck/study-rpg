@@ -115,6 +115,36 @@ body:has(.modal-backdrop) {
   display: flex;
   align-items: center;
   gap: 16px;
+  /* Allow horizontal scroll when 7 nav tabs overflow narrow viewports (iPhone < 390px). */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+
+/* Prevent nav tabs from shrinking — force horizontal scroll instead of squishing. */
+.app-header__meta > .nav-link {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
+
+/* Slim affordance scrollbar on desktop / large mouse viewports. Mobile OS hides natively. */
+.app-header__meta::-webkit-scrollbar {
+  height: 4px;
+}
+
+.app-header__meta::-webkit-scrollbar-thumb {
+  background: var(--frame-dark);
+  border-radius: 2px;
+}
+
+/* Fade right edge on narrow viewports to hint that more nav tabs exist to the right. */
+@media (max-width: 480px) {
+  .app-header__meta {
+    -webkit-mask-image: linear-gradient(to right, black 92%, transparent 100%);
+    mask-image: linear-gradient(to right, black 92%, transparent 100%);
+  }
 }
 
 .ticket-counter-row {
