@@ -116,7 +116,7 @@ function ManualBookmarksTab({
           onClick={handleExport}
           disabled={count === 0 || !questionsById}
         >
-          ⬇ 匯出 Markdown
+          <EmojiIcon char="⬇" size={16} /> 匯出 Markdown
         </button>
       </div>
 

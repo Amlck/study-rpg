@@ -170,7 +170,7 @@ export function SyncStatusChip({
               {busy === 'pull' ? (
                 '下載中…'
               ) : (
-                <>⬇ 立即同步下載</>
+                <><EmojiIcon char="⬇" size={14} /> 立即同步下載</>
               )}
             </button>
           </div>
