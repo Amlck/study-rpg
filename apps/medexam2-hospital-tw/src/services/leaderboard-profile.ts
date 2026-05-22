@@ -11,6 +11,7 @@
 //   - clearLeaderboardProfile — used by delete-account / delete-data flows
 
 import { getHospitalDB, type LeaderboardProfileRow } from '../db/schema'
+import { fetchLeaderboardMe } from '../lib/leaderboard/api'
 
 export async function getLeaderboardProfile(
   userId: string,
@@ -71,4 +72,43 @@ export async function markPushed(userId: string): Promise<void> {
 
 export async function clearLeaderboardProfile(userId: string): Promise<void> {
   await getHospitalDB().leaderboardProfile.delete(userId)
+}
+
+/**
+ * Cross-origin seed-back: if Dexie has no `leaderboardProfile` row for this
+ * user (typical state after domain migration, since IndexedDB is per-origin
+ * scoped), check the leaderboard backend for an existing row and seed Dexie
+ * from it. Idempotent — does nothing when:
+ *   - Dexie already has a row for this user
+ *   - Server returns `row: null` (user never opted in)
+ *   - Worker endpoint returns 404 (old deploy without GET /leaderboard/me)
+ *   - Network error (caller swallows the throw — opt-in modal will fire)
+ *
+ * Spec hook: openspec spec gap surfaced by `add-med-study-rpg-domain-
+ * migration` bake. Without this seed, users who migrated BEFORE the m2
+ * bundle adapter shipped (R2 blob predates the adapter) still see the
+ * opt-in modal on the new domain even though their D1 leaderboard row
+ * exists. This call recovers them.
+ */
+export async function seedLeaderboardProfileFromServer(userId: string): Promise<void> {
+  const db = getHospitalDB()
+  const existing = await db.leaderboardProfile.get(userId)
+  if (existing) return
+  let serverRow: Awaited<ReturnType<typeof fetchLeaderboardMe>>
+  try {
+    serverRow = await fetchLeaderboardMe()
+  } catch {
+    // Network / 5xx — silently fall through; opt-in modal will appear,
+    // which is the safe default. Don't block app boot on this.
+    return
+  }
+  if (!serverRow || serverRow.user_id !== userId) return
+  await db.leaderboardProfile.put({
+    user_id: serverRow.user_id,
+    nickname: serverRow.nickname,
+    opted_in: true,
+    is_public: serverRow.is_public,
+    dismissed_at: null,
+    last_pushed_at: serverRow.updated_at,
+  })
 }
