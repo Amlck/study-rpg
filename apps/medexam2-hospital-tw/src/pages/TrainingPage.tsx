@@ -393,7 +393,7 @@ export function TrainingPage() {
                         disabled={!canAfford || busy}
                         title={canAfford ? '' : `需要 ${fmt(cost)} 營收`}
                       >
-                        進修（{fmt(cost)} <EmojiIcon char="💰" size={14} />）
+                        進修<span style={{ whiteSpace: 'nowrap' }}>（{fmt(cost)} <EmojiIcon char="💰" size={14} />）</span>
                       </button>
                     )}
                     <button

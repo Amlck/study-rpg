@@ -201,7 +201,7 @@ export function HomePage() {
                   {next})
                 </>
               ) : (
-                <> ⭐ 已達頂峰</>
+                <> <EmojiIcon char="⭐" size={16} /> 已達頂峰</>
               )}
             </p>
             {req && (
