@@ -53,11 +53,33 @@ jobs:
       - name: Build 一階 (medexam-tw) for /1st/
         env:
           VITE_DEPLOY_BASE: /1st/
+          # Supabase Auth / cloud sync — same secrets as deploy.yml. Without
+          # these, useAuth() returns status='disabled' and the AuthButton
+          # + SyncStatusChip never render (verified on prod 2026-05-23).
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_CLOUD_SYNC_ENABLED: 'true'
+          VITE_COMMIT_SHA: ${{ github.sha }}
+          # R2 migration flags — pass-through secrets, safe defaults via
+          # backend-config nonEmpty() when unset.
+          VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
+          VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
+          # Worker custom domain — CF-specific override of the default
+          # workers.dev URL the secret might point at.
+          VITE_SYNC_WORKER_URL: https://api.med-study-rpg.com
+          # VITE_DEPLOY_TARGET intentionally NOT set — banner must stay
+          # hidden on the new domain.
         run: pnpm --filter @study-rpg/medexam-tw build
 
       - name: Build 二階 (medexam2-hospital-tw) for /2nd/
         env:
           VITE_DEPLOY_BASE: /2nd/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_CLOUD_SYNC_ENABLED: 'true'
+          VITE_COMMIT_SHA: ${{ github.sha }}
+          VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
+          VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
           VITE_SYNC_WORKER_URL: https://api.med-study-rpg.com
         run: pnpm --filter @study-rpg/medexam2-hospital-tw build
 
