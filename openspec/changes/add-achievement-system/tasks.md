@@ -1,0 +1,137 @@
+## 1. Pre-flight & alignment
+
+- [x] 1.1 Run `git log --since="2 weeks ago" -- apps/medexam2-hospital-tw/src/lib/sync/ cloudflare/sync-worker/` to confirm `LEADERBOARD_PROFILE` adapter + `m2 bundle` shape have not drifted since 2026-05-22
+- [x] 1.2 Verify `apps/medexam2-hospital-tw/src/lib/sync/tables.ts` still has `M2_ADAPTERS` array distinct from `HOSPITAL_ADAPTERS`; if shape changed, update design.md and proceed
+- [x] 1.3 Verify `cloudflare/sync-worker/migrations/0001_leaderboard.sql` exists and is applied; new migration 0002 will follow same manual-apply discipline
+- [x] 1.4 Confirm two prod URLs (GH Pages `fireman333.github.io/study-rpg/hospital/` + CF Pages `med-study-rpg.com`) currently render and load 二階 OK; no concurrent breakage to confuse later smoke
+
+## 2. Core engine (packages/core)
+
+- [x] 2.1 Add `Achievement` / `AchievementTier` / `AchievementCategory` / `AchievementReward` / `AchievementStats` types in `packages/core/src/types.ts`; tier MUST be literal union `'P1' | 'P2' | 'P3' | 'P4'`; reward MUST be discriminated union over `cosmetic` / `title` / `badge` kinds (no `equipment` kind)
+- [x] 2.2 Create `packages/core/src/lib/achievement.ts` (< 100 lines) mirroring `cosmetic.ts`:
+   - `checkAchievementUnlocks(prev, prevStats, next, nextStats, catalog)` returning diff-based unlocks
+   - `listUnlockedAchievements(player, stats, catalog)` convenience
+   - `listLockedAchievements(player, stats, catalog)` convenience
+   - `visibleAchievements(catalog, unlockedIds)` for hidden-strict UI filtering
+- [x] 2.3 Export new symbols from `packages/core/src/index.ts`
+- [ ] 2.4 ~~Write `packages/core/src/lib/achievement.test.ts`~~ **N/A** — `packages/core` has zero existing test infra (no vitest config, cosmetic.ts itself untested). Setting up vitest in packages/core is out of this change's scope. Reconsider in a separate `add-core-package-test-infra` change; defer test coverage for now.
+- [x] 2.5 Run `pnpm --filter @study-rpg/core build` and `pnpm --filter @study-rpg/core typecheck`; both pass
+
+## 3. Content catalog (packages/content-medexam2-tw)
+
+- [x] 3.1 Create `packages/content-medexam2-tw/src/achievements.ts` with 28 entries for 6 main categories (study 4 / quiz 8 [accum+streak] / recruit 4 / hospital 4 / fortune 4 / hidden 3) + 14 subject + 1 capstone = 42 entries. Each entry typed against `Achievement`
+- [x] 3.2 4 streak achievements (`streak-correct-5/10/20/40`); P1 composite (40 連 **且** overallAccuracy ≥ 85%)
+- [x] 3.3 14 subject mastery entries via `buildSubjectMasteryEntries()` helper, all P2 金, predicate reads `subjectAttemptCounts >= SUBJECT_QUESTION_TOTALS`
+- [x] 3.4 `all-subjects-mastered` P1 鑽石 capstone (composite via 14-subject AND)
+- [x] 3.5 `validateAchievementCatalog()` exported + auto-invoked at module load (non-strict mode); rejects P1 entries lacking `composite: true`, also checks unique ids + predicate sanity + optional strict wired-predicate mode
+- [ ] 3.6 ~~Compute per-subject counts dynamically from questions.json~~ **PARTIAL** — currently hardcoded `SUBJECT_QUESTION_TOTALS` (snapshot from dist/subjects.json 2026-05-23), with comment pointing at canonical source. Dynamic loading deferred — current corpus is stable; if it regenerates, manual re-sync via comment. **Follow-up**: add `validate:achievements` npm script that diffs against `dist/subjects.json` and fails CI if mismatch.
+- [x] 3.7 `export * from './achievements'` added to `packages/content-medexam2-tw/src/index.ts`
+- [ ] 3.8 ~~Write content unit test~~ **N/A** — same reason as 2.4: no vitest infra in content packages. Validator's module-load side effect IS the test (build fails loudly on invalid catalog).
+- [x] 3.9 `pnpm --filter @study-rpg/content-medexam2-tw typecheck + build` pass; catalog stats: 7 P1 / 21 P2 / 7 P3 / 7 P4, 3 hidden, validator OK
+
+## 4. Atlas asset generation (2 sprite sheets)
+
+- [ ] 4.1 Generate **main badge atlas** (`badge-atlas.png`, 512×768, 6×4 cells): cd `/tmp/`, run `codex exec --sandbox workspace-write` with the prompt in design.md §D3; output to `/tmp/badge-atlas.png`, mv to `apps/medexam2-hospital-tw/src/assets/achievements/badge-atlas.png`
+- [ ] 4.2 Verify main atlas: open in Preview, confirm 6 rows × 4 columns cleanly visible, P1 鑽石 column has distinct ice-blue + facet effect
+- [ ] 4.3 If main atlas fails recognizability check, run codex one more time with refined prompt; if 2 codex attempts both fail, fall back to gemini-generated 6 individual category strips + magick montage compose
+- [ ] 4.4 Generate **subject atlas** (`subject-atlas.png`, 896×256, 7×2 cells): same codex pipeline; specialty icons per design.md §D3 mapping table
+- [ ] 4.5 Verify subject atlas at 24px / 48px / 64px side-by-side; require every icon visually distinguishable; regenerate if any pair (e.g., 眼科 vs 耳鼻喉) is confusing
+- [ ] 4.6 If subject atlas still ambiguous after regen, fall back to Chinese-character corner overlay variant
+- [ ] 4.7 Commit both atlases at final size; verify Vite picks them up via `import` (no missing-asset error)
+
+## 5. Dexie v15 schema + sync adapter
+
+- [ ] 5.1 Bump `apps/medexam2-hospital-tw/src/db/schema.ts` Dexie version from v14 to v15
+- [ ] 5.2 Add new table `achievements` with shape `{ id: string (PK), unlockedAt: number, notificationShown: boolean }`
+- [ ] 5.3 Extend `MonotonicCountersRow` interface with optional fields: `totalDoctorsRecruited?` / `totalP1DoctorsRecruited?` / `maxDailyStreak?` / `tierUpgradeCount?` / `maxQuizCorrectStreak?` (all MAX-merge)
+- [ ] 5.4 Extend `GameCountersRow` with optional `currentQuizCorrectStreak?: number` (LWW, can decrease)
+- [ ] 5.5 Extend `LeaderboardProfileRow` with optional `selectedTitle?: string | null`
+- [ ] 5.6 Write v14→v15 upgrade migration callback; init empty `achievements` table on fresh-start
+- [ ] 5.7 Create `ACHIEVEMENTS: TableAdapter` in `apps/medexam2-hospital-tw/src/lib/sync/tables.ts` (mirror `LEADERBOARD_PROFILE` shape)
+- [ ] 5.8 Register `ACHIEVEMENTS` in `M2_ADAPTERS` array ONLY; verify it does NOT appear in `HOSPITAL_ADAPTERS` (grep enforcement check)
+- [ ] 5.9 Update `apps/medexam2-hospital-tw/src/lib/sync/migration.ts` fresh-start / silent-pull paths to ensure achievements table is initialized (mirror v14 leaderboardProfile pattern)
+- [ ] 5.10 Run `pnpm --filter @study-rpg/medexam2-hospital-tw typecheck`; must pass
+
+## 6. Reward dispatcher service
+
+- [ ] 6.1 Create `apps/medexam2-hospital-tw/src/services/achievement-reward.ts` with `dispatchReward(reward: AchievementReward, achievementId: string)` function
+- [ ] 6.2 Branch on `reward.kind`:
+   - `'cosmetic'` → call existing `instanceFromCosmetic` from `@study-rpg/core` and write to inventory
+   - `'title'` → append to titles list in `leaderboardProfile` (player chooses via SettingsPanel)
+   - `'badge'` → no-op (badge is implicit from achievement unlock + leaderboard CSV derivation)
+- [ ] 6.3 Equipment / ticket / pity reward kinds MUST be absent from the union; TypeScript should reject them
+- [ ] 6.4 Add tests for each reward kind (cosmetic creates item, title appends to profile, badge no-op)
+
+## 7. Trigger hooks (5 service files)
+
+- [ ] 7.1 Add achievement hook to `apps/medexam2-hospital-tw/src/services/quiz-rewards.ts`: after `applyQuizReward` writes reward, compute `prev` / `next` Player state + Stats, call `checkAchievementUnlocks`, emit toast for each newly-unlocked
+- [ ] 7.2 In `quiz-rewards.ts` same transaction: update `currentQuizCorrectStreak` per rules in spec D6 (answer correct → +1; wrong → 0; skipped/disputed → spec-defined); update `maxQuizCorrectStreak` via MAX
+- [ ] 7.3 Add achievement hook to `apps/medexam2-hospital-tw/src/lib/tick.ts` at tier-upgrade-completed branch + event-resolved branch + streak-tick branch
+- [ ] 7.4 Add achievement hook to `apps/medexam2-hospital-tw/src/services/recruitment.ts` after gacha pull resolution + doctor write; increment `totalDoctorsRecruited` + `totalP1DoctorsRecruited` if applicable
+- [ ] 7.5 Add achievement hook to `apps/medexam2-hospital-tw/src/services/fate-card.ts` after card drawn + reward applied
+- [ ] 7.6 Add achievement hook to `apps/medexam2-hospital-tw/src/services/training.ts` after success / retire / pity branches
+- [ ] 7.7 Hook-emitted unlock signals route to a singleton `AchievementToastQueue` (similar to existing `EventToastQueue` if any; otherwise create one); P1 unlocks go to a separate full-screen modal queue
+
+## 8. UI components
+
+- [ ] 8.1 Create `apps/medexam2-hospital-tw/src/components/BadgeSprite.tsx` per design.md component snippet (6×4 CSS sprite)
+- [ ] 8.2 Create `apps/medexam2-hospital-tw/src/components/SubjectBadgeSprite.tsx` (7×2 CSS sprite)
+- [ ] 8.3 Create `apps/medexam2-hospital-tw/src/components/AchievementUnlockToast.tsx` (mirror `EventToast` with 8s auto-dismiss + celebratory polarity + 64px BadgeSprite + name + reward chip)
+- [ ] 8.4 Create `apps/medexam2-hospital-tw/src/components/AchievementUnlockModal.tsx` (full-screen, P1-only, dismiss-required, BadgeSprite at 128px + animation)
+- [ ] 8.5 Create `apps/medexam2-hospital-tw/src/components/AchievementCard.tsx` for use in `/achievements` page (handles locked silhouette + unlocked state)
+- [ ] 8.6 Create `apps/medexam2-hospital-tw/src/pages/AchievementsPage.tsx`:
+   - Pixel-table grid layout (sample leaderboard pixel-style for visual consistency)
+   - Filters: category dropdown, tier dropdown, locked/unlocked toggle
+   - Hidden achievements filtered out unless unlocked (`!c.hidden || isUnlocked`)
+   - Two sub-tabs: "成就" (main categories) + "科別精通" (14-subject grid)
+   - 答題大師 category sub-divided into 「累計」 and 「連續」 segments
+- [ ] 8.7 Wire `/achievements` route in router; add entry tile to `HomePage.tsx`
+- [ ] 8.8 Add achievement-related sections to `HelpMenu.tsx` (doc + tier explanation)
+- [ ] 8.9 Add title selector dropdown to `SettingsPanel.tsx`: lists all unlocked titles + "顯示無" option
+
+## 9. Cloudflare D1 + Worker
+
+- [ ] 9.1 Author `cloudflare/sync-worker/migrations/0002_add_badges.sql` with two `ALTER TABLE leaderboard ADD COLUMN` statements per hospital-leaderboard spec
+- [ ] 9.2 Update `cloudflare/sync-worker/src/leaderboard.ts` `POST /leaderboard/upsert` handler: accept + validate `badges_csv` + `subject_mastery_count`; write to D1
+- [ ] 9.3 Update KV snapshot writer (in same file) to include both new fields in the hourly Top 100 snapshot
+- [ ] 9.4 Update public `GET /leaderboard/:filter` to return both new fields in response JSON
+- [ ] 9.5 Add Vitest unit tests for the Worker handlers covering: valid CSV accepted, invalid CSV rejected (400), subject count > 14 rejected, KV snapshot contains fields
+- [ ] 9.6 Commit `cloudflare/sync-worker/**` changes — push to main triggers `deploy-worker.yml` auto-deploy
+- [ ] 9.7 **Owner manual step**: `cd cloudflare/sync-worker && wrangler d1 migrations apply study-rpg-leaderboard --remote` (one-time apply of 0002_add_badges.sql)
+- [ ] 9.8 Verify columns added via `wrangler d1 execute study-rpg-leaderboard --remote --command "SELECT sql FROM sqlite_master WHERE name='leaderboard'"`
+
+## 10. Leaderboard client push integration
+
+- [ ] 10.1 Update `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` to derive `badges_csv` and `subject_mastery_count` from Dexie `achievements` table
+- [ ] 10.2 Wire derivation into the `onPushComplete` callback that fires when sync engine confirms no errors and no offline
+- [ ] 10.3 Update `apps/medexam2-hospital-tw/src/pages/LeaderboardPage.tsx`: render 6 category badges inline + subject mastery chip after nickname (per hospital-leaderboard spec)
+- [ ] 10.4 Add hover/long-press tooltips for category badges (e.g., 「P1 鑽石級招募達人成就」)
+- [ ] 10.5 Verify mobile (24px) and desktop (32px) badge layouts; no row overflow with 6 categories + 14 subject chip
+
+## 11. Verification (Chrome MCP E2E)
+
+- [ ] 11.1 Run `mcp__Claude_in_Chrome__list_connected_browsers` to confirm chrome MCP connected (per chrome_mcp_preflight rule)
+- [ ] 11.2 Dev smoke (`localhost:5173/study-rpg/hospital/`):
+   - Trigger 1 correct quiz answer → AchievementUnlockToast appears for `first-quiz-answered` P4
+   - Manually set `monotonicCounters.totalDoctorsRecruited = 3` via `globalThis.__db` → reload → unlock toast appears
+   - Navigate `/achievements` → P4 unlocked card visible; locked cards silhouette; hidden cards absent
+   - Pick a title in SettingsPanel → `/leaderboard` shows title chip next to own nickname
+   - `/leaderboard` own row shows at least 1 BadgeSprite after unlock
+- [ ] 11.3 SPA route 三件套: F5 on `/achievements` → not 404; direct URL `https://...hospital/achievements` → not 404; in-app nav from HomePage tile → works
+- [ ] 11.4 Cloud sync verification: `globalThis.__sync.pushNow()` → Performance API confirms PUT to R2 m2-snapshot → pull on second device (or after clearing Dexie) → achievements re-populate
+- [ ] 11.5 D1 leaderboard verification: `curl https://api.med-study-rpg.com/leaderboard/composite` → response JSON contains own row with non-empty `badges_csv` + valid `subject_mastery_count`
+- [ ] 11.6 Anti-grind validator runtime check: temporarily add a "pure-time P1" entry to a test catalog → `pnpm --filter @study-rpg/content-medexam2-tw build` fails with clear error → remove test entry
+- [ ] 11.7 Prod smoke (after merge + auto-deploy completes both GH Pages + CF Pages): repeat 11.2-11.5 on BOTH `https://fireman333.github.io/study-rpg/hospital/` AND `https://med-study-rpg.com/` — three-pronged SPA test on each
+- [ ] 11.8 Confirm CF Worker deploy succeeded: `curl https://api.med-study-rpg.com/health` (or wherever the health endpoint lives) returns 200
+- [ ] 11.9 Verify D1 column exists post-migration: SQL inspection as 9.8
+
+## 12. Cleanup & archival
+
+- [ ] 12.1 Run `pnpm -r typecheck` and `pnpm -r build`; both must pass cleanly
+- [ ] 12.2 Run `/simplify` over new code (per project pipeline convention)
+- [ ] 12.3 Run `/opsx:verify` on this change for completeness / correctness / coherence check
+- [ ] 12.4 Run `/verify` (Chrome MCP global skill) — auto-confirm or escalate
+- [ ] 12.5 Update `openspec/project.md` Roadmap row for M5+ to mention achievement system shipped
+- [ ] 12.6 Update `apps/medexam2-hospital-tw/CLAUDE.md` (or root `CLAUDE.md`) with achievement system pointer (key files + reward channels + how to add new achievement)
+- [ ] 12.7 Open PR with description summarizing 7 categories + 4 tiers + atlas approach + R2-only adapter
+- [ ] 12.8 After user approves: merge → ensure all 3 workflows green (GH Pages + CF Pages + CF Worker) → owner runs D1 manual apply → final dual-prod smoke → `/opsx:archive` this change
