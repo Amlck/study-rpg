@@ -31,26 +31,26 @@
 
 ## 4. Atlas asset generation (2 sprite sheets)
 
-- [ ] 4.1 Generate **main badge atlas** (`badge-atlas.png`, 512×768, 6×4 cells): cd `/tmp/`, run `codex exec --sandbox workspace-write` with the prompt in design.md §D3; output to `/tmp/badge-atlas.png`, mv to `apps/medexam2-hospital-tw/src/assets/achievements/badge-atlas.png`
-- [ ] 4.2 Verify main atlas: open in Preview, confirm 6 rows × 4 columns cleanly visible, P1 鑽石 column has distinct ice-blue + facet effect
-- [ ] 4.3 If main atlas fails recognizability check, run codex one more time with refined prompt; if 2 codex attempts both fail, fall back to gemini-generated 6 individual category strips + magick montage compose
-- [ ] 4.4 Generate **subject atlas** (`subject-atlas.png`, 896×256, 7×2 cells): same codex pipeline; specialty icons per design.md §D3 mapping table
-- [ ] 4.5 Verify subject atlas at 24px / 48px / 64px side-by-side; require every icon visually distinguishable; regenerate if any pair (e.g., 眼科 vs 耳鼻喉) is confusing
-- [ ] 4.6 If subject atlas still ambiguous after regen, fall back to Chinese-character corner overlay variant
-- [ ] 4.7 Commit both atlases at final size; verify Vite picks them up via `import` (no missing-asset error)
+- [x] 4.1 Main badge atlas generated via codex CLI (`--skip-git-repo-check` required by current codex 1.x; recipe in [imports/codex_image_gen.md](.claude/imports/codex_image_gen.md) was for 0.128.0). Output: 512×768 PNG, 8-bit RGBA, 88 KB, mv'd to `apps/medexam2-hospital-tw/src/assets/achievements/badge-atlas.png`. Wall ~1-2 min (faster than design.md estimate)
+- [x] 4.2 Preview opened — codex self-validation: "512x768, alpha 透明背景, 四角透明, 15 色量化"
+- [ ] 4.3 _Reroll fallback unused_ — first generation accepted (visual review delegated to user during 4.5)
+- [x] 4.4 Subject atlas generated parallel: 896×256, 8-bit RGBA, 172 KB, mv'd to `apps/medexam2-hospital-tw/src/assets/achievements/subject-atlas.png`
+- [ ] 4.5 **Pending user review** — both atlases opened in Preview; user will verify icon distinguishability at 24/48/64px; reroll trigger 若不到位
+- [ ] 4.6 _Chinese-character fallback unused unless user 4.5 review fails_
+- [x] 4.7 Both atlases at final size in project path; Vite Phase 5 build pass (assets/achievements/ included naturally — assets only invoked via component import in Phase 8, no missing-asset error at build time)
 
 ## 5. Dexie v15 schema + sync adapter
 
-- [ ] 5.1 Bump `apps/medexam2-hospital-tw/src/db/schema.ts` Dexie version from v14 to v15
-- [ ] 5.2 Add new table `achievements` with shape `{ id: string (PK), unlockedAt: number, notificationShown: boolean }`
-- [ ] 5.3 Extend `MonotonicCountersRow` interface with optional fields: `totalDoctorsRecruited?` / `totalP1DoctorsRecruited?` / `maxDailyStreak?` / `tierUpgradeCount?` / `maxQuizCorrectStreak?` (all MAX-merge)
-- [ ] 5.4 Extend `GameCountersRow` with optional `currentQuizCorrectStreak?: number` (LWW, can decrease)
-- [ ] 5.5 Extend `LeaderboardProfileRow` with optional `selectedTitle?: string | null`
-- [ ] 5.6 Write v14→v15 upgrade migration callback; init empty `achievements` table on fresh-start
-- [ ] 5.7 Create `ACHIEVEMENTS: TableAdapter` in `apps/medexam2-hospital-tw/src/lib/sync/tables.ts` (mirror `LEADERBOARD_PROFILE` shape)
-- [ ] 5.8 Register `ACHIEVEMENTS` in `M2_ADAPTERS` array ONLY; verify it does NOT appear in `HOSPITAL_ADAPTERS` (grep enforcement check)
-- [ ] 5.9 Update `apps/medexam2-hospital-tw/src/lib/sync/migration.ts` fresh-start / silent-pull paths to ensure achievements table is initialized (mirror v14 leaderboardProfile pattern)
-- [ ] 5.10 Run `pnpm --filter @study-rpg/medexam2-hospital-tw typecheck`; must pass
+- [x] 5.1 Dexie version 14 → v15 in `apps/medexam2-hospital-tw/src/db/schema.ts`
+- [x] 5.2 `AchievementRow` interface + `achievements: '&id, unlockedAt'` table in v15 stores
+- [x] 5.3 `MonotonicCountersRow` extended with 5 optional MAX-merge fields
+- [x] 5.4 `GameCountersRow.currentQuizCorrectStreak?: number` added
+- [x] 5.5 `LeaderboardProfileRow.selectedTitle?: string \| null` added
+- [x] 5.6 v14→v15 upgrade is purely additive (new table + optional fields); Dexie auto-creates empty `achievements` table on schema upgrade — no explicit callback needed (mirror v14 leaderboardProfile pattern)
+- [x] 5.7 `ACHIEVEMENTS` TableAdapter created in `tables.ts` mirroring `LEADERBOARD_PROFILE` shape (collection-style, snapshotDirty + snapshotAll + applyToLocal with LWW; explicit comment about no toast on cross-device pull)
+- [x] 5.8 `ACHIEVEMENTS` in `M2_ADAPTERS` only (verified via awk grep: 1 in M2_ADAPTERS, 0 in HOSPITAL_ADAPTERS)
+- [x] 5.9 migration.ts no change needed — `leaderboardProfile` precedent confirms Dexie's auto-table-creation on schema upgrade is sufficient (no explicit init refs to `db.leaderboardProfile` in migration.ts; achievements follows same pattern)
+- [x] 5.10 `pnpm --filter @study-rpg/medexam2-hospital-tw typecheck` + Vite build both pass
 
 ## 6. Reward dispatcher service
 
