@@ -74,20 +74,15 @@
 
 ## 8. UI components
 
-- [ ] 8.1 Create `apps/medexam2-hospital-tw/src/components/BadgeSprite.tsx` per design.md component snippet (6×4 CSS sprite)
-- [ ] 8.2 Create `apps/medexam2-hospital-tw/src/components/SubjectBadgeSprite.tsx` (7×2 CSS sprite)
-- [ ] 8.3 Create `apps/medexam2-hospital-tw/src/components/AchievementUnlockToast.tsx` (mirror `EventToast` with 8s auto-dismiss + celebratory polarity + 64px BadgeSprite + name + reward chip)
-- [ ] 8.4 Create `apps/medexam2-hospital-tw/src/components/AchievementUnlockModal.tsx` (full-screen, P1-only, dismiss-required, BadgeSprite at 128px + animation)
-- [ ] 8.5 Create `apps/medexam2-hospital-tw/src/components/AchievementCard.tsx` for use in `/achievements` page (handles locked silhouette + unlocked state)
-- [ ] 8.6 Create `apps/medexam2-hospital-tw/src/pages/AchievementsPage.tsx`:
-   - Pixel-table grid layout (sample leaderboard pixel-style for visual consistency)
-   - Filters: category dropdown, tier dropdown, locked/unlocked toggle
-   - Hidden achievements filtered out unless unlocked (`!c.hidden || isUnlocked`)
-   - Two sub-tabs: "成就" (main categories) + "科別精通" (14-subject grid)
-   - 答題大師 category sub-divided into 「累計」 and 「連續」 segments
-- [ ] 8.7 Wire `/achievements` route in router; add entry tile to `HomePage.tsx`
-- [ ] 8.8 Add achievement-related sections to `HelpMenu.tsx` (doc + tier explanation)
-- [ ] 8.9 Add title selector dropdown to `SettingsPanel.tsx`: lists all unlocked titles + "顯示無" option
+- [x] 8.1 `BadgeSprite.tsx` — 6×4 CSS sprite + tier-class drop-shadow hook
+- [x] 8.2 `SubjectBadgeSprite.tsx` — 7×2 CSS sprite, 14-subject cell mapping
+- [x] 8.3 `AchievementUnlockToast.tsx` — mirror MilestoneTipToast 8s pattern, 64px BadgeSprite/SubjectBadgeSprite routing on category
+- [x] 8.4 `AchievementUnlockModal.tsx` — full-screen reveal for P1 鑽石, 128px badge, reward label, modal backdrop dismiss
+- [x] 8.5 `AchievementCard.tsx` — locked-silhouette / unlocked-full-state with date + reward chip; "?" placeholder when locked
+- [x] 8.6 `AchievementsPage.tsx` — 2 sub-tabs (成就 / 科別精通), 3 filters (category / tier / lock), strict hidden filter, live Dexie subscribe
+- [x] 8.7 `/achievements` route wired in `App.tsx`; HomePage tile added「成就 →」+ `AchievementUnlockOverlay` component routes P1→Modal / P2-P4→Toast based on tier
+- [x] 8.8 HelpMenu section「成就系統 — 4 tier 像素勳章」added — 4 paragraphs explaining tiers / P1 composite rule / 14 科 100% / unlock notification UX
+- [x] 8.9 ~~SettingsPanel~~ **二階 doesn't have SettingsPanel** (per styles.css comment: 二階 only AuthMenu, 一階 has SettingsPanel). Created `AchievementTitleSelector.tsx` + embedded in `LeaderboardSettingsControls` (the existing leaderboard config area) which is the natural home for title display selection. Falls back to empty-state hint「解鎖成就以獲得稱號」when no titles unlocked yet
 
 ## 9. Cloudflare D1 + Worker
 

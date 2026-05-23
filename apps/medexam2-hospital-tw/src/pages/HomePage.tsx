@@ -165,6 +165,9 @@ export function HomePage() {
           <Link to="/leaderboard" className="nav-link">
             排名 →
           </Link>
+          <Link to="/achievements" className="nav-link">
+            成就 →
+          </Link>
         </div>
       </header>
 
