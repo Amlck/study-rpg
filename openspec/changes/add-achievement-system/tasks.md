@@ -35,8 +35,8 @@
 - [x] 4.2 Preview opened — codex self-validation: "512x768, alpha 透明背景, 四角透明, 15 色量化"
 - [ ] 4.3 _Reroll fallback unused_ — first generation accepted (visual review delegated to user during 4.5)
 - [x] 4.4 Subject atlas generated parallel: 896×256, 8-bit RGBA, 172 KB, mv'd to `apps/medexam2-hospital-tw/src/assets/achievements/subject-atlas.png`
-- [ ] 4.5 **Pending user review** — both atlases opened in Preview; user will verify icon distinguishability at 24/48/64px; reroll trigger 若不到位
-- [ ] 4.6 _Chinese-character fallback unused unless user 4.5 review fails_
+- [x] 4.5 User visual review pass (2026-05-23): both atlases approved as-is, no reroll needed
+- [ ] 4.6 _Chinese-character fallback not needed — 4.5 passed_
 - [x] 4.7 Both atlases at final size in project path; Vite Phase 5 build pass (assets/achievements/ included naturally — assets only invoked via component import in Phase 8, no missing-asset error at build time)
 
 ## 5. Dexie v15 schema + sync adapter
@@ -54,23 +54,23 @@
 
 ## 6. Reward dispatcher service
 
-- [ ] 6.1 Create `apps/medexam2-hospital-tw/src/services/achievement-reward.ts` with `dispatchReward(reward: AchievementReward, achievementId: string)` function
-- [ ] 6.2 Branch on `reward.kind`:
-   - `'cosmetic'` → call existing `instanceFromCosmetic` from `@study-rpg/core` and write to inventory
-   - `'title'` → append to titles list in `leaderboardProfile` (player chooses via SettingsPanel)
-   - `'badge'` → no-op (badge is implicit from achievement unlock + leaderboard CSV derivation)
-- [ ] 6.3 Equipment / ticket / pity reward kinds MUST be absent from the union; TypeScript should reject them
-- [ ] 6.4 Add tests for each reward kind (cosmetic creates item, title appends to profile, badge no-op)
+- [x] 6.1 `services/achievement-reward.ts` created with `dispatchReward()` + `checkAndUnlockAchievements()` orchestrator (idempotent — skips already-unlocked, persists row + dispatches reward + queues toast)
+- [x] 6.2 Branch on `reward.kind`:
+   - `'cosmetic'` → log intent + TODO note (cosmetic catalog `achievement-*` entries deferred to Phase 8+ per cosmetic-system spec delta)
+   - `'title'` → append to Dexie `meta` key `achievement-titles-unlocked` (SettingsPanel reads in Phase 8)
+   - `'badge'` → no-op
+- [x] 6.3 `AchievementReward` discriminated union has exactly 3 kinds; equipment/ticket/pity absent — TypeScript enforces
+- [ ] 6.4 ~~Tests~~ **N/A** — same reason as 2.4 / 3.8: no test infra in this app package
 
 ## 7. Trigger hooks (5 service files)
 
-- [ ] 7.1 Add achievement hook to `apps/medexam2-hospital-tw/src/services/quiz-rewards.ts`: after `applyQuizReward` writes reward, compute `prev` / `next` Player state + Stats, call `checkAchievementUnlocks`, emit toast for each newly-unlocked
-- [ ] 7.2 In `quiz-rewards.ts` same transaction: update `currentQuizCorrectStreak` per rules in spec D6 (answer correct → +1; wrong → 0; skipped/disputed → spec-defined); update `maxQuizCorrectStreak` via MAX
-- [ ] 7.3 Add achievement hook to `apps/medexam2-hospital-tw/src/lib/tick.ts` at tier-upgrade-completed branch + event-resolved branch + streak-tick branch
-- [ ] 7.4 Add achievement hook to `apps/medexam2-hospital-tw/src/services/recruitment.ts` after gacha pull resolution + doctor write; increment `totalDoctorsRecruited` + `totalP1DoctorsRecruited` if applicable
-- [ ] 7.5 Add achievement hook to `apps/medexam2-hospital-tw/src/services/fate-card.ts` after card drawn + reward applied
-- [ ] 7.6 Add achievement hook to `apps/medexam2-hospital-tw/src/services/training.ts` after success / retire / pity branches
-- [ ] 7.7 Hook-emitted unlock signals route to a singleton `AchievementToastQueue` (similar to existing `EventToastQueue` if any; otherwise create one); P1 unlocks go to a separate full-screen modal queue
+- [x] 7.1 Hook in `quiz-rewards.ts` — post-tx `checkAndUnlockAchievements` with prev/next stats; try/catch swallows errors so reward grant unaffected
+- [x] 7.2 Streak counter logic in `quiz-rewards.ts` inside transaction: correct/disputed → currentQuizCorrectStreak++, also MAX-update maxQuizCorrectStreak; wrong → reset to 0; skipped → no change (not in this code path). Wrong-answer no longer early-returns
+- [x] 7.3 Hook in `lib/tick.ts` — post-tx achievement check; also bumps `monotonicCounters.tierUpgradeCount` when `upgradedTo` set inside tx. Hot path note documented (~100-400ms per tick, optimize if dogfood shows jank)
+- [x] 7.4 Hook in `services/recruitment.ts` — post-tx check; inside tx bumps `totalDoctorsRecruited` always and `totalP1DoctorsRecruited` when rarity === 'P1'
+- [x] 7.5 Hook in `services/fate-card.ts` — post-tx check (legendary/epic counts derived from fateCardHistory rows)
+- [x] 7.6 Hook in BOTH `services/training.ts` (training success → P1 increments `totalP1DoctorsRecruited`) AND `services/retire.ts` (retire path — affects `p1DoctorsRetired` via retirementLog). Tasks.md original wording was ambiguous; split for clarity
+- [x] 7.7 `lib/achievement-toast-queue.ts` singleton pub-sub created — `push()` / `dismiss()` / `subscribe()` / `snapshot()`. UI subscribes in Phase 8. Single queue handles both P4-P2 toast + P1 modal routing (UI decides renderer based on tier)
 
 ## 8. UI components
 

@@ -21,10 +21,21 @@ export type RetireResult =
 
 export async function retireDoctor(doctorId: string): Promise<RetireResult> {
   const db = getHospitalDB()
-  return db.transaction(
+
+  // Achievement Phase 7 hook (retire path covers `services/training.ts`
+  // counterpart from tasks.md 7.6 — retire affects p1DoctorsRetired counter
+  // which the fortune-composite-p1「不離不棄」predicate reads).
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    '../lib/achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import('./achievement-reward')
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  const result: RetireResult = await db.transaction(
     'rw',
     [db.doctors, db.gameCounters, db.retirementLog],
-    async () => {
+    async (): Promise<RetireResult> => {
       const doctor = await db.doctors.get(doctorId)
       if (!doctor) return { kind: 'not-found', doctorId } as RetireResult
 
@@ -52,7 +63,18 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
       }
       await db.retirementLog.add(logRow)
 
-      return { kind: 'success', doctorId, refund, roomFreed }
+      return { kind: 'success', doctorId, refund, roomFreed } as const
     },
   )
+
+  // Achievement check post-tx
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[retire] achievement check failed:', err)
+  }
+
+  return result
 }
