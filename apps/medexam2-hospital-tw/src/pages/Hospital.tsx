@@ -10,6 +10,7 @@ import {
   type RoomType,
 } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { RoomCard } from '../components/RoomCard'
 import { AssignDoctorModal } from '../components/AssignDoctorModal'
@@ -54,7 +55,7 @@ export function Hospital() {
         <h1>醫院</h1>
         <div className="app-header__meta">
           <span className="hospital-throughput">
-            {counters?.tier ?? '診所'} · 總產能 {totalThroughput.toFixed(1)} 患者/分 · 房間 {assignedCount}/{rooms.length}
+            {tierLabel(counters?.tier ?? '診所')} · 總產能 {totalThroughput.toFixed(1)} 患者/分 · 房間 {assignedCount}/{rooms.length}
           </span>
           <Link to="/" className="nav-link">
             ← 回主畫面
@@ -97,7 +98,7 @@ export function Hospital() {
             <h2 className="section-heading">
               房間擴建
               {!tierUnlocked && (
-                <span className="muted">（{tier} 階段未開放，升級至 區域醫院 解鎖）</span>
+                <span className="muted">（{tierLabel(tier)} 階段未開放，升級至 {tierLabel('區域醫院')} 解鎖）</span>
               )}
             </h2>
             <div className="room-extension-grid">
@@ -108,7 +109,7 @@ export function Hospital() {
                 const cantAfford = revenue < config.cost
                 const disabled = !tierUnlocked || maxedOut || cantAfford || extBusy
                 let title = ''
-                if (!tierUnlocked) title = '需升級至 區域醫院 以上'
+                if (!tierUnlocked) title = `需升級至 ${tierLabel('區域醫院')} 以上`
                 else if (maxedOut) title = `已達上限 ${config.maxExtras}`
                 else if (cantAfford) title = `營收不足（需要 ${fmt(config.cost)} 💰）`
                 return (
@@ -155,7 +156,7 @@ export function Hospital() {
               <>
                 <h2 className="modal__title">擴建失敗</h2>
                 {extOutcome.result.reason === 'tier-locked' && (
-                  <p>需先升級至 區域醫院 以上才能擴建。</p>
+                  <p>需先升級至 {tierLabel('區域醫院')} 以上才能擴建。</p>
                 )}
                 {extOutcome.result.reason === 'max-extras' && (
                   <p>

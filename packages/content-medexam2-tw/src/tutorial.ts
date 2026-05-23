@@ -121,7 +121,7 @@ export const SURFACE_HINTS: ReadonlyArray<SurfaceHint> = Object.freeze([
   {
     id: 'hospital',
     title: '房間管理',
-    body: '點房間 → 從清單選一位醫師指派（同科加成最大）。Facility 升級放大該房間 throughput；區域醫院以上可花錢擴建。場景下方名牌牆顯示 assigned 醫師依房間分組；想改名到上方「醫師」tab → 卡片右上的 ✏️。',
+    body: '點房間 → 從清單選一位醫師指派（同科加成最大）。Facility 升級放大該房間 throughput；區域以上可花錢擴建。場景下方名牌牆顯示 assigned 醫師依房間分組；想改名到上方「醫師」tab → 卡片右上的 ✏️。',
   },
   {
     id: 'fate-cards',

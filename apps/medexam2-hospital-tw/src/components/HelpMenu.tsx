@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { TIER_UPGRADE_THRESHOLDS } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
 import { snapshotLocalToBackup } from '../lib/sync/migration'
 import { BugReportModal } from './BugReportModal'
 import { EmojiIcon } from './EmojiIcon'
@@ -33,11 +34,11 @@ interface AccordionSection {
 
 // Sourced from TIER_UPGRADE_THRESHOLDS so future recalibrations propagate
 // automatically — see `fix-helpmenu-copy-stale` (2026-05-19).
-const tierUpgradeBody = `升級不只看聲望，還要科別多樣性。診所→區域醫院：${(
+const tierUpgradeBody = `升級不只看聲望，還要科別多樣性。${tierLabel('診所')}（診所）→ ${tierLabel('區域醫院')}（區域醫院）：${(
   TIER_UPGRADE_THRESHOLDS.診所! / 1000
-).toFixed(0)}k 聲望 + 5 不同科別；區域→醫學中心：${(
+).toFixed(0)}k 聲望 + 5 不同科別；${tierLabel('區域醫院')} → ${tierLabel('醫學中心')}（醫學中心）：${(
   TIER_UPGRADE_THRESHOLDS.區域醫院! / 1000
-).toFixed(0)}k + 8 P3+ 不同科別；醫學中心→國家級：${(
+).toFixed(0)}k + 8 P3+ 不同科別；${tierLabel('醫學中心')} → ${tierLabel('國家級教學醫院')}（國家級教學醫院）：${(
   TIER_UPGRADE_THRESHOLDS.醫學中心! / 1000
 ).toFixed(0)}k + 10 P2+ + 至少 1 位 P1。`
 
@@ -94,7 +95,7 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     title: '設施升級 + 房間擴建',
     body: [
       '在「醫院」頁面點任一房間 → modal 內有「升級設施」按鈕。Lv.1 → Lv.5 共 4 階，每階產能乘數 1.0→3.0。Cost ladder：10K / 50K / 200K / 1M。',
-      '房間擴建：區域醫院 tier 開始解鎖，每種房型可加 2-3 間 extra（門診 +3 / 手術房 +2 / 病房 +2）。',
+      `房間擴建：${tierLabel('區域醫院')} tier 開始解鎖，每種房型可加 2-3 間 extra（門診 +3 / 手術房 +2 / 病房 +2）。`,
     ],
   },
   {
