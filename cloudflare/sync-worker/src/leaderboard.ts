@@ -266,6 +266,20 @@ async function handleUpsert(
     // SQLite error message to map it back to a typed 409. (Earlier impl
     // did a separate SELECT pre-check; that doubled D1 round-trips per push
     // for no extra safety, since this query is the gate either way.)
+    // One-way ratchet on badges_csv + subject_mastery_count: an "empty"
+    // incoming value (badges_csv = '' / subject_mastery_count = 0) MUST NOT
+    // overwrite a non-empty current value. Protects against stale-client
+    // clobber where a player on a pre-fix JS bundle keeps pushing empty
+    // achievement payloads (their local Dexie achievements table is empty
+    // because the broken client-side backfill never wrote it) AFTER a
+    // server-side backfill (scripts/backfill-leaderboard-badges.ts) has
+    // populated D1 from R2 bundle derivation. Without this ratchet the LWW
+    // updated_at gate accepts the stale push and clobbers the derived
+    // value, requiring repeated server-side backfill until the player
+    // picks up new JS. See 2026-05-24 decision entry on Worker ratchet.
+    // All other fields (nickname / tier / reputation / counts / is_public)
+    // keep plain LWW — clients legitimately refresh those each cycle and
+    // "empty" values aren't a defensive concept there.
     await env.LEADERBOARD_DB.prepare(
       `INSERT INTO leaderboard_m2
          (user_id, nickname, nickname_lower, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at, badges_csv, subject_mastery_count)
@@ -279,8 +293,16 @@ async function handleUpsert(
          total_study_min       = excluded.total_study_min,
          is_public             = excluded.is_public,
          updated_at            = excluded.updated_at,
-         badges_csv            = excluded.badges_csv,
-         subject_mastery_count = excluded.subject_mastery_count
+         badges_csv            = CASE
+                                   WHEN excluded.badges_csv = '' AND leaderboard_m2.badges_csv != ''
+                                   THEN leaderboard_m2.badges_csv
+                                   ELSE excluded.badges_csv
+                                 END,
+         subject_mastery_count = CASE
+                                   WHEN excluded.subject_mastery_count = 0 AND leaderboard_m2.subject_mastery_count > 0
+                                   THEN leaderboard_m2.subject_mastery_count
+                                   ELSE excluded.subject_mastery_count
+                                 END
        WHERE leaderboard_m2.updated_at < excluded.updated_at`,
     )
       .bind(
