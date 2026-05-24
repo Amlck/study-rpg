@@ -39,6 +39,7 @@ import {
 } from './reset-propagation'
 import { registerSyncMetadataGetter } from '../../services/sync-metadata'
 import { backfillAchievementsFromCurrentStats } from '../../services/achievement-backfill'
+import { backfillMonotonicCounters } from '../../services/counter-backfill'
 import type {
   EngineDiagnosticSnapshot,
   SyncEngine,
@@ -261,6 +262,11 @@ export function useSync(): UseSyncReturn {
             onPullComplete: async () => {
               await checkAssignmentInvariants()
               try {
+                // Counter backfill MUST run first — achievement-backfill's
+                // buildAchievementStats() reads from monotonicCounters, so
+                // patched values need to be in place before predicate
+                // evaluation. See backfill-monotonic-counters spec D5.
+                await backfillMonotonicCounters()
                 await backfillAchievementsFromCurrentStats()
               } catch (err) {
                 // eslint-disable-next-line no-console
