@@ -36,7 +36,7 @@ const NICKNAME_MIN_CODEPOINTS = 2;
 const NICKNAME_MAX_CODEPOINTS = 12;
 
 const TIER_MIN = 1;
-const TIER_MAX = 3;
+const TIER_MAX = 4;
 const DOCTOR_COUNT_MAX = 50;
 
 // === Achievement badge constants (v15 add-achievement-system) ===
