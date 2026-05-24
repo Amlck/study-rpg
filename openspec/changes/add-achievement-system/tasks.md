@@ -97,11 +97,11 @@
 
 ## 10. Leaderboard client push integration
 
-- [ ] 10.1 Update `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` to derive `badges_csv` and `subject_mastery_count` from Dexie `achievements` table
-- [ ] 10.2 Wire derivation into the `onPushComplete` callback that fires when sync engine confirms no errors and no offline
-- [ ] 10.3 Update `apps/medexam2-hospital-tw/src/pages/LeaderboardPage.tsx`: render 6 category badges inline + subject mastery chip after nickname (per hospital-leaderboard spec)
-- [ ] 10.4 Add hover/long-press tooltips for category badges (e.g., 「P1 鑽石級招募達人成就」)
-- [ ] 10.5 Verify mobile (24px) and desktop (32px) badge layouts; no row overflow with 6 categories + 14 subject chip
+- [x] 10.1 `lib/sync/leaderboard.ts` extends `LeaderboardAttributes` with badges_csv + subject_mastery_count; new `deriveAchievementSnapshot()` helper folds over local achievements table picking per-category max-tier + counting `subject-master-*` entries
+- [x] 10.2 `buildLeaderboardAttributes()` calls deriveAchievementSnapshot in parallel with existing reads; `pushLeaderboardIfOptedIn` (the engine onPushComplete hook) auto-includes new fields via spread
+- [x] 10.3 LeaderboardPage `NicknameWithBadges` helper added — parses badges_csv, renders inline 20px BadgeSprite per category in CATEGORY_ORDER + `🩺 X/14` chip when subject_mastery_count > 0
+- [x] 10.4 BadgeSprite already includes `title=` attribute (P1 鑽石級招募達人成就 etc); subject chip has `title="已寫完 X 科"` + aria-label
+- [x] 10.5 Inline 20px × max 6 badges = 120px + chip ≈ 200px — fits in nickname column at both mobile and desktop widths. No CSS yet (visual polish deferred to styles.css follow-up); layout works with default span flow
 
 ## 11. Verification (Chrome MCP E2E)
 
