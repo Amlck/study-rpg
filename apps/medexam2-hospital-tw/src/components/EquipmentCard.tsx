@@ -82,7 +82,7 @@ export function EquipmentCard({ definition, ownedRow, onUpgradeClick, busy }: Eq
         )}
       </p>
       <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-        加成 +{(repBonus * 100).toFixed(0)}% 聲望 / +{(tpBonus * 100).toFixed(0)}% 吞吐
+        加成 +{(repBonus * 100).toFixed(0)}% 聲望 / +{(tpBonus * 100).toFixed(0)}% 看診效率
       </p>
       <button
         type="button"

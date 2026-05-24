@@ -21,6 +21,7 @@ import { ACHIEVEMENTS } from '@study-rpg/content-medexam2-tw'
 import type { Achievement, AchievementCategory, AchievementTier } from '@study-rpg/core'
 import { getHospitalDB } from '../db/schema'
 import { AchievementCard } from '../components/AchievementCard'
+import { SurfaceHint } from '../components/SurfaceHint'
 
 const CATEGORY_LABELS: Record<AchievementCategory, string> = {
   study: '學習里程碑',
@@ -105,13 +106,17 @@ export function AchievementsPage() {
 
   return (
     <div className="achievements-page">
-      <header className="achievements-page__head">
-        <Link to="/" className="nav-link">← 回首頁</Link>
-        <h1 className="achievements-page__title">成就</h1>
-        <p className="achievements-page__summary">
-          已解鎖 <strong>{summary.unlocked}</strong> / {summary.total}
-        </p>
+      <header className="app-header">
+        <h1>成就</h1>
+        <div className="app-header__meta">
+          <span className="achievements-page__summary">
+            已解鎖 <strong>{summary.unlocked}</strong> / {summary.total}
+          </span>
+          <Link to="/" className="nav-link">← 回首頁</Link>
+        </div>
       </header>
+
+      <SurfaceHint surfaceId="achievements" />
 
       <div className="achievements-page__tabs" role="tablist">
         <button

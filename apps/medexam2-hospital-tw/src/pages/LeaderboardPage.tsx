@@ -32,6 +32,7 @@ import { BadgeSprite } from '../components/BadgeSprite'
 import type { AchievementCategory, AchievementTier } from '@study-rpg/core'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { LeaderboardOptInModal } from '../components/LeaderboardOptInModal'
+import { SurfaceHint } from '../components/SurfaceHint'
 import {
   getLeaderboardProfile,
   markDismissedForever,
@@ -154,6 +155,8 @@ export function LeaderboardPage() {
           </Link>
         </div>
       </header>
+
+      <SurfaceHint surfaceId="leaderboard" />
 
       <section className="filter-bar" aria-label="排名類別篩選">
         <div className="filter-bar__group">

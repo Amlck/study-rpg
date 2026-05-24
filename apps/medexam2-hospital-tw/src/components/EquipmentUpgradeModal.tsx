@@ -84,7 +84,7 @@ export function EquipmentUpgradeModal({
             <p>
               升級後加成：
               <strong>+{(newRepBonus * 100).toFixed(0)}%</strong> 聲望增益 /{' '}
-              <strong>+{(newTpBonus * 100).toFixed(0)}%</strong> 病患吞吐
+              <strong>+{(newTpBonus * 100).toFixed(0)}%</strong> 看診效率
             </p>
             {!canAfford && (
               <p className="muted">

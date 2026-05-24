@@ -19,6 +19,7 @@ import { purchaseOrUpgrade, type PurchaseResult } from '../services/equipment-pu
 import { EquipmentCard } from './EquipmentCard'
 import { EquipmentUpgradeModal } from './EquipmentUpgradeModal'
 import { EmojiIcon } from './EmojiIcon'
+import { SurfaceHint } from './SurfaceHint'
 
 interface EquipmentPanelProps {
   tier: HospitalTier
@@ -84,6 +85,8 @@ export function EquipmentPanel({ tier }: EquipmentPanelProps) {
           {collapsed ? '（點擊展開）' : '（點擊收合）'} · 已擁有 {owned.length} / 10
         </span>
       </h2>
+
+      {!collapsed && <SurfaceHint surfaceId="equipment" />}
 
       {!collapsed && (
         <div className="equipment-grid">

@@ -56,6 +56,16 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'bookmarks',
+    icon: '📚',
+    title: '我的題目（⭐ 收藏 + ❌ 錯題）',
+    body: [
+      '答題畫面右上的「⭐」可以把題目加入手動收藏；首頁「📚 我的題目」進去可以看「⭐ 手動收藏」跟「❌ 錯題」兩個 tab。',
+      '錯題 tab 會自動列出所有答錯的題目（不需手動操作）；手動收藏 tab 適合標記想再看的題目（例：詳解很精彩、考點冷門）。',
+      '兩個 tab 都可以匯出 Markdown 給 RemNote / Anki 等外部工具加工複習。⭐ 收藏會雲端同步、跨裝置一致。',
+    ],
+  },
+  {
     id: 'recruitment',
     icon: '🎫',
     title: '招募醫師（gacha + 親和值）',
@@ -102,6 +112,17 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'equipment',
+    icon: '🩻',
+    title: '醫院設備 — 10 件設備 × 3 級',
+    body: [
+      '在「醫院」頁面下方點任一設備（CT / MRI / 內視鏡 / 達文西 / 心導管室 / PET-CT / LINAC / ECMO / 複合式手術房 / NGS）→ 花營收購買 L1，再各花一筆升到 L2、L3。L1 全買約 24M、全 L3 約 244M。',
+      '每級加成有兩條：「**聲望**」加成全院聲望進帳（含答題、急診照會、特殊事件 emergency shift 獎勵），「**看診效率**」加成 idle 看診的營收 + 被動聲望（throughput multiplier — 每分鐘看的病患變多，所以錢跟聲望都同步多）。',
+      '兩條都是 additive — 例：擁 5 件 L3 + 5 件 L1 → +40% 聲望 / +70% 看診效率。L1/L2/L3 加成數值：聲望 +1% / +3% / +7%；看診效率 +2% / +5% / +12%。',
+      '設備也是升上「國家級教學醫院」的第 3 個條件 — 必須安裝 ≥ 3 件不同設備（任何 level）。',
+    ],
+  },
+  {
     id: 'tier-upgrade',
     icon: '🎯',
     title: '升級雙閘門（聲望 + 多樣性）',
@@ -111,12 +132,32 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'events',
+    icon: '⚡',
+    title: '特殊事件（區域醫院+ 解鎖）',
+    body: [
+      '升上區域醫院後，session 期間每分鐘有機率隨機觸發事件。正向：VIP 病人（接待 → 看診效率 ×2 持續 10 分鐘）/ 急診加開（+5K 營收 +500 聲望）/ 學會獎項（直接 +rep toast）。',
+      '負向：醫療糾紛（modal，可選「私下和解」付營收或「接受懲處」扣 5K 聲望；24 小時內沒處理會自動扣聲望）/ 負面新聞 / 學會質疑（toast，直接扣 1K-10K 聲望）。',
+      '混合：醫療評鑑（醫學中心+ 才會出現，70% 通過 → 大量加 rep；30% 失敗 → 扣 rep）。事件之間有 5 分鐘冷卻，不會連環跳。',
+    ],
+  },
+  {
     id: 'fate-cards',
     icon: '🎴',
     title: '命運卡',
     body: [
       '消耗 reputation 抽 4 階卡包（普通 / 稀有 / 史詩 / 傳奇）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
       '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward。',
+    ],
+  },
+  {
+    id: 'targeted-ticket',
+    icon: '🎯',
+    title: '指定抽券（命運卡掉落 → 指派科別）',
+    body: [
+      '從史詩 / 傳奇命運卡有機率抽到「指定 PN 抽券」（P3 / P2 / P1 三種）— 可選一個已解鎖的科別 banner，下次招募保證該科指定 rarity 以上的醫師。',
+      '抽到時跑流程：先選科別 → 券變 assigned 狀態 → 到「招募」頁面對應科別 banner 點「使用指定券」消耗。FateCardPage 上方有「N 張待指派」chip 可隨時點開重啟流程。',
+      '未指派的指定券會一直存在等你決定；指派後不能改科別，但消耗前還沒抽就可丟著。',
     ],
   },
   {

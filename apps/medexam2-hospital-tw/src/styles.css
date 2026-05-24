@@ -5687,15 +5687,6 @@ body:has(.modal-backdrop) {
   margin: 0 auto;
   color: #e4e4e4;
 }
-.achievements-page__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.achievements-page__title { margin: 0; font-size: 1.6em; }
 .achievements-page__summary { margin: 0; color: #aaa; }
 
 .achievements-page__tabs {

@@ -11,6 +11,7 @@ import { useWrongAnswers } from '../services/wrong-answers'
 import { loadQuestionsByIdMap } from '../lib/quiz'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { ExplanationMarkdown } from '../components/ExplanationMarkdown'
+import { SurfaceHint } from '../components/SurfaceHint'
 
 type TabId = 'manual' | 'wrong'
 
@@ -53,6 +54,8 @@ export function BookmarksPage() {
           </Link>
         </div>
       </header>
+
+      <SurfaceHint surfaceId="bookmarks" />
 
       <nav className="bookmarks-tabs" role="tablist" aria-label="收藏分類">
         <button
