@@ -50,6 +50,7 @@ import {
   rollNewERConsult,
 } from '../services/er-consultation'
 import { buildDoctorByRoom, getAssignedDoctor } from './room-doctor-map'
+import { computeThroughputMultiplier, computeUniqueEquipmentCount } from './equipment'
 
 export interface TickEventToastInfo {
   event: EventDefinition
@@ -129,6 +130,7 @@ export async function runTick(): Promise<TickResult> {
       db.retirementLog,
       db.eventLog,
       db.erConsultLog,
+      db.hospitalEquipment,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -159,13 +161,20 @@ export async function runTick(): Promise<TickResult> {
         totalThroughput += computeThroughput(room, doctor)
       }
 
+      // add-hospital-equipment-medexam2 (2026-05-24): apply equipment
+      // throughput multiplier hospital-wide. Multiplier = 1 + Σ bonuses;
+      // returns 1.0 when no equipment owned (no-op for fresh saves).
+      const ownedEquipment = await db.hospitalEquipment.toArray()
+      const equipmentThroughputMultiplier = computeThroughputMultiplier(ownedEquipment)
+
       const elapsedMin = elapsedSec / 60
       // VIP boost — doubles throughput when vipBoostUntil > now
       const vipActive = (counters.vipBoostUntil ?? 0) > now
       const effectiveThroughput = vipActive ? totalThroughput * VIP_BOOST_MULTIPLIER : totalThroughput
       // Tick only runs when session is active (early-returned above), so the
       // reading buff always applies — no branch needed.
-      const idleAdjustedThroughput = effectiveThroughput * READING_SESSION_BUFF_MULTIPLIER
+      const idleAdjustedThroughput =
+        effectiveThroughput * READING_SESSION_BUFF_MULTIPLIER * equipmentThroughputMultiplier
       const deltaRevenueGross = idleAdjustedThroughput * elapsedMin
       const deltaSalary = computeSalaryDrain(doctors, counters.tier) * elapsedMin
       const deltaReputation = idleAdjustedThroughput * elapsedMin
@@ -211,6 +220,13 @@ export async function runTick(): Promise<TickResult> {
             const hasP1 = doctors.some((d) => rarityIsAtLeast(d.rarity, 'P1'))
             if (!hasP1) break
           }
+        }
+        // add-hospital-equipment-medexam2 (2026-05-24): T3 → T4 third gate —
+        // ≥ 3 unique equipment installed at level ≥ 1. Counts unique IDs, not
+        // total levels (5 L3 of same equipment = 1, not 5). Lower transitions
+        // unaffected.
+        if (currentTier === '醫學中心') {
+          if (computeUniqueEquipmentCount(ownedEquipment) < 3) break
         }
         const existingIds = new Set(rooms.map((r) => r.id))
         const newRooms = TIER_ROOMS[next].filter((r) => !existingIds.has(r.id))

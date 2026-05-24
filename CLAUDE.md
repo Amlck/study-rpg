@@ -270,6 +270,43 @@ wrangler d1 migrations apply study-rpg-leaderboard --remote
 
 Full change reference: `openspec/changes/add-achievement-system/` (proposal / design / specs / tasks).
 
+## Hospital equipment (M_2nd ext, 2026-05-24)
+
+`apps/medexam2-hospital-tw` ships a capital-investment revenue sink: 10 named equipment items (CT / MRI / 內視鏡 / 達文西 / 心導管室 / PET-CT / LINAC / ECMO / 複合式手術房 / NGS) × 3-level upgrade ladder. Total L1 buy-all ~24M; full L3 buy-all ~244M (~6 weeks dedicated grind at 國家級 default revenue). Costs in `packages/content-medexam2-tw/src/equipment-catalog.ts`, types in `@study-rpg/core` (`EquipmentId` / `EquipmentDef` / `OwnedEquipmentRow`). UI = `EquipmentPanel` mounted on Hospital page below room-extension section (responsive grid, collapsible header).
+
+Each equipment level grants additive bonuses (formula `1 + Σ`, level value REPLACES lower):
+- Reputation gain: L1 +1% / L2 +3% / L3 +7% (uniform across all 10 items)
+- Patient throughput: L1 +2% / L2 +5% / L3 +12% (same)
+
+Owning 5 L3 + 5 L1 → 1.40 reputation multiplier (+40%) + 1.70 throughput multiplier (+70%). Additive on purpose (not multiplicative) to keep math predictable.
+
+Multiplier wiring (4 sites):
+- `lib/tick.ts` — equipment throughput multiplier applied to `idleAdjustedThroughput` (affects revenue + tick-time reputation accrual via throughput→reputation coupling)
+- `services/quiz-rewards.ts` — equipment reputation multiplier wraps `reputationDelta` for correct-answer reward
+- `services/er-consultation.ts` — same wrap on ER quiz correct-answer reputation
+- `services/event.ts` `resolveEmergencyShift` — wraps `EMERGENCY_SHIFT_REPUTATION_BONUS` constant at call site
+
+Equipment does NOT generate idle/AFK reputation — multiplier amplifies *active-play* reputation only (per design D3, preserves the fate-card cost-gate strategic tension).
+
+T4 upgrade gate triple condition (new third gate from this change):
+1. Reputation ≥ 300,000 (bumped from 150,000 same change — see `clinic-tiers.ts` `TIER_UPGRADE_THRESHOLDS.醫學中心`)
+2. 10 distinct P2+ subjects + ≥ 1 P1 doctor (unchanged)
+3. **≥ 3 unique equipment installed at level ≥ 1** (new — `lib/tick.ts` T3→T4 evaluation calls `computeUniqueEquipmentCount`)
+
+Pre-existing T4 saves (`gameCounters.tier === '國家級教學醫院'` before this change ships) are **grandfathered** — tier monotonicity per `clinic-level-up` Req 1 means no regression even with 0 equipment + reputation < 300k. T3 players in flight face both new conditions simultaneously.
+
+Persistence (Dexie v16): new `hospitalEquipment` table (PK `equipmentId`, indexed `updatedAt`). Row shape `{ equipmentId, level: 1|2|3, purchasedAt, upgradedAt, updatedAt }`. Schema-only upgrade — no row backfill, starts empty for everyone. v15 was claimed by `add-achievement-system` for `achievements` table.
+
+Sprites: `packages/theme-pixel-hospital/sprites/equipment/<id>.png` (10 files, ~200 KB total, 384×384 16-color quantize PNG). Sprite registry in `packages/theme-pixel-hospital/src/sprites.ts` glob extended to register equipment subfolder with `equipment-` prefix in `SPRITES_MAP`. Generated via codex CLI per `~/.claude/imports/codex_image_gen.md` recipe (Gemini was unavailable at apply time; codex became primary path).
+
+Sync (R2 m2 bundle passenger pattern): bundle schema_version bump 1 → 2 + new `hospitalEquipment` array key. **NOT yet wired** — `add-r2-cloud-sync-migration` §9 R2 cutover (estimated 2026-05-29) gates this. Equipment §1–§8 + §10–§11 are R2-independent and shipped now; §9 sync wiring blocks until R2 reads flip.
+
+Known follow-ups (deferred):
+- V6MigrationModal intro modal explaining 150k→300k recalibration (UX polish per tasks.md §8.5)
+- audit-event pass branch could also use equipment multiplier (currently event.ts only wires emergency-shift; see equipment design D3 logic for why audit was excluded — penalty-and-reward dual-path) — revisit if telemetry shows uneven application
+
+Full change reference: `openspec/changes/add-hospital-equipment-medexam2/` (proposal / design / specs / tasks).
+
 ## Source data path
 
 題庫原始 .md 在使用者本機（**不在 repo 內**）：

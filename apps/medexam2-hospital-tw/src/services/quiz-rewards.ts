@@ -17,6 +17,7 @@
  *       first-unlock SHALL grant a one-time ticket bonus".
  */
 import type { SubjectId } from '@study-rpg/core'
+import { computeReputationMultiplier, getOwnedEquipment } from '../lib/equipment'
 import {
   QUIZ_REVENUE_PER_CORRECT_BASE,
   QUIZ_REPUTATION_PER_CORRECT_BASE,
@@ -66,6 +67,12 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
   // catalog notes.
   const prevStats = await buildAchievementStats()
   const synthPlayer = buildSyntheticPlayer()
+
+  // add-hospital-equipment-medexam2 (2026-05-24): pre-fetch owned equipment
+  // outside the transaction. Race window (user purchasing equipment between
+  // this read and the transaction commit) is bounded to a few ms and harmless.
+  const ownedEquipment = await getOwnedEquipment()
+  const equipmentReputationMultiplier = computeReputationMultiplier(ownedEquipment)
 
   const result = await db.transaction(
     'rw',
@@ -125,8 +132,10 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
       const revenueDelta = Math.round(
         QUIZ_REVENUE_PER_CORRECT_BASE * specialtyMultiplier * tierMultiplier,
       )
+      // add-hospital-equipment-medexam2 (2026-05-24): wrap reputation gain
+      // with equipment multiplier (1 + Σ owned bonuses; returns 1.0 when none).
       const reputationDelta = Math.round(
-        QUIZ_REPUTATION_PER_CORRECT_BASE * specialtyMultiplier * tierMultiplier,
+        QUIZ_REPUTATION_PER_CORRECT_BASE * specialtyMultiplier * tierMultiplier * equipmentReputationMultiplier,
       )
 
       // 2. Write revenue + reputation
