@@ -219,6 +219,21 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     // join this outer scope when their table scope is a subset, so all writes
     // commit or roll back together (spec: hospital-quiz "Reward writes are
     // atomic with mastery / affinity writes").
+    //
+    // Tables in this scope split into two groups:
+    //   (1) write targets — mastery / questionHistory / affinity / gameCounters /
+    //       monotonicCounters / tickets / bannerUnlockBonusLog / achievements / meta
+    //   (2) sub-tx scope-superset for `applyQuizReward` reads —
+    //       - eventLog / fateCardHistory / retirementLog / doctors: read by
+    //         `buildAchievementStats` (opens a sub-tx and Dexie rejects sub-tx
+    //         scope that isn't a subset of the parent)
+    //       - hospitalEquipment: read by `getOwnedEquipment` for the reputation
+    //         multiplier
+    //       These tables are read-only here; without them every quiz answer
+    //       rolls back with `SubTransactionError` / `NotFoundError` (regression
+    //       shipped with add-achievement-system Phase 6+7 commit ff57375 on
+    //       2026-05-23, compounded by add-hospital-equipment-medexam2 a31672a
+    //       on 2026-05-24).
     const rewardResult = await db.transaction(
       'rw',
       [
@@ -229,6 +244,13 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
         db.monotonicCounters,
         db.tickets,
         db.bannerUnlockBonusLog,
+        db.eventLog,
+        db.fateCardHistory,
+        db.retirementLog,
+        db.doctors,
+        db.achievements,
+        db.meta,
+        db.hospitalEquipment,
       ],
       async () => {
         // Read isFresh BEFORE recordCorrectAnswer writes the questionHistory row.
