@@ -57,7 +57,7 @@ Migration: `cloudflare/sync-worker/migrations/0001_leaderboard.sql` (Worker D1 m
 | `updated_at` | INTEGER NOT NULL | Epoch ms. LWW resolution: `ON CONFLICT DO UPDATE ... WHERE current.updated_at < incoming.updated_at`. |
 | `badges_csv` | TEXT NOT NULL DEFAULT '' | Achievement system v15 — per-category highest tier (`cat:Pn,...`, ≤ 6 entries, ≤ 60 chars). Migration `0002_add_badges.sql`. |
 | `subject_mastery_count` | INTEGER NOT NULL DEFAULT 0 | Count of `subject-master-*` unlocks (0–14). Same migration as above. |
-| `total_correct` | INTEGER NOT NULL DEFAULT 0 | CHECK ≥ 0. Sum of `mastery.correct` across all subjects. Migration `0005_add_total_correct.sql` (add-hospital-leaderboard-correct-count-filter). |
+| `total_correct` | INTEGER NOT NULL DEFAULT 0 | CHECK ≥ 0. Sum of `questionHistory.correctCount` across all answered questions (re-attempts of the same question count separately). **Not** `mastery.correct` — that field carries a partner-specialty multiplier weighting (e.g. 0.6 / 0.8) that doesn't match the player's intuitive「答對總題數」expectation, and was also historically subject to outer-tx rollback drops. Migration `0005_add_total_correct.sql` (add-hospital-leaderboard-correct-count-filter); derivation source changed by `fix-hospital-leaderboard-correct-source` (2026-05-24, client-only). |
 
 Partial indexes (all `WHERE is_public = 1`):
 

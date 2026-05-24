@@ -167,10 +167,10 @@ The system SHALL upsert the player's leaderboard row to D1 via the Worker `POST 
 - **WHEN** an opted-in player completes a gameplay action that triggers cloud sync (e.g. recruits a doctor, completes a study session)
 - **THEN** within the next 3-second debounce window the sync engine SHALL POST the current `{user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, total_correct, is_public, updated_at}` payload to `/leaderboard/upsert` in addition to the R2 bundle push
 
-#### Scenario: total_correct computed from mastery aggregate
+#### Scenario: total_correct computed from questionHistory aggregate
 
 - **WHEN** the leaderboard adapter computes the payload for an upsert
-- **THEN** the `total_correct` field SHALL equal `Math.max(0, Math.floor(SUM(mastery.correct)))` across all rows in the local Dexie `mastery` table; the adapter SHALL NOT query `questionHistory` for this value
+- **THEN** the `total_correct` field SHALL equal `Math.max(0, Math.floor(SUM(questionHistory.correctCount)))` across all rows in the local Dexie `questionHistory` table; the adapter SHALL NOT read from `mastery.correct` for this value because `mastery.correct` carries a partner-specialty multiplier weighting that does not match the player's intuitive「答對總題數」count, and `mastery` upserts were historically subject to outer-transaction rollback regressions that left `questionHistory` as the more reliable source
 
 #### Scenario: Opted-out player still upserts is_public=0
 
