@@ -63,20 +63,20 @@ const CATEGORY_LABEL: Record<AchievementCategory, string> = {
 /**
  * Resolve a representative achievement name for the badge tooltip from the
  * catalog. `badges_csv` only encodes `<category>:<tier>` highest-per-category
- * — when more than one achievement exists at that (category, tier), we pick
- * the first in catalog order as the best-guess name (catalog conventionally
- * orders entry-threshold achievements first per tier band). The other
- * player's actual unlocked achievement at that tier may differ but the badge
- * art + tier semantic remain correct.
+ * — when more than one achievement exists at that (category, tier) (e.g.
+ * quiz P3 has both `quiz-correct-500` 答題熟手 AND `streak-correct-10`
+ * 連對之手), we join all names with " / " so the viewer can recognise
+ * whichever one they actually unlocked. The badge art + tier semantic are
+ * the same regardless of which achievement triggered it.
  */
 function resolveDefaultLabel(category: AchievementCategory, tier: AchievementTier): string {
-  const match = ACHIEVEMENTS.find(
+  const matches = ACHIEVEMENTS.filter(
     (a) =>
       a.category === category &&
       a.tier === tier &&
       !a.id.startsWith('subject-master-'),
   )
-  if (match) return match.name
+  if (matches.length > 0) return matches.map((m) => m.name).join(' / ')
   return `${tier} 級${CATEGORY_LABEL[category]}成就`
 }
 
