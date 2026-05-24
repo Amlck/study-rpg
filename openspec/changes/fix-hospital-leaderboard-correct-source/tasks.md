@@ -17,15 +17,15 @@
 - [x] 4.1 `pnpm --filter @study-rpg/medexam2-hospital-tw typecheck` → green. No Worker / core changes so the cross-package typecheck cascade is a no-op for those.
 - [x] 4.2 `openspec validate --strict fix-hospital-leaderboard-correct-source` → valid.
 - [x] 4.3 `openspec validate --strict hospital-leaderboard` (main spec post-edit) → valid.
-- [ ] 4.4 Chrome MCP smoke against prod (post-deploy): on the signed-in test account, trigger one quiz answer → wait for sync push (~3s) → `wrangler d1 execute --remote --command "SELECT user_id, total_correct FROM leaderboard_m2 WHERE user_id = '<sub>'"` shows a value matching the player's local `SUM(questionHistory.correctCount)` (±1 for the just-answered question). Expected for current dogfood user: D1 jumps from 0 → 95.
+- [x] 4.4 Chrome MCP smoke against prod (post-deploy): signed-in dogfood account (康勞德 / tony85314@gmail.com) baseline D1 row had `total_correct=79` (last push under pre-fix weighted-mastery derivation); local Dexie aggregate at smoke time `SUM(qh.correctCount)=95`, `SUM(mastery.correct)=79.2` (matches D1 baseline — pre-fix code was correctly summing mastery). Forced a sync push by reloading + clicking 開始唸書 (started a study session → state mutation → R2 push → onPushComplete → leaderboard upsert). Network confirmed `POST https://api.med-study-rpg.com/leaderboard/upsert 200`. Post-push D1: `total_correct=95, updated_at=1779634584506` (jumped from 79 → 95 exactly matching expected raw qh.correctCount aggregate).
 
 ## 5. Deploy
 
-- [ ] 5.1 Commit (explicit file-by-file `git add`, never `-A`).
-- [ ] 5.2 Push to `track-m2` → merge into `main` → push `main`.
-- [ ] 5.3 GH Pages + CF Pages deploys auto-trigger; wait for green status (no Worker / D1 changes so those workflows skip — only `cloudflare/sync-worker/**` paths trigger Worker deploy).
-- [ ] 5.4 Verify on prod: same Chrome MCP smoke as 4.4 against `https://med-study-rpg.com/2nd/`.
+- [x] 5.1 Committed `a73918f` with explicit file-by-file `git add` (7 files: lib/sync/leaderboard.ts + docs/LEADERBOARD.md + openspec spec + 4 change artifact files); pre-existing dirt (meta.json + supabase/functions/) intentionally not staged.
+- [x] 5.2 Pushed `track-m2` → fast-forward merge into `main` (commit `788ce61`) → pushed `main`.
+- [x] 5.3 GH Pages run `26364419007` (50s ✓) + CF Pages run `26364419023` (45s ✓). Worker workflow correctly skipped (no `cloudflare/sync-worker/**` paths changed).
+- [x] 5.4 Verified on prod `https://med-study-rpg.com/2nd/` — same chain as 4.4: hard reload + click 開始唸書 + skip ER popup → leaderboard upsert POST 200 → D1 row `total_correct` 79 → 95 exactly matching local raw count.
 
 ## 6. Archive
 
-- [ ] 6.1 Once 4.4 / 5.4 verifications pass: `mv openspec/changes/fix-hospital-leaderboard-correct-source openspec/changes/archive/YYYY-MM-DD-fix-hospital-leaderboard-correct-source`. Commit with `spec(archive)` prefix. Push.
+- [ ] 6.1 Run `/opsx:archive fix-hospital-leaderboard-correct-source` to `mv openspec/changes/fix-hospital-leaderboard-correct-source openspec/changes/archive/YYYY-MM-DD-fix-hospital-leaderboard-correct-source`. Commit with `spec(archive)` prefix. Push.
