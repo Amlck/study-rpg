@@ -177,19 +177,135 @@ export function AchievementsPage() {
         </label>
       </div>
 
-      <div className="achievements-page__grid">
-        {filtered.length === 0 ? (
-          <p className="achievements-page__empty">沒有符合條件的成就</p>
-        ) : (
-          filtered.map((a) => (
+      {subTab === 'main' ? (
+        <MainLaddersView filtered={filtered} unlockedMap={unlockedMap} />
+      ) : (
+        <SubjectGridView filtered={filtered} unlockedMap={unlockedMap} />
+      )}
+    </div>
+  )
+}
+
+// ─── Ladder grouping for 成就 tab ──────────────────────────────────────────
+
+/**
+ * Each main-tab achievement belongs to exactly one "ladder" — a P4→P1
+ * progression on the same metric. Quiz splits into 2 sub-ladders
+ * (累計 vs streak) since they measure different things.
+ */
+function ladderKey(a: Achievement): string {
+  if (a.id.startsWith('streak-correct-')) return 'quiz-streak'
+  if (a.id.startsWith('quiz-correct-')) return 'quiz-accumulative'
+  return a.category
+}
+
+const LADDER_ORDER: readonly string[] = [
+  'study',
+  'quiz-accumulative',
+  'quiz-streak',
+  'recruit',
+  'hospital',
+  'fortune',
+  'hidden',
+]
+
+const LADDER_LABELS: Record<string, string> = {
+  study: '學習里程碑',
+  'quiz-accumulative': '答題大師 — 累計',
+  'quiz-streak': '答題大師 — 連續答對',
+  recruit: '招募達人',
+  hospital: '醫院經營',
+  fortune: '時運與意外',
+  hidden: '隱藏 / 彩蛋',
+}
+
+const TIER_RANK: Record<AchievementTier, number> = { P4: 1, P3: 2, P2: 3, P1: 4 }
+
+interface ViewProps {
+  filtered: Achievement[]
+  unlockedMap: Map<string, number>
+}
+
+function MainLaddersView({ filtered, unlockedMap }: ViewProps) {
+  const groups = useMemo(() => {
+    const m = new Map<string, Achievement[]>()
+    for (const a of filtered) {
+      const key = ladderKey(a)
+      if (!m.has(key)) m.set(key, [])
+      m.get(key)!.push(a)
+    }
+    for (const list of m.values()) list.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier])
+    return m
+  }, [filtered])
+
+  if (filtered.length === 0) {
+    return <p className="achievements-page__empty">沒有符合條件的成就</p>
+  }
+
+  return (
+    <div className="achievements-page__ladders">
+      {LADDER_ORDER.map((key) => {
+        const entries = groups.get(key)
+        if (!entries || entries.length === 0) return null
+        return (
+          <section key={key} className="achievement-ladder">
+            <h2 className="achievement-ladder__title">{LADDER_LABELS[key]}</h2>
+            <div className="achievement-ladder__row">
+              {entries.map((a) => (
+                <AchievementCard
+                  key={a.id}
+                  achievement={a}
+                  unlockedAt={unlockedMap.get(a.id) ?? null}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Subject mastery view (14 subjects + 1 capstone) ──────────────────────
+
+function SubjectGridView({ filtered, unlockedMap }: ViewProps) {
+  const { subjects, capstone } = useMemo(() => {
+    const subj = filtered.filter((a) => a.id.startsWith('subject-master-'))
+    const cap = filtered.find((a) => a.id === 'all-subjects-mastered') ?? null
+    return { subjects: subj, capstone: cap }
+  }, [filtered])
+
+  if (filtered.length === 0) {
+    return <p className="achievements-page__empty">沒有符合條件的成就</p>
+  }
+
+  return (
+    <div className="achievements-page__subject-view">
+      {subjects.length > 0 && (
+        <section className="achievement-ladder">
+          <h2 className="achievement-ladder__title">14 科精通</h2>
+          <div className="achievement-ladder__subject-grid">
+            {subjects.map((a) => (
+              <AchievementCard
+                key={a.id}
+                achievement={a}
+                unlockedAt={unlockedMap.get(a.id) ?? null}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+      {capstone && (
+        <section className="achievement-ladder achievement-ladder--capstone">
+          <h2 className="achievement-ladder__title">全科精通 (capstone)</h2>
+          <div className="achievement-ladder__capstone-row">
             <AchievementCard
-              key={a.id}
-              achievement={a}
-              unlockedAt={unlockedMap.get(a.id) ?? null}
+              achievement={capstone}
+              unlockedAt={unlockedMap.get(capstone.id) ?? null}
             />
-          ))
-        )}
-      </div>
+          </div>
+        </section>
+      )}
     </div>
   )
 }
