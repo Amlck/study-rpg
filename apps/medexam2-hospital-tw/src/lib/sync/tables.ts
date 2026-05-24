@@ -15,6 +15,7 @@
 import type Dexie from 'dexie'
 import type { CloudRow, RowPayload } from './types'
 import type {
+  AchievementRow,
   AffinityRow,
   BookmarkRow,
   DoctorRow,
@@ -640,6 +641,65 @@ const LEADERBOARD_PROFILE: TableAdapter = {
   },
 }
 
+// ─── ACHIEVEMENTS adapter (v15, add-achievement-system) ─────────────────────
+// Mirror LEADERBOARD_PROFILE precedent: R2-only, lives in M2_ADAPTERS only,
+// NOT in HOSPITAL_ADAPTERS. No Supabase migration, no upsert_lww whitelist
+// entry. Per achievement-system spec §"Achievement TableAdapter registered
+// in M2_ADAPTERS only".
+const ACHIEVEMENTS: TableAdapter = {
+  postgresTable: 'achievements',
+  shape: 'collection',
+  dexieTable: 'achievements',
+  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
+    if (!dirtyPks.size) return []
+    const rows: RowPayload[] = []
+    for (const pk of dirtyPks) {
+      const row = await (db as HospitalDB).achievements.get(pk)
+      if (!row) continue
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: pk,
+        data: row,
+      })
+    }
+    return rows
+  },
+  async snapshotAll(db, userId, updatedAt, appVersion) {
+    const rows: RowPayload[] = []
+    await (db as HospitalDB).achievements.each((row) => {
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: (row as AchievementRow).id,
+        data: row,
+      })
+    })
+    return rows
+  },
+  async applyToLocal(db, cloudRow, opts) {
+    const pk = cloudRow.id
+    const data = cloudRow.data as WithUpdatedAt<AchievementRow> | undefined
+    if (!pk || !data) return false
+    const force = opts?.force ?? false
+    if (!force) {
+      const local = await (db as HospitalDB).achievements.get(pk)
+      const localMs = (local as WithUpdatedAt<AchievementRow> | undefined)?._updatedAt
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+    }
+    // Cross-device pull: write data but DO NOT trigger unlock toast.
+    // Toast is emitted only by local trigger hooks, never by sync apply.
+    // Per achievement-system spec scenario "Cross-device pull does not
+    // double-fire unlock toast".
+    const next = { ...data, _updatedAt: Date.parse(cloudRow.updated_at) }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as HospitalDB).achievements.put(next as any)
+    return true
+  },
+}
+
 export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
   HOSPITAL_DOCTORS,
@@ -656,6 +716,9 @@ export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   // D1, not Supabase). A 404 makes the migration evaluator misread cloud as
   // empty and fire a spurious conflict-chooser modal. LEADERBOARD_PROFILE
   // lives only in M2_ADAPTERS (passenger of the R2 m2 bundle).
+  //
+  // ACHIEVEMENTS intentionally NOT here either — same R2-only rationale.
+  // See M2_ADAPTERS below.
 ]
 
 /**
@@ -681,6 +744,7 @@ export const M2_ADAPTERS: readonly TableAdapter[] = [
   TARGETED_TICKET_HISTORY,
   HOSPITAL_MONOTONIC_COUNTERS,
   LEADERBOARD_PROFILE,
+  ACHIEVEMENTS,
 ]
 
 export const BOOKMARKS_ADAPTERS: readonly TableAdapter[] = [QUESTION_BOOKMARKS]

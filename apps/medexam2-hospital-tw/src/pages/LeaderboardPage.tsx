@@ -28,6 +28,8 @@ import {
 } from '@study-rpg/core'
 import { useAuth } from '../lib/auth/AuthContext'
 import { fetchLeaderboardSnapshot, upsertLeaderboard } from '../lib/leaderboard/api'
+import { BadgeSprite } from '../components/BadgeSprite'
+import type { AchievementCategory, AchievementTier } from '@study-rpg/core'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { LeaderboardOptInModal } from '../components/LeaderboardOptInModal'
 import {
@@ -352,7 +354,13 @@ function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
                 <span className="leaderboard-rank-number">#{rank}</span>
               )}
             </span>
-            <span className={cellClass('nickname', activeFilter)}>{row.nickname}</span>
+            <span className={cellClass('nickname', activeFilter)}>
+              <NicknameWithBadges
+                nickname={row.nickname}
+                badgesCsv={row.badges_csv}
+                subjectMasteryCount={row.subject_mastery_count}
+              />
+            </span>
             <span className={cellClass('tier', activeFilter)}>T{row.hospital_tier}</span>
             <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
             <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
@@ -361,6 +369,76 @@ function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
         )
       })}
     </ol>
+  )
+}
+
+// ─── Badge inline renderer (per add-achievement-system, hospital-leaderboard spec) ──
+
+const CATEGORY_ORDER: readonly AchievementCategory[] = [
+  'study',
+  'quiz',
+  'recruit',
+  'hospital',
+  'fortune',
+  'hidden',
+]
+
+function parseBadgesCsv(
+  csv: string | undefined,
+): Array<{ category: AchievementCategory; tier: AchievementTier }> {
+  if (!csv) return []
+  const result: Array<{ category: AchievementCategory; tier: AchievementTier }> = []
+  for (const pair of csv.split(',')) {
+    const [cat, tier] = pair.split(':')
+    if (!cat || !tier) continue
+    if (!CATEGORY_ORDER.includes(cat as AchievementCategory)) continue
+    if (!['P1', 'P2', 'P3', 'P4'].includes(tier)) continue
+    result.push({ category: cat as AchievementCategory, tier: tier as AchievementTier })
+  }
+  // Sort to match CATEGORY_ORDER for stable visual layout
+  result.sort(
+    (a, b) =>
+      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category),
+  )
+  return result
+}
+
+function NicknameWithBadges({
+  nickname,
+  badgesCsv,
+  subjectMasteryCount,
+}: {
+  nickname: string
+  badgesCsv?: string
+  subjectMasteryCount?: number
+}) {
+  const badges = parseBadgesCsv(badgesCsv)
+  const subjectCount = subjectMasteryCount ?? 0
+  return (
+    <span className="nickname-with-badges">
+      <span className="nickname-with-badges__name">{nickname}</span>
+      {badges.length > 0 && (
+        <span className="nickname-with-badges__badges" aria-hidden={false}>
+          {badges.map((b) => (
+            <BadgeSprite
+              key={`${b.category}:${b.tier}`}
+              category={b.category}
+              tier={b.tier}
+              size={20}
+            />
+          ))}
+        </span>
+      )}
+      {subjectCount > 0 && (
+        <span
+          className="nickname-with-badges__subject-chip"
+          title={`已寫完 ${subjectCount} 科`}
+          aria-label={`科別精通 ${subjectCount} / 14`}
+        >
+          🩺 {subjectCount}/14
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -406,7 +484,13 @@ function MyRowSticky({ rows, activeFilter, currentUserId }: ListProps) {
           <span className="leaderboard-rank-number">#{rank}</span>
         )}
       </span>
-      <span className={cellClass('nickname', activeFilter)}>{row.nickname}</span>
+      <span className={cellClass('nickname', activeFilter)}>
+        <NicknameWithBadges
+          nickname={row.nickname}
+          badgesCsv={row.badges_csv}
+          subjectMasteryCount={row.subject_mastery_count}
+        />
+      </span>
       <span className={cellClass('tier', activeFilter)}>T{row.hospital_tier}</span>
       <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
       <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>

@@ -49,7 +49,7 @@ Migration: `cloudflare/sync-worker/migrations/0001_leaderboard.sql` (Worker D1 m
 | `user_id` | TEXT PRIMARY KEY | Always equals the verified JWT `sub` claim — body fields can't override. |
 | `nickname` | TEXT NOT NULL | Display form (preserves case + diacritics). |
 | `nickname_lower` | TEXT NOT NULL UNIQUE | `normalizeNickname(raw) = raw.normalize('NFKC').toLowerCase()`. The UNIQUE constraint is the uniqueness gate. |
-| `hospital_tier` | INTEGER NOT NULL | 1 (診所) / 2 (區域醫院) / 3 (醫學中心 or 國家級教學醫院, client clamps tier 4 → 3 to match Worker `TIER_MAX`). CHECK 1–3. |
+| `hospital_tier` | INTEGER NOT NULL | 1 (診所) / 2 (區域醫院) / 3 (醫學中心 or 國家級教學醫院, client clamps tier 4 → 3 to match Worker `TIER_MAX`). CHECK 1–3. UI render walks through `tierLabel()` helper for short display labels (診所 / 區域 / 醫中 / 大廟) per `add-abbreviated-tier-labels-medexam2`; canonical names above are storage-layer values only. |
 | `reputation` | INTEGER NOT NULL | CHECK ≥ 0. |
 | `doctor_count` | INTEGER NOT NULL | CHECK 0–50. |
 | `total_study_min` | INTEGER NOT NULL | CHECK ≥ 0. From `monotonicCounters.totalStudyMinutes` (monotonic, never decrements). |

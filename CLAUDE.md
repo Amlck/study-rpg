@@ -234,6 +234,42 @@ wrangler d1 migrations apply study-rpg-leaderboard --remote  # prod
 
 Full reference: `docs/LEADERBOARD.md`.
 
+## Achievement system (M_2nd ext, 2026-05-24)
+
+`apps/medexam2-hospital-tw` ships a milestone-recognition system: 7 categories × 4 tiers (P1 鑽石 / P2 金 / P3 銀 / P4 銅, aligned with PSN Trophy convention) = ~42 catalog entries. New achievement = one entry in `packages/content-medexam2-tw/src/achievements.ts`; zero engine code change. P1 entries MUST set `composite: true` — build-time validator (`validateAchievementCatalog`) rejects pure-grind P1 (single-dimension threshold). 14 科精通 entries use 100% fresh-attempts coverage (per-subject totals from `subjects.json` snapshot, hardcoded for now). Speedrun (1 月) 玩家拿不到任何 subject mastery — intentional differentiation from longplay (6 月).
+
+Engine (`packages/core/src/lib/achievement.ts`) mirrors cosmetic milestone pattern:
+- `checkAchievementUnlocks(prev, prevStats, next, nextStats, catalog)` → diff-based unlock detection
+- `listUnlockedAchievements` / `listLockedAchievements` / `visibleAchievements` helpers
+
+Types in `@study-rpg/core`:
+- `Achievement` interface, `AchievementTier = 'P1' | 'P2' | 'P3' | 'P4'`, `AchievementCategory` (7 options)
+- `AchievementReward` discriminated union: `cosmetic` | `title` | `badge` (equipment/ticket/pity intentionally absent — TypeScript rejects)
+- `AchievementStats` permissive shape — assembled per-call from Dexie state
+
+Persistence (Dexie v15): new `achievements` table (PK `id`, indexed `unlockedAt`). Extended `MonotonicCountersRow` (5 new MAX-merge counters: `totalDoctorsRecruited` / `totalP1DoctorsRecruited` / `maxDailyStreak` / `tierUpgradeCount` / `maxQuizCorrectStreak`). Extended `GameCountersRow.currentQuizCorrectStreak` (LWW, resets on wrong answer). Extended `LeaderboardProfileRow.selectedTitle`.
+
+Sync: `ACHIEVEMENTS` TableAdapter in `M2_ADAPTERS` only (mirror `LEADERBOARD_PROFILE` precedent commit `cfaaa32`). R2-only path — no Supabase migration, no `upsert_lww` whitelist entry. Cross-device pull does NOT trigger unlock toast (apply path skips queue).
+
+Trigger hooks (5 sites): `services/quiz-rewards.ts` (also handles streak counter), `lib/tick.ts` (tier upgrade + study minutes), `services/recruitment.ts` (totalDoctorsRecruited / P1 counter), `services/fate-card.ts`, `services/training.ts` + `services/retire.ts`. All use dynamic import + post-tx try/catch so achievement check never breaks game action.
+
+Reward dispatcher (`services/achievement-reward.ts`): `dispatchReward` branches on reward.kind (cosmetic intent log / title persists to Dexie meta key `achievement-titles-unlocked` / badge no-op). `checkAndUnlockAchievements` orchestrator: idempotent persist + dispatch + queue toast.
+
+UI: `/achievements` route (AchievementsPage with 2 sub-tabs + 3 filters + strict hidden filter), `BadgeSprite` / `SubjectBadgeSprite` CSS atlas sprites, `AchievementUnlockToast` (P2-P4, 8s auto-dismiss), `AchievementUnlockModal` (P1 full-screen, dismiss-required), `AchievementTitleSelector` embedded in `LeaderboardSettingsControls`. Toast queue: `lib/achievement-toast-queue.ts` singleton + `useAchievementToasts` hook.
+
+Atlases: `apps/medexam2-hospital-tw/src/assets/achievements/badge-atlas.png` (512×768, 6×4 cells, category × tier) + `subject-atlas.png` (896×256, 7×2 cells, 14 科 unique icons). Generated via codex CLI: `cd /tmp && codex exec --sandbox workspace-write --skip-git-repo-check "..." < /dev/null` (note: `--skip-git-repo-check` required by codex 1.x; the 0.128.0 recipe in `~/.claude/imports/codex_image_gen.md` is outdated).
+
+Leaderboard integration: D1 migration `cloudflare/sync-worker/migrations/0002_add_badges.sql` adds `badges_csv TEXT DEFAULT ''` + `subject_mastery_count INTEGER DEFAULT 0` to `leaderboard_m2`. Worker `POST /leaderboard/upsert` validates against regex `^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$` (≤ 6 entries, ≤ 60 chars) + integer 0-14. `SNAPSHOT_COLUMNS` extended so cron + KV snapshots auto-include. Client derives per-category max-tier in `lib/sync/leaderboard.ts` `deriveAchievementSnapshot()`; `LeaderboardPage` renders inline 20px badges + `🩺 X/14` subject chip via `NicknameWithBadges` helper.
+
+Apply migration 0002 manually (sustain 0001 discipline):
+
+```bash
+cd cloudflare/sync-worker
+wrangler d1 migrations apply study-rpg-leaderboard --remote
+```
+
+Full change reference: `openspec/changes/add-achievement-system/` (proposal / design / specs / tasks).
+
 ## Source data path
 
 題庫原始 .md 在使用者本機（**不在 repo 內**）：
@@ -250,3 +286,4 @@ Build script 預設讀此路徑；其他環境設 `MEDEXAM_SOURCE_ROOT` env var 
 - TypeScript `tsconfig.base.json` 不要再加 `paths` — leaf packages 透過 pnpm workspace symlink 解析 `@study-rpg/core`，加 paths 反而觸發 rootDir 衝突（2026-05-14 踩過）
 - esbuild 解析 TS comment 時對 `**/` 敏感 — 任何 block comment 不要寫 `/**/*.md` 之類 glob，會提前終止註解（content build script 踩過）
 - `font-family: 'Cubic 11'` 必須來自 host app `public/fonts/`（透過 `@font-face`），theme package 不能直接 ship webfont 給 npm consumer，因 npm 不會自動 publish 字型檔
+- **Hospital tier display / canonical separation**（2026-05-23 via `add-abbreviated-tier-labels-medexam2`）— UI 顯示走 `apps/medexam2-hospital-tw/src/lib/tier-labels.ts` 的 `tierLabel()` 短稱（診所 / 區域 / 醫中 / 大廟）；canonical type strings 仍為 `'診所' | '區域醫院' | '醫學中心' | '國家級教學醫院'`（HospitalTier union），這些 canonical 值散落於 Dexie、R2 bundle、D1 leaderboard、`HOSPITAL_TIER_TO_NUM` mapping、scene key mapping、所有 spec scenarios。**規則**：任何**用戶可見**的 tier 字串渲染都應該走 `tierLabel()`；任何**程式邏輯**比較或儲存值都用 canonical。HelpMenu 是例外，第一次提到每個 tier 時用「短稱（canonical）」雙寫格式以幫舊玩家對應。Tutorial / 簡短提示用短稱即可（無 disambiguation）。aria-label / accessibility 文字可用 canonical 給 screen readers

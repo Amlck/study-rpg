@@ -104,7 +104,22 @@ const ZERO_TICK: TickResult = {
  */
 export async function runTick(): Promise<TickResult> {
   const db = getHospitalDB()
-  return db.transaction(
+
+  // Achievement Phase 7 hook: capture prev stats before tick mutations.
+  // Hot path — but tick runs every 5s, and buildAchievementStats is ~50-200ms.
+  // Net overhead per tick: ~100-400ms. Acceptable for MVP; if dogfood shows
+  // tick jank, optimize by only running achievement check when meaningful
+  // delta detected (tier change / event resolved / monotonic counter bumped).
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    './achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import(
+    '../services/achievement-reward'
+  )
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  const result = await db.transaction(
     'rw',
     [
       db.rooms,
@@ -338,6 +353,11 @@ export async function runTick(): Promise<TickResult> {
         await db.monotonicCounters.put({
           ...mono,
           totalStudyMinutes: mono.totalStudyMinutes + deltaStudyMinutes,
+          // Achievement Phase 7: bump tierUpgradeCount when tier changed.
+          // Stays unchanged across ticks that don't upgrade.
+          tierUpgradeCount: upgradedTo
+            ? (mono.tierUpgradeCount ?? 0) + 1
+            : (mono.tierUpgradeCount ?? 0),
         })
       }
 
@@ -355,6 +375,18 @@ export async function runTick(): Promise<TickResult> {
       }
     },
   )
+
+  // Achievement check post-tx: catches study-time, tier-upgrade, and event-
+  // resolved (eventLog write inside tx is visible to next stat scan) milestones.
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[tick] achievement check failed:', err)
+  }
+
+  return result
 }
 
 /**

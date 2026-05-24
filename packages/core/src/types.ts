@@ -150,6 +150,111 @@ export interface Cosmetic {
   rarity?: Rarity
 }
 
+// ─── Achievement types ───────────────────────────────────────────────────────
+
+/** 4-tier system aligned with PSN Trophy (Bronze/Silver/Gold/Platinum equivalent). */
+export type AchievementTier = 'P1' | 'P2' | 'P3' | 'P4'
+
+/**
+ * 7 categories. `subject` is a special category for the 14 subject-mastery
+ * achievements; the others map 1:1 to the 6 rows of the main badge atlas.
+ */
+export type AchievementCategory =
+  | 'study'
+  | 'quiz'
+  | 'recruit'
+  | 'hospital'
+  | 'fortune'
+  | 'hidden'
+  | 'subject'
+
+/**
+ * Discriminated union over the three reward channels. `equipment`, `ticket`,
+ * `pity`, and any new-currency kinds are intentionally absent — the achievement
+ * system MUST NOT introduce these.
+ */
+export type AchievementReward =
+  | { kind: 'cosmetic'; cosmeticId: ItemId }
+  | { kind: 'title'; title: string }
+  | { kind: 'badge' } // implicit from achievement unlock; no extra payload
+
+/**
+ * Stats reducer state passed to achievement predicates. Permissive shape —
+ * specific predicates only read what they need; missing fields read as 0
+ * or empty. Caller (二階 trigger hook) is responsible for assembling this
+ * from Dexie counters / question history at the moment of evaluation.
+ */
+export interface AchievementStats {
+  /** Cumulative focused study minutes across all sessions. */
+  totalStudyMinutes: number
+  /** Total quiz questions answered (fresh + non-fresh). */
+  totalQuestionsAnswered: number
+  /** Total quiz questions answered correctly. */
+  totalQuestionsCorrect: number
+  /** Overall accuracy = totalQuestionsCorrect / totalQuestionsAnswered (0–1). 0 when no questions answered. */
+  overallAccuracy: number
+  /** Highest consecutive daily check-in streak ever achieved. */
+  maxDailyStreak: number
+  /** Highest consecutive correct-quiz streak ever achieved (cross-session). */
+  maxQuizCorrectStreak: number
+  /** Total doctors ever recruited via gacha (monotonic). */
+  totalDoctorsRecruited: number
+  /** Total P1 (highest rarity) doctors ever recruited (monotonic). */
+  totalP1DoctorsRecruited: number
+  /** Hospital tier upgrades performed (monotonic). */
+  tierUpgradeCount: number
+  /** Per-subject distinct fresh-attempt count (for subject mastery predicates). */
+  subjectAttemptCounts: Record<SubjectId, number>
+  /** Per-subject total question count from the loaded corpus (for subject mastery thresholds). */
+  subjectTotalQuestions: Record<SubjectId, number>
+  /** Current hospital tier (e.g. '診所' / '區域醫院' / '醫學中心' / '國家級教學醫院'). */
+  currentHospitalTier?: string
+  /** Cumulative revenue earned (monotonic). */
+  cumulativeRevenue: number
+  /** Number of malpractice resolutions ended in failure / loss. */
+  medicalDisputesFailed: number
+  /** Number of malpractice events successfully survived. */
+  malpracticeEventsSurvived: number
+  /** Number of legendary-tier fate cards drawn. */
+  legendaryFateCardsDrawn: number
+  /** Number of epic-tier fate cards drawn. */
+  epicFateCardsDrawn: number
+  /** Number of VIP-patient events resolved with cure. */
+  vipPatientsCured: number
+  /** Number of P1 doctors voluntarily retired (lifetime). For「不離不棄」composite predicate. */
+  p1DoctorsRetired: number
+  /** True when at least one P1 doctor is currently assigned to a specialty-matching room. */
+  allP1DoctorsSpecialtyMatched: boolean
+}
+
+/** Achievement catalog entry — declarative, predicate-driven. */
+export interface Achievement {
+  /** Stable unique id (kebab-case). Used as PK in `achievements` Dexie table and in leaderboard CSV derivation. */
+  id: string
+  /** zh-TW display name. */
+  name: string
+  /** zh-TW description shown on unlock toast / `/achievements` card. */
+  description: string
+  /** Difficulty tier — drives badge color / sprite cell selection + unlock UI (P1 → full modal). */
+  tier: AchievementTier
+  /** Category — drives badge sprite row in main atlas (or routes to subject atlas if `subject`). */
+  category: AchievementCategory
+  /** When true: do not render the achievement anywhere in the UI until unlocked. */
+  hidden: boolean
+  /** Pure predicate. Caller must ensure stats is fresh at evaluation time. */
+  predicate: (player: Player, stats: AchievementStats) => boolean
+  /** What the player gets on unlock. Routes to reward dispatcher. */
+  reward: AchievementReward
+  /**
+   * REQUIRED when `tier === 'P1'`: marks the predicate as a composite condition
+   * (量 × 質 / 量 × 持續 / 量 × 廣度 — at least two independent dimensions ANDed
+   * together). Build-time validator rejects P1 entries lacking this flag.
+   * Optional / ignored for P2-P4. See achievement-system spec
+   * "Anti-grind composite enforcement".
+   */
+  composite?: boolean
+}
+
 export interface Player {
   id: string
   name: string

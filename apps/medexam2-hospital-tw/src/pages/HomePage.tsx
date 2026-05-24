@@ -21,6 +21,7 @@ import {
   incrementAffinity,
   type DoctorRow,
 } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
 import { attemptRoll, type RollOutcome } from '../services/recruitment'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
@@ -164,6 +165,9 @@ export function HomePage() {
           <Link to="/leaderboard" className="nav-link">
             排名 →
           </Link>
+          <Link to="/achievements" className="nav-link">
+            成就 →
+          </Link>
         </div>
       </header>
 
@@ -193,7 +197,7 @@ export function HomePage() {
         return (
           <>
             <p className="home-tier-line">
-              醫院：<strong>{tier}</strong>
+              醫院：<strong>{tierLabel(tier)}</strong>
               {threshold !== null && next ? (
                 <>
                   {'　'}
@@ -201,7 +205,7 @@ export function HomePage() {
                   {' / '}
                   {threshold.toLocaleString('zh-TW')}
                   {' → '}
-                  {next})
+                  {tierLabel(next)})
                 </>
               ) : (
                 <> <EmojiIcon char="⭐" size={16} /> 已達頂峰</>

@@ -74,6 +74,12 @@ export {
   listLockedCosmetics,
 } from './lib/cosmetic'
 export {
+  checkAchievementUnlocks,
+  listUnlockedAchievements,
+  listLockedAchievements,
+  visibleAchievements,
+} from './lib/achievement'
+export {
   STREAK_CHECK_IN_THRESHOLD,
   STREAK_MULTIPLIER_CAP_DAYS,
   getTaipeiToday,

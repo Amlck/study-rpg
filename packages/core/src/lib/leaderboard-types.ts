@@ -84,6 +84,13 @@ export interface LeaderboardRow {
   doctor_count: number
   total_study_min: number
   updated_at: number
+  /**
+   * Achievement system (add-achievement-system, v15). Optional for back-
+   * compat with snapshots written before migration 0002. Renderers MUST
+   * coalesce undefined → '' / 0.
+   */
+  badges_csv?: string
+  subject_mastery_count?: number
 }
 
 /**
@@ -112,6 +119,18 @@ export interface LeaderboardUpsertPayload {
   total_study_min: number
   is_public: 0 | 1
   updated_at: number
+  /**
+   * Achievement system (add-achievement-system, v15). Comma-separated
+   * `<category>:<tier>` pairs, max 6 entries (one per category at the
+   * player's highest tier). Empty string when no category achievements
+   * unlocked yet. Worker validates against regex.
+   */
+  badges_csv?: string
+  /**
+   * Count of unlocked subject-mastery achievements (0–14). Excludes the
+   * `all-subjects-mastered` capstone.
+   */
+  subject_mastery_count?: number
 }
 
 /** Response shape from `GET /leaderboard/nickname-check?n=<candidate>`. */

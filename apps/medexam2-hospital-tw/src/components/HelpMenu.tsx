@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { TIER_UPGRADE_THRESHOLDS } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
 import { snapshotLocalToBackup } from '../lib/sync/migration'
 import { BugReportModal } from './BugReportModal'
 import { EmojiIcon } from './EmojiIcon'
@@ -33,11 +34,11 @@ interface AccordionSection {
 
 // Sourced from TIER_UPGRADE_THRESHOLDS so future recalibrations propagate
 // automatically — see `fix-helpmenu-copy-stale` (2026-05-19).
-const tierUpgradeBody = `升級不只看聲望，還要科別多樣性。診所→區域醫院：${(
+const tierUpgradeBody = `升級不只看聲望，還要科別多樣性。${tierLabel('診所')}（診所）→ ${tierLabel('區域醫院')}（區域醫院）：${(
   TIER_UPGRADE_THRESHOLDS.診所! / 1000
-).toFixed(0)}k 聲望 + 5 不同科別；區域→醫學中心：${(
+).toFixed(0)}k 聲望 + 5 不同科別；${tierLabel('區域醫院')} → ${tierLabel('醫學中心')}（醫學中心）：${(
   TIER_UPGRADE_THRESHOLDS.區域醫院! / 1000
-).toFixed(0)}k + 8 P3+ 不同科別；醫學中心→國家級：${(
+).toFixed(0)}k + 8 P3+ 不同科別；${tierLabel('醫學中心')} → ${tierLabel('國家級教學醫院')}（國家級教學醫院）：${(
   TIER_UPGRADE_THRESHOLDS.醫學中心! / 1000
 ).toFixed(0)}k + 10 P2+ + 至少 1 位 P1。`
 
@@ -94,7 +95,7 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     title: '設施升級 + 房間擴建',
     body: [
       '在「醫院」頁面點任一房間 → modal 內有「升級設施」按鈕。Lv.1 → Lv.5 共 4 階，每階產能乘數 1.0→3.0。Cost ladder：10K / 50K / 200K / 1M。',
-      '房間擴建：區域醫院 tier 開始解鎖，每種房型可加 2-3 間 extra（門診 +3 / 手術房 +2 / 病房 +2）。',
+      `房間擴建：${tierLabel('區域醫院')} tier 開始解鎖，每種房型可加 2-3 間 extra（門診 +3 / 手術房 +2 / 病房 +2）。`,
     ],
   },
   {
@@ -178,6 +179,17 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     body: [
       '想重新開始一份乾淨的存檔但不想登出 Google 帳號？這個動作會清掉這個帳號的雲端與本地遊戲資料（醫院經營 tier / 收益 / 聲望、醫師名冊、答題紀錄、命運卡、SRS 排程、收藏題目），但保留你的 Google 登入。',
       '本機會先快照到 localBackup 安全網（保險），但雲端 delete 後無法恢復。下方按鈕會先彈確認，再要你輸入 RESET 二次確認才執行。',
+    ],
+  },
+  {
+    id: 'achievements',
+    icon: '🏆',
+    title: '成就系統 — 4 tier 像素勳章',
+    body: [
+      '7 大類別（學習 / 答題 / 招募 / 經營 / 時運 / 隱藏 / 科別精通） × 4 tier（P1 💎 鑽石 / P2 🥇 金 / P3 🥈 銀 / P4 🥉 銅）。共 ~42 條成就。',
+      'P1 鑽石需「composite 條件」（量 × 質 / 量 × 持續 / 量 × 廣度，e.g.「答對 3000 題 + 整體 accuracy ≥ 80%」），不是每個人都拿得到。P4 銅 一週內就能拿到。',
+      '14 科精通需該科 100% 全寫完（內科 1306 題 / 外科 1154 題 ... 麻醉科 192 題）— 速通玩家（1 個月破關）拿不到任何科別勳章；慢通玩家（6 個月）才能 14 科都解。',
+      '解鎖會跳通知（P4-P2 為角落 toast、P1 為全屏揭示）。「成就」分頁可看完整列表 + 篩選；解鎖的稱號可在排行榜設定區挑選顯示。',
     ],
   },
 ])

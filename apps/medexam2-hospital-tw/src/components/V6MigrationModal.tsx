@@ -13,6 +13,7 @@
 
 import { useEffect } from 'react'
 import { getHospitalDB, type GameCountersRow } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
 import { EmojiIcon } from './EmojiIcon'
 
 interface V6MigrationModalProps {
@@ -51,7 +52,7 @@ export function V6MigrationModal({ counters, onDismiss }: V6MigrationModalProps)
       <div className="modal frame v6-migration-modal">
         <h2 className="modal__title"><EmojiIcon char="🏥" size={24} /> 醫院系統大改版</h2>
         <p>
-          歡迎回來，<strong>{counters.tier}</strong> 院長。本次更新後遊戲機制有四個重大變化：
+          歡迎回來，<strong>{tierLabel(counters.tier)}</strong> 院長。本次更新後遊戲機制有四個重大變化：
         </p>
         <ul className="v6-migration-list">
           <li>
@@ -63,7 +64,7 @@ export function V6MigrationModal({ counters, onDismiss }: V6MigrationModalProps)
           <li>
             <strong><EmojiIcon char="💰" size={18} /> 醫師薪水</strong>
             <p>
-              區域醫院以上 tier 開始扣薪水（含板凳）。預設配置每階仍 net positive；
+              {tierLabel('區域醫院')}以上 tier 開始扣薪水（含板凳）。預設配置每階仍 net positive；
               升級設施 / 房間擴建可放大淨收益。
             </p>
           </li>
@@ -77,13 +78,16 @@ export function V6MigrationModal({ counters, onDismiss }: V6MigrationModalProps)
           <li>
             <strong><EmojiIcon char="🎯" size={18} /> 升級雙閘門</strong>
             <p>
-              升級不只看聲望，還要科別多樣性（區域醫院 5 科、醫學中心 8 科 P3+、
-              國家級教學醫院 10 科 P2+ 含 1 P1）。
+              升級不只看聲望，還要科別多樣性（{tierLabel('區域醫院')} 5 科、{tierLabel('醫學中心')} 8 科 P3+、
+              {tierLabel('國家級教學醫院')} 10 科 P2+ 含 1 P1）。
             </p>
           </li>
         </ul>
         <p className="muted">
           舊存檔資料完整保留。新增的「累積唸書」計數從 0 開始（之前的時間不計）。
+        </p>
+        <p className="muted">
+          顯示說明：tier 名稱改為簡稱（{tierLabel('區域醫院')} / {tierLabel('醫學中心')} / {tierLabel('國家級教學醫院')}），實際資料未變動。
         </p>
         <div className="modal__actions">
           <button className="primary-btn" onClick={() => void handleDismiss()}>

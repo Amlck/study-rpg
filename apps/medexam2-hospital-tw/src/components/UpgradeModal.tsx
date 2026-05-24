@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { TIER_UPGRADE_THRESHOLDS, getNextTier, type HospitalTier } from '@study-rpg/content-medexam2-tw'
+import { tierLabel } from '../lib/tier-labels'
 import { EmojiIcon } from './EmojiIcon'
 
 interface UpgradeModalProps {
@@ -42,7 +43,7 @@ export function UpgradeModal({ isOpen, onClose, tier, reputation }: UpgradeModal
           醫院升級
         </h2>
         <p className="upgrade-modal__current">
-          當前 tier：<strong>{tier}</strong>
+          當前 tier：<strong>{tierLabel(tier)}</strong>
         </p>
 
         {isMaxTier ? (
@@ -50,7 +51,7 @@ export function UpgradeModal({ isOpen, onClose, tier, reputation }: UpgradeModal
         ) : (
           <>
             <p className="upgrade-modal__next">
-              下一 tier：<strong>{nextTier}</strong>
+              下一 tier：<strong>{tierLabel(nextTier)}</strong>
               <span className="upgrade-modal__threshold">
                 {' '}— 聲望達 {threshold.toLocaleString('zh-TW')}
               </span>

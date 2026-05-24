@@ -52,7 +52,18 @@ export type FateCardServiceResult =
 
 export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardServiceResult> {
   const db = getHospitalDB()
-  return db.transaction(
+
+  // Achievement Phase 7 hook: capture prev stats before tx so post-tx diff
+  // sees the legendary/epic draw. Dynamic import — keeps hook isolated from
+  // imports list and avoids load-time circular dep.
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    '../lib/achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import('./achievement-reward')
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  const result: FateCardServiceResult = await db.transaction(
     'rw',
     [
       db.gameCounters,
@@ -63,7 +74,7 @@ export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardSe
       db.targetedTickets,
       db.targetedTicketHistory,
     ],
-    async () => {
+    async (): Promise<FateCardServiceResult> => {
       const counters = await db.gameCounters.get('singleton')
       const mono = await db.monotonicCounters.get('singleton')
       if (!counters || !mono) {
@@ -139,6 +150,18 @@ export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardSe
       return { ok: true, draw: result, appliedEffect, targetedTicketId }
     },
   )
+
+  // Achievement check post-tx (legendary/epic draw counters refresh from
+  // fateCardHistory; p1DoctorsRetired stays 0 since fate cards don't retire).
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[fate-card] achievement check failed:', err)
+  }
+
+  return result
 }
 
 interface RewardEffectResult {

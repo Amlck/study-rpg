@@ -24,6 +24,7 @@ export * from './finances'
 export * from './events'
 export * from './fate-cards'
 export * from './tutorial'
+export * from './achievements'
 
 interface BuiltMeta {
   id: string
