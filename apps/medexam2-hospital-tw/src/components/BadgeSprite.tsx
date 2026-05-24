@@ -17,6 +17,7 @@
 import badgeAtlas from '../assets/achievements/badge-atlas.png'
 
 import type { AchievementCategory, AchievementTier } from '@study-rpg/core'
+import { ACHIEVEMENTS } from '@study-rpg/content-medexam2-tw'
 
 const CATEGORY_TO_ROW: Record<AchievementCategory, number> = {
   study: 0,
@@ -42,7 +43,9 @@ export interface BadgeSpriteProps {
   tier: AchievementTier
   /** Rendered side length in CSS pixels. Default 24 (leaderboard inline). */
   size?: number
-  /** Optional accessible label override. Default: `<TIER> 級<CATEGORY>成就`. */
+  /** Optional accessible label override. Default: representative achievement
+   * name from catalog at (category, tier), or generic `<TIER> 級<CATEGORY>成就`
+   * fallback if no catalog match. */
   ariaLabel?: string
   className?: string
 }
@@ -57,6 +60,26 @@ const CATEGORY_LABEL: Record<AchievementCategory, string> = {
   subject: '科別',
 }
 
+/**
+ * Resolve a representative achievement name for the badge tooltip from the
+ * catalog. `badges_csv` only encodes `<category>:<tier>` highest-per-category
+ * — when more than one achievement exists at that (category, tier), we pick
+ * the first in catalog order as the best-guess name (catalog conventionally
+ * orders entry-threshold achievements first per tier band). The other
+ * player's actual unlocked achievement at that tier may differ but the badge
+ * art + tier semantic remain correct.
+ */
+function resolveDefaultLabel(category: AchievementCategory, tier: AchievementTier): string {
+  const match = ACHIEVEMENTS.find(
+    (a) =>
+      a.category === category &&
+      a.tier === tier &&
+      !a.id.startsWith('subject-master-'),
+  )
+  if (match) return match.name
+  return `${tier} 級${CATEGORY_LABEL[category]}成就`
+}
+
 export function BadgeSprite({
   category,
   tier,
@@ -66,7 +89,7 @@ export function BadgeSprite({
 }: BadgeSpriteProps) {
   const row = CATEGORY_TO_ROW[category]
   const col = TIER_TO_COL[tier]
-  const label = ariaLabel ?? `${tier} 級${CATEGORY_LABEL[category]}成就`
+  const label = ariaLabel ?? resolveDefaultLabel(category, tier)
   return (
     <span
       className={`badge-sprite badge-sprite--${tier} ${className ?? ''}`}
