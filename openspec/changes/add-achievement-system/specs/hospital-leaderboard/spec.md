@@ -2,7 +2,7 @@
 
 ### Requirement: Leaderboard row carries badges_csv and subject_mastery_count
 
-The `leaderboard` D1 table SHALL gain two new columns via migration `cloudflare/sync-worker/migrations/0002_add_badges.sql`:
+The `leaderboard_m2` D1 table SHALL gain two new columns via migration `cloudflare/sync-worker/migrations/0002_add_badges.sql`:
 
 - `badges_csv TEXT DEFAULT ''` — format: comma-separated `category:tier` pairs (max 6 entries, max 60 chars total). Example: `"study:P1,quiz:P2,recruit:P2,hospital:P3,fortune:P4,hidden:P1"`. Each pair represents the highest tier the player has unlocked in that category.
 - `subject_mastery_count INTEGER DEFAULT 0` — integer in range [0, 14] representing how many of the 14 subject mastery achievements the player has unlocked.
@@ -11,12 +11,12 @@ The migration SHALL be applied manually via `wrangler d1 migrations apply study-
 
 #### Scenario: Migration adds columns with safe defaults
 
-- **WHEN** the owner applies migration 0002_add_badges.sql to a D1 database that contains existing leaderboard rows
+- **WHEN** the owner applies migration 0002_add_badges.sql to a D1 database that contains existing leaderboard_m2 rows
 - **THEN** every existing row SHALL receive `badges_csv = ''` and `subject_mastery_count = 0` automatically (no row-level update needed)
 
 #### Scenario: Old Worker reads new columns gracefully
 
-- **WHEN** an unpatched Worker (from before the deploy of new endpoints) queries the leaderboard table after migration apply
+- **WHEN** an unpatched Worker (from before the deploy of new endpoints) queries the leaderboard_m2 table after migration apply
 - **THEN** the query SHALL succeed (columns are nullable with defaults); the Worker's SELECT statement does not need to be updated
 
 ### Requirement: Worker upsert endpoint accepts badges_csv and subject_mastery_count
@@ -68,7 +68,7 @@ Hovering / long-pressing a category badge SHALL show a tooltip with text `<TIER>
 
 #### Scenario: Full badge profile renders
 
-- **WHEN** a leaderboard row has `badges_csv = "study:P1,quiz:P2,recruit:P2,hospital:P3,fortune:P4,hidden:P1"` and `subject_mastery_count = 5`
+- **WHEN** a leaderboard_m2 row has `badges_csv = "study:P1,quiz:P2,recruit:P2,hospital:P3,fortune:P4,hidden:P1"` and `subject_mastery_count = 5`
 - **THEN** the row displays 6 inline BadgeSprite components plus a chip `🩺 5/14`
 
 #### Scenario: Partial badge profile renders

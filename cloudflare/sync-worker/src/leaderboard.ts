@@ -39,6 +39,13 @@ const TIER_MIN = 1;
 const TIER_MAX = 3;
 const DOCTOR_COUNT_MAX = 50;
 
+// === Achievement badge constants (v15 add-achievement-system) ===
+const BADGES_CSV_MAX_LEN = 60;
+const BADGES_CSV_MAX_ENTRIES = 6;
+const BADGES_CSV_PATTERN = /^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$/;
+const SUBJECT_MASTERY_MIN = 0;
+const SUBJECT_MASTERY_MAX = 14;
+
 // === Types ===
 
 interface LeaderboardRowInternal {
@@ -49,6 +56,10 @@ interface LeaderboardRowInternal {
   doctor_count: number;
   total_study_min: number;
   updated_at: number;
+  // Achievement system (v15). Optional in interface for back-compat with
+  // pre-0002 snapshots; readers fall back to '' / 0 when undefined.
+  badges_csv?: string;
+  subject_mastery_count?: number;
 }
 
 interface SnapshotPayload {
@@ -65,6 +76,10 @@ interface UpsertBody {
   total_study_min?: unknown;
   is_public?: unknown;
   updated_at?: unknown;
+  // Achievement system (v15). Both optional — pre-update clients omit; Worker
+  // treats omitted as '' / 0 (additive, doesn't clobber on partial bodies).
+  badges_csv?: unknown;
+  subject_mastery_count?: unknown;
 }
 
 // === Helpers ===
@@ -107,7 +122,7 @@ function snapshotKvKey(filter: Filter): string {
 const FILTER_ROUTE_REGEX = new RegExp(`^/leaderboard/(${FILTERS.join("|")})$`);
 
 const SNAPSHOT_COLUMNS =
-  "user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, updated_at";
+  "user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, updated_at, badges_csv, subject_mastery_count";
 
 const ORDER_BY: Record<Filter, string> = {
   composite: "hospital_tier DESC, reputation DESC, doctor_count DESC",
@@ -211,6 +226,37 @@ async function handleUpsert(
     return jsonResponse({ error: "invalid_updated_at" }, 400, headers);
   }
 
+  // === Achievement system (v15) — badges_csv + subject_mastery_count ===
+  // Both optional; default to '' / 0 when missing. Invalid values rejected
+  // with 400 (NOT silently dropped — these are client-derived values, not
+  // user-input, so a bad value indicates a client bug worth surfacing).
+  let badgesCsv = "";
+  if (body.badges_csv !== undefined) {
+    if (typeof body.badges_csv !== "string") {
+      return jsonResponse({ error: "invalid_badges_csv_type" }, 400, headers);
+    }
+    if (body.badges_csv.length > BADGES_CSV_MAX_LEN) {
+      return jsonResponse({ error: "badges_csv_too_long" }, 400, headers);
+    }
+    if (body.badges_csv !== "" && !BADGES_CSV_PATTERN.test(body.badges_csv)) {
+      return jsonResponse({ error: "invalid_badges_csv_format" }, 400, headers);
+    }
+    // Defensive entry-count check (the regex caps at 6 but explicit is clearer)
+    if (body.badges_csv !== "" && body.badges_csv.split(",").length > BADGES_CSV_MAX_ENTRIES) {
+      return jsonResponse({ error: "badges_csv_too_many_entries" }, 400, headers);
+    }
+    badgesCsv = body.badges_csv;
+  }
+
+  let subjectMastery = 0;
+  if (body.subject_mastery_count !== undefined) {
+    const sm = Number(body.subject_mastery_count);
+    if (!Number.isInteger(sm) || sm < SUBJECT_MASTERY_MIN || sm > SUBJECT_MASTERY_MAX) {
+      return jsonResponse({ error: "invalid_subject_mastery_count" }, 400, headers);
+    }
+    subjectMastery = sm;
+  }
+
   const nickname = body.nickname;
   const nicknameLower = normalizeNickname(nickname);
 
@@ -222,20 +268,34 @@ async function handleUpsert(
     // for no extra safety, since this query is the gate either way.)
     await env.LEADERBOARD_DB.prepare(
       `INSERT INTO leaderboard_m2
-         (user_id, nickname, nickname_lower, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (user_id, nickname, nickname_lower, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at, badges_csv, subject_mastery_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
-         nickname        = excluded.nickname,
-         nickname_lower  = excluded.nickname_lower,
-         hospital_tier   = excluded.hospital_tier,
-         reputation      = excluded.reputation,
-         doctor_count    = excluded.doctor_count,
-         total_study_min = excluded.total_study_min,
-         is_public       = excluded.is_public,
-         updated_at      = excluded.updated_at
+         nickname              = excluded.nickname,
+         nickname_lower        = excluded.nickname_lower,
+         hospital_tier         = excluded.hospital_tier,
+         reputation            = excluded.reputation,
+         doctor_count          = excluded.doctor_count,
+         total_study_min       = excluded.total_study_min,
+         is_public             = excluded.is_public,
+         updated_at            = excluded.updated_at,
+         badges_csv            = excluded.badges_csv,
+         subject_mastery_count = excluded.subject_mastery_count
        WHERE leaderboard_m2.updated_at < excluded.updated_at`,
     )
-      .bind(userSub, nickname, nicknameLower, tier, rep, doctor, study, isPublic, updatedAt)
+      .bind(
+        userSub,
+        nickname,
+        nicknameLower,
+        tier,
+        rep,
+        doctor,
+        study,
+        isPublic,
+        updatedAt,
+        badgesCsv,
+        subjectMastery,
+      )
       .run();
 
     return jsonResponse({ ok: true }, 200, headers);
@@ -351,7 +411,7 @@ async function handleGetMe(
 
   const row = await env.LEADERBOARD_DB
     .prepare(
-      "SELECT user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at FROM leaderboard_m2 WHERE user_id = ?",
+      "SELECT user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at, badges_csv, subject_mastery_count FROM leaderboard_m2 WHERE user_id = ?",
     )
     .bind(userSub)
     .first<{
@@ -363,6 +423,8 @@ async function handleGetMe(
       total_study_min: number;
       is_public: number;
       updated_at: number;
+      badges_csv: string | null;
+      subject_mastery_count: number | null;
     }>();
 
   if (!row) {
@@ -380,6 +442,8 @@ async function handleGetMe(
         total_study_min: row.total_study_min,
         is_public: row.is_public === 1,
         updated_at: row.updated_at,
+        badges_csv: row.badges_csv ?? "",
+        subject_mastery_count: row.subject_mastery_count ?? 0,
       },
     },
     200,

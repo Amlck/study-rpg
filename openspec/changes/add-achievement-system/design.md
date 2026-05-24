@@ -172,7 +172,7 @@
 
 **Rollback strategy**:
 - Code: `git revert` 該 change merge commit；GH Pages + CF Pages 下一次 push 自動回滾
-- D1: 加的兩個 column nullable + DEFAULT，舊 Worker 讀新 column 也不會壞；如需完全 rollback 跑 `ALTER TABLE leaderboard DROP COLUMN badges_csv; DROP COLUMN subject_mastery_count;`
+- D1: 加的兩個 column nullable + DEFAULT，舊 Worker 讀新 column 也不會壞；如需完全 rollback 跑 `ALTER TABLE leaderboard_m2 DROP COLUMN badges_csv; ALTER TABLE leaderboard_m2 DROP COLUMN subject_mastery_count;`
 - Dexie v15: 用戶端 IndexedDB version 已升、無法降版；但 v15 新欄位皆 optional `?:`、v14 code 路徑讀 v15 db 不會壞（forward-compat）
 
 ## Open Questions

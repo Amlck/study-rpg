@@ -86,14 +86,14 @@
 
 ## 9. Cloudflare D1 + Worker
 
-- [ ] 9.1 Author `cloudflare/sync-worker/migrations/0002_add_badges.sql` with two `ALTER TABLE leaderboard ADD COLUMN` statements per hospital-leaderboard spec
-- [ ] 9.2 Update `cloudflare/sync-worker/src/leaderboard.ts` `POST /leaderboard/upsert` handler: accept + validate `badges_csv` + `subject_mastery_count`; write to D1
-- [ ] 9.3 Update KV snapshot writer (in same file) to include both new fields in the hourly Top 100 snapshot
-- [ ] 9.4 Update public `GET /leaderboard/:filter` to return both new fields in response JSON
-- [ ] 9.5 Add Vitest unit tests for the Worker handlers covering: valid CSV accepted, invalid CSV rejected (400), subject count > 14 rejected, KV snapshot contains fields
-- [ ] 9.6 Commit `cloudflare/sync-worker/**` changes — push to main triggers `deploy-worker.yml` auto-deploy
-- [ ] 9.7 **Owner manual step**: `cd cloudflare/sync-worker && wrangler d1 migrations apply study-rpg-leaderboard --remote` (one-time apply of 0002_add_badges.sql)
-- [ ] 9.8 Verify columns added via `wrangler d1 execute study-rpg-leaderboard --remote --command "SELECT sql FROM sqlite_master WHERE name='leaderboard'"`
+- [x] 9.1 `cloudflare/sync-worker/migrations/0002_add_badges.sql` created — two `ALTER TABLE leaderboard_m2 ADD COLUMN` statements with safe defaults (`TEXT NOT NULL DEFAULT ''` + `INTEGER NOT NULL DEFAULT 0`)
+- [x] 9.2 `handleUpsert` accepts + validates `badges_csv` (regex `^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$`, max len 60, max 6 entries) + `subject_mastery_count` (integer 0-14). Invalid → 400 with typed error; INSERT/UPSERT extended with both fields
+- [x] 9.3 `SNAPSHOT_COLUMNS` const extended to include `badges_csv` + `subject_mastery_count` — cron auto-picks them in hourly Top 100 KV snapshots
+- [x] 9.4 `handleGetMe` SELECT extended; returns `badges_csv ?? ""` + `subject_mastery_count ?? 0` (null-safe for pre-0002 rows). `handleGetFilter` auto-returns since it reads KV passthrough
+- [ ] 9.5 ~~Vitest unit tests~~ **N/A** — no test infra in `cloudflare/sync-worker/` (package has only `dev` / `deploy` / `tail` / `typecheck` scripts). Adding `@cloudflare/vitest-pool-workers` + D1 mock setup is out of scope. Manual smoke via deployed Worker covers in Phase 11
+- [x] 9.6 Worker typecheck pass; commit pending in this turn
+- [ ] 9.7 **Owner manual step (post-deploy)**: `cd cloudflare/sync-worker && wrangler d1 migrations apply study-rpg-leaderboard --remote`
+- [ ] 9.8 **Owner manual verify post-apply**: `wrangler d1 execute study-rpg-leaderboard --remote --command "SELECT sql FROM sqlite_master WHERE name='leaderboard_m2'"` — should show both new columns
 
 ## 10. Leaderboard client push integration
 
