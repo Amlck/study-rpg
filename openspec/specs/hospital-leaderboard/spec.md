@@ -84,7 +84,7 @@ The leaderboard UI SHALL provide four filter tabs that determine the ranking cri
 
 ### Requirement: Top 100 list plus my-rank chip
 
-The leaderboard UI SHALL display up to 100 ranked rows for the active filter as a **pixel-art tabular grid** (not an unstyled list), rendering one row per opted-in player with one cell per data attribute (rank / nickname / hospital tier / reputation / doctor count / total study minutes). The grid SHALL use the existing pixel design tokens (`--frame-dark` border, `--accent-gold` highlight, Cubic 11 font for nicknames and numeric stats) so the visual style matches the rest of the 二階 hospital UI shell. The player's own current rank SHALL remain accessible regardless of scroll position via either the existing sticky top chip OR a new sticky-bottom "my row" repeat that mirrors the user's row data.
+The leaderboard UI SHALL display up to 100 ranked rows for the active filter as a **pixel-art tabular grid** (not an unstyled list), rendering one row per opted-in player with one cell per data attribute (rank / nickname / hospital tier / reputation / doctor count / total study minutes). The hospital tier cell SHALL render the canonical short label (「診所 / 區域 / 醫中 / 大廟」) via the shared `tierLabel()` helper from `apps/medexam2-hospital-tw/src/lib/tier-labels.ts`, NOT the raw integer (`T1` / `T2` / `T3` / `T4`). The grid SHALL use the existing pixel design tokens (`--frame-dark` border, `--accent-gold` highlight, Cubic 11 font for nicknames and numeric stats) so the visual style matches the rest of the 二階 hospital UI shell. The player's own current rank SHALL remain accessible regardless of scroll position via either the existing sticky top chip OR a new sticky-bottom "my row" repeat that mirrors the user's row data.
 
 #### Scenario: Top 100 displayed when ≥ 100 opted-in players
 
@@ -126,6 +126,11 @@ The leaderboard UI SHALL display up to 100 ranked rows for the active filter as 
 - **WHEN** the active filter's snapshot has zero rows
 - **THEN** the existing message「期待第一個上榜的玩家！」 SHALL render in place of the grid; no empty grid frame SHALL appear
 
+#### Scenario: Tier cell renders canonical short label
+
+- **WHEN** a leaderboard row has `hospital_tier = 1` (or `2` / `3` / `4`)
+- **THEN** the tier cell SHALL render「診所」(or「區域」/「醫中」/「大廟」respectively) via `tierLabel(NUM_TO_TIER[row.hospital_tier])`, NOT the literal string `T1` / `T2` / `T3` / `T4`; if `hospital_tier` is outside the supported range the cell SHALL fall back to「診所」and log a `console.warn`, so a single malformed row never crashes the entire leaderboard tab
+
 ### Requirement: Hourly KV cache refresh
 
 The leaderboard backend SHALL pre-compute the top-100 ranking for each of the four filter tabs **twice per hour** via a Worker scheduled cron trigger at minutes `:00` and `:30`. Client read requests SHALL fetch from the KV cache, NOT directly from D1. The system MAY serve a stale snapshot (older than 30 min) if the cron has not yet refreshed, but MUST surface a「上次更新：HH:MM」timestamp in the leaderboard UI.
@@ -166,7 +171,7 @@ The system SHALL upsert the player's leaderboard row to D1 via the Worker `POST 
 
 ### Requirement: Server-side LWW and sanity bounds
 
-The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantics using `updated_at` (millisecond epoch) and SHALL reject payloads whose values fall outside known sanity bounds: `hospital_tier ∈ [1, 3]`, `reputation ≥ 0`, `doctor_count ∈ [0, 50]`, `total_study_min ≥ 0`. Rejected payloads SHALL log a structured warning but MUST NOT surface a UI error to the player (silent server-side filtering).
+The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantics using `updated_at` (millisecond epoch) and SHALL reject payloads whose values fall outside known sanity bounds: `hospital_tier ∈ [1, 4]`, `reputation ≥ 0`, `doctor_count ∈ [0, 50]`, `total_study_min ≥ 0`. Rejected payloads SHALL log a structured warning but MUST NOT surface a UI error to the player (silent server-side filtering). The D1 table `leaderboard_m2` SHALL declare `CHECK (hospital_tier BETWEEN 1 AND 4)` as defence-in-depth so any divergence between Worker bound and schema is caught at the database layer.
 
 #### Scenario: Older updated_at rejected
 
@@ -175,8 +180,13 @@ The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantic
 
 #### Scenario: Out-of-bounds hospital_tier rejected
 
-- **WHEN** an upsert arrives with `hospital_tier = 4` or `hospital_tier = 0`
+- **WHEN** an upsert arrives with `hospital_tier = 5` or `hospital_tier = 0`
 - **THEN** the Worker SHALL discard the upsert, log a structured warning with the offending user_id, and respond `200 OK` without writing to D1
+
+#### Scenario: T4 (大廟) hospital_tier accepted
+
+- **WHEN** an upsert arrives with `hospital_tier = 4` and all other fields are within bounds
+- **THEN** the Worker SHALL accept the payload, upsert the D1 row with `hospital_tier = 4`, and the next KV snapshot refresh SHALL include this row sortable as a distinct tier above `hospital_tier = 3` rows in the composite filter
 
 ### Requirement: Opt-out hides row without deletion
 
