@@ -436,7 +436,7 @@ function NicknameWithBadges({
       {subjectCount > 0 && (
         <span
           className="nickname-with-badges__subject-chip"
-          title={`已寫完 ${subjectCount} 科`}
+          data-tooltip={`已寫完 ${subjectCount} 科`}
           aria-label={`科別精通 ${subjectCount} / 14`}
         >
           🩺 {subjectCount}/14

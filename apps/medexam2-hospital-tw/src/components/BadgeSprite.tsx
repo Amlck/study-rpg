@@ -95,7 +95,7 @@ export function BadgeSprite({
       className={`badge-sprite badge-sprite--${tier} ${className ?? ''}`}
       role="img"
       aria-label={label}
-      title={label}
+      data-tooltip={label}
       style={{
         display: 'inline-block',
         width: size,

@@ -48,7 +48,7 @@ export function SubjectBadgeSprite({
       className={`subject-badge-sprite ${className ?? ''}`}
       role="img"
       aria-label={label}
-      title={label}
+      data-tooltip={label}
       style={{
         display: 'inline-block',
         width: size,

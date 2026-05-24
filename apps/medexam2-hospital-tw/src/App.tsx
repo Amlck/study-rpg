@@ -17,6 +17,7 @@ import { TrainingPage } from './pages/TrainingPage'
 import { FateCardPage } from './pages/FateCardPage'
 import { BookmarksPage } from './pages/BookmarksPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
+import { CustomTooltipHost } from './components/CustomTooltipHost'
 import { AchievementsPage } from './pages/AchievementsPage'
 import { useStudySessionTick } from './lib/tick'
 import { checkAssignmentInvariants } from './lib/assignment'
@@ -206,6 +207,7 @@ function App() {
 
   return (
     <HashRouter>
+      <CustomTooltipHost />
       <DomainMigrationBanner />
       <div className="header-controls">
         <AuthButton />
