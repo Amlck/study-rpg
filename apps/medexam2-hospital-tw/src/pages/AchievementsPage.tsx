@@ -106,7 +106,7 @@ export function AchievementsPage() {
   return (
     <div className="achievements-page">
       <header className="achievements-page__head">
-        <Link to="/" className="back-link">← 回主畫面</Link>
+        <Link to="/" className="nav-link">← 回首頁</Link>
         <h1 className="achievements-page__title">成就</h1>
         <p className="achievements-page__summary">
           已解鎖 <strong>{summary.unlocked}</strong> / {summary.total}
