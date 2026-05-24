@@ -97,16 +97,11 @@ async function deriveAchievementSnapshot(): Promise<{
   return { badges_csv: pairs.join(','), subject_mastery_count: subjectMastery }
 }
 
-// Worker enforces tier ∈ [1, 3] (`TIER_MAX = 3` in cloudflare/sync-worker/
-// src/leaderboard.ts). The content pack actually defines 4 tiers including
-// 國家級教學醫院. We clamp tier 4 → 3 so end-game players keep updating their
-// row instead of getting silently dropped server-side. Phase 4 follow-up:
-// either bump Worker TIER_MAX to 4 or expose the cap in shared types.
 const TIER_TO_NUMBER: Record<HospitalTier, number> = {
   診所: 1,
   區域醫院: 2,
   醫學中心: 3,
-  國家級教學醫院: 3,
+  國家級教學醫院: 4,
 }
 
 export async function buildLeaderboardAttributes(): Promise<LeaderboardAttributes> {
