@@ -111,20 +111,29 @@ const TIER_TO_NUMBER: Record<HospitalTier, number> = {
 
 export async function buildLeaderboardAttributes(): Promise<LeaderboardAttributes> {
   const db = getHospitalDB()
-  const [counters, doctorCount, monotonic, achievementSnapshot, masteryRows] = await Promise.all([
+  const [counters, doctorCount, monotonic, achievementSnapshot, historyRows] = await Promise.all([
     db.gameCounters.get('singleton'),
     db.doctors.count(),
     db.monotonicCounters.get('singleton'),
     deriveAchievementSnapshot(),
-    db.mastery.toArray(),
+    db.questionHistory.toArray(),
   ])
 
-  // mastery.ts is the only writer of `correct` and bumps it within the same
-  // Dexie transaction that updates questionHistory, so SUM(mastery.correct)
-  // matches what the existing「答對 X 題 / Y 題」UI shows. See design.md D1.
+  // Source = questionHistory.correctCount aggregate, NOT mastery.correct.
+  // `mastery.correct` carries a partner-specialty multiplier weighting (see
+  // `recordCorrectAnswer` in lib/mastery.ts) so its sum reads ~20% lower
+  // than the player's raw correct-answer count, and historically `mastery`
+  // upserts dropped silently under outer-transaction rollback regressions
+  // (fixed by e085876 but the snapshot damage persisted). questionHistory
+  // is the canonical first-write of the answer event and unweighted, so
+  // SUM(correctCount) = the raw lifetime count the player intuitively
+  // expects on the「答對總題數」leaderboard. Re-attempts of the same
+  // question count separately (one row per question, correctCount per row
+  // increments by 1 each time the player answers it correctly). See
+  // fix-hospital-leaderboard-correct-source design.md D1.
   const totalCorrect = Math.max(
     0,
-    Math.floor(masteryRows.reduce((acc, m) => acc + (m.correct ?? 0), 0)),
+    Math.floor(historyRows.reduce((acc, q) => acc + (q.correctCount ?? 0), 0)),
   )
 
   const tierStr: HospitalTier = counters?.tier ?? '診所'
