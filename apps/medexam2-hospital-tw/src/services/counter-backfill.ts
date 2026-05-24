@@ -63,7 +63,10 @@ export async function backfillMonotonicCounters(): Promise<number> {
   const doctorsCount = await db.doctors.count()
   const retiredCount = await db.retirementLog.count()
   const p1Count = await db.doctors.where('rarity').equals('P1').count()
-  const retiredP1Count = await db.retirementLog.where('rarity').equals('P1').count()
+  // retirementLog schema is '++id, retiredAt, doctorId' — rarity is NOT
+  // indexed. Use Collection.filter() for a full-scan predicate query (mirrors
+  // the existing `db.retirementLog.each` pattern in lib/achievement-stats.ts).
+  const retiredP1Count = await db.retirementLog.filter((r) => r.rarity === 'P1').count()
 
   const derivedTotalDoctors = doctorsCount + retiredCount
   const derivedTotalP1 = p1Count + retiredP1Count
