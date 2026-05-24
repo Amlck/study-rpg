@@ -2,6 +2,9 @@
  * EquipmentCard — single equipment row in the Hospital page equipment grid.
  *
  * Added by add-hospital-equipment-medexam2 (2026-05-24).
+ * Style reuses `room-extension-card` classes for visual alignment with the
+ * adjacent 房間擴建 section (flat white card, simple border, no ornate frame).
+ *
  * Spec: openspec/changes/add-hospital-equipment-medexam2/specs/hospital-equipment/spec.md
  *       Requirement "Equipment UI SHALL render as a panel on the Hospital page"
  */
@@ -48,51 +51,48 @@ export function EquipmentCard({ definition, ownedRow, onUpgradeClick, busy }: Eq
   const placeholderEmoji = PLACEHOLDER_EMOJI[definition.id] ?? '🔧'
 
   return (
-    <div className="equipment-card frame" data-equipment-id={definition.id}>
-      <div className="equipment-card__sprite" aria-hidden="true">
-        {spriteUrl ? (
-          <img
-            src={spriteUrl}
-            alt=""
-            width={48}
-            height={48}
-            style={{ imageRendering: 'pixelated', display: 'block' }}
-          />
-        ) : (
-          <span style={{ fontSize: 32, display: 'inline-block', lineHeight: 1 }}>
-            {placeholderEmoji}
-          </span>
-        )}
-      </div>
-      <div className="equipment-card__body">
-        <div className="equipment-card__header">
-          <span className="equipment-card__name">{definition.displayName}</span>
-          <span
-            className={`equipment-card__level-chip equipment-card__level-chip--L${level}`}
-            aria-label={`目前等級 L${level}`}
-          >
-            L{level}
-          </span>
-        </div>
-        <p className="equipment-card__bonus muted">
-          +{(repBonus * 100).toFixed(0)}% 聲望增益 / +{(tpBonus * 100).toFixed(0)}% 病患吞吐
-        </p>
-        <button
-          type="button"
-          className="primary-btn equipment-card__cta"
-          onClick={onUpgradeClick}
-          disabled={isMax || busy}
-          title={isMax ? '已達最高等級 L3' : `升級到 L${nextLevel}，需要 ${fmt(nextCost!)} 💰`}
-        >
-          {isMax ? (
-            '已達最高等級'
-          ) : level === 0 ? (
-            <>購買 ({fmt(nextCost!)} <EmojiIcon char="💰" size={12} />)</>
+    <div className="room-extension-card" data-equipment-id={definition.id}>
+      <div className="room-extension-card__head">
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {spriteUrl ? (
+            <img
+              src={spriteUrl}
+              alt=""
+              width={28}
+              height={28}
+              style={{ imageRendering: 'pixelated', display: 'block' }}
+              aria-hidden="true"
+            />
           ) : (
-            <>升級 L{level} → L{nextLevel} ({fmt(nextCost!)} <EmojiIcon char="💰" size={12} />)</>
+            <span style={{ fontSize: 20, lineHeight: 1 }} aria-hidden="true">
+              {placeholderEmoji}
+            </span>
           )}
-        </button>
+          {definition.displayName}
+        </span>
+        <span className="muted" aria-label={`目前等級 L${level}`}>L{level}</span>
       </div>
+      <p className="room-extension-card__cost">
+        {isMax ? (
+          '已達最高等級'
+        ) : level === 0 ? (
+          <>成本：{fmt(nextCost!)} <EmojiIcon char="💰" size={14} /></>
+        ) : (
+          <>升級 L{level} → L{nextLevel}：{fmt(nextCost!)} <EmojiIcon char="💰" size={14} /></>
+        )}
+      </p>
+      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+        加成 +{(repBonus * 100).toFixed(0)}% 聲望 / +{(tpBonus * 100).toFixed(0)}% 吞吐
+      </p>
+      <button
+        type="button"
+        className="primary-btn"
+        onClick={onUpgradeClick}
+        disabled={isMax || busy}
+        title={isMax ? '已達最高等級 L3' : `升級到 L${nextLevel}，需要 ${fmt(nextCost!)} 💰`}
+      >
+        {isMax ? '已達上限' : level === 0 ? '購買設備' : '升級設備'}
+      </button>
     </div>
   )
 }
