@@ -59,9 +59,9 @@ If the order needs to flip for any reason (e.g., achievement-system blocks indef
 
 ## 7. Deploy
 
-- [ ] 7.1 Apply D1 migration remote: `wrangler d1 migrations apply study-rpg-leaderboard --remote` from `cloudflare/sync-worker/`
-- [ ] 7.2 Deploy Worker: confirm via `.github/workflows/deploy-worker.yml` push or local `wrangler deploy`; wait for active version flip
-- [ ] 7.3 Verify new endpoint live: `curl https://study-rpg-sync-worker.tony85314.workers.dev/leaderboard/correct` → expect 200 empty payload pre-cron
-- [ ] 7.4 Trigger client deploy: push to main → GH Pages action rebuilds `apps/medexam2-hospital-tw`
+- [x] 7.1 `wrangler d1 migrations apply study-rpg-leaderboard --remote` → `0005_add_total_correct.sql ✅` (3 commands executed in 0.97ms). PRAGMA confirmed `total_correct` column present remote; `SELECT COUNT(*)` shows 10 rows preserved (additive ALTER + DEFAULT 0 fast-path, no row rewrite).
+- [x] 7.2 Worker deployed via `.github/workflows/deploy-worker.yml` (push to `main` after merge; GH Actions run `26358970414`, completed 25s, success). Note: applied D1 migration ~30s AFTER Worker deploy completed — a brief window existed where Worker INSERT referenced a column the schema didn't have. Mitigated by leaderboard push being best-effort (errors swallowed via `pushLeaderboardIfOptedIn` returning `{kind:'error',message:...}`); gameplay unaffected, only leaderboard pushes silently no-op'd until 7.1 closed the gap. Next-time discipline: apply D1 BEFORE the Worker workflow finishes.
+- [x] 7.3 `curl https://study-rpg-sync-worker.tony85314.workers.dev/leaderboard/correct` → `{"rows":[],"last_updated_at":null,"total_count":0}` (200 empty payload pre-cron, expected — KV cron hasn't yet written the `correct` snapshot key).
+- [x] 7.4 Client deploy via same `main` push: `Deploy to GitHub Pages` (run `26358970420`, 57s, success) + `Deploy Cloudflare Pages` (run `26358970419`, 46s, success). Both apps now serve the 5-tab LeaderboardPage.
 - [ ] 7.5 Manually trigger one own-account push (open hospital app, complete an action that hits sync) → verify D1 row's `total_correct` column updates via `wrangler d1 execute --remote --command "SELECT user_id, total_correct FROM leaderboard_m2 WHERE user_id = '<sub>'"`
 - [ ] 7.6 Wait for next `:00`/`:30` cron tick → curl `/leaderboard/correct` and confirm non-empty rows when ≥ 1 player has pushed
