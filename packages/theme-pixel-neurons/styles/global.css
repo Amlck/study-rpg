@@ -1,0 +1,22 @@
+/*
+ * Neutral fallback CSS for the neurons-themed scaffold.
+ *
+ * Real palette (4 NT branch colors: DA yellow / 5-HT red / GABA blue /
+ * Glu green) + pixel font @font-face + Linnean tree layout vars land in
+ * `wire-neurons-content-and-theme`.
+ */
+
+:root {
+  --bg-default: #faf7f0;
+  --ink-default: #1a1410;
+  --frame-default: #8c6d4a;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-default);
+  color: var(--ink-default);
+  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+}

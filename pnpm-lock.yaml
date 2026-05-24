@@ -125,6 +125,40 @@ importers:
         specifier: ^5.4.10
         version: 5.4.21(@types/node@25.7.0)
 
+  apps/neurons-tw:
+    dependencies:
+      '@study-rpg/content-neurons-tw':
+        specifier: workspace:*
+        version: link:../../packages/content-neurons-tw
+      '@study-rpg/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@study-rpg/theme-pixel-neurons':
+        specifier: workspace:*
+        version: link:../../packages/theme-pixel-neurons
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: ^18.3.1
+        version: 18.3.7(@types/react@18.3.28)
+      '@vitejs/plugin-react':
+        specifier: ^4.3.3
+        version: 4.7.0(vite@5.4.21(@types/node@25.7.0))
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.10
+        version: 5.4.21(@types/node@25.7.0)
+
   cloudflare/sync-worker:
     dependencies:
       aws4fetch:
@@ -182,6 +216,19 @@ importers:
         specifier: ^2.5.0
         version: 2.9.0
 
+  packages/content-neurons-tw:
+    dependencies:
+      '@study-rpg/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.7.0
+        version: 25.7.0
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/core:
     dependencies:
       dexie:
@@ -235,6 +282,16 @@ importers:
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/theme-pixel-neurons:
+    dependencies:
+      '@study-rpg/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
