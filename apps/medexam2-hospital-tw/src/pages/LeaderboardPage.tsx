@@ -1,7 +1,8 @@
-// Hospital leaderboard page — Top 100 list + 4 filter tabs + my-rank chip.
+// Hospital leaderboard page — Top 100 list + 5 filter tabs + my-rank chip.
 //
 // Spec: openspec/changes/add-hospital-leaderboard/specs/hospital-leaderboard/spec.md
 //        §Requirement: Four filter tabs for ranking criteria
+//          (5th tab "correct" added by add-hospital-leaderboard-correct-count-filter)
 //        §Requirement: Top 100 list plus my-rank chip
 //        §Requirement: Hourly KV cache refresh (last-updated-at timestamp)
 //        §Requirement: Privacy and integrity disclosures (footer)
@@ -298,7 +299,7 @@ interface ListProps {
   currentUserId: string | undefined
 }
 
-type CellKey = 'rank' | 'nickname' | 'tier' | 'reputation' | 'doctors' | 'study'
+type CellKey = 'rank' | 'nickname' | 'tier' | 'reputation' | 'doctors' | 'study' | 'correct'
 
 function isPrimaryFor(filter: LeaderboardFilter, cell: CellKey): boolean {
   switch (filter) {
@@ -310,6 +311,8 @@ function isPrimaryFor(filter: LeaderboardFilter, cell: CellKey): boolean {
       return cell === 'doctors'
     case 'study':
       return cell === 'study'
+    case 'correct':
+      return cell === 'correct'
   }
 }
 
@@ -327,7 +330,7 @@ const MEDAL_BY_RANK: Record<1 | 2 | 3, { char: string; title: string }> = {
 
 function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
   return (
-    <ol className="leaderboard-list" role="list">
+    <ol className="leaderboard-list" role="list" data-active-filter={activeFilter}>
       <li className="leaderboard-row leaderboard-row--header" role="row" aria-hidden="true">
         <span className={cellClass('rank', activeFilter)}>排名</span>
         <span className={cellClass('nickname', activeFilter)}>玩家</span>
@@ -335,6 +338,7 @@ function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
         <span className={cellClass('reputation', activeFilter)}>聲望</span>
         <span className={cellClass('doctors', activeFilter)}>醫師</span>
         <span className={cellClass('study', activeFilter)}>唸書</span>
+        <span className={cellClass('correct', activeFilter)}>答對</span>
       </li>
       {rows.map((row, idx) => {
         const rank = idx + 1
@@ -369,6 +373,7 @@ function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
             <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
             <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
             <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
+            <span className={cellClass('correct', activeFilter)}>{row.total_correct ?? 0}</span>
           </li>
         )
       })}
@@ -480,6 +485,7 @@ function MyRowSticky({ rows, activeFilter, currentUserId }: ListProps) {
       className="leaderboard-row leaderboard-row--me leaderboard-row--me-sticky"
       role="presentation"
       aria-hidden="true"
+      data-active-filter={activeFilter}
     >
       <span className={cellClass('rank', activeFilter)}>
         {medal ? (
@@ -499,6 +505,7 @@ function MyRowSticky({ rows, activeFilter, currentUserId }: ListProps) {
       <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
       <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
       <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
+      <span className={cellClass('correct', activeFilter)}>{row.total_correct ?? 0}</span>
     </div>
   )
 }

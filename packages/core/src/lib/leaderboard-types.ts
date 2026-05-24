@@ -16,10 +16,24 @@
 // ─── Filters ─────────────────────────────────────────────────────────────────
 
 /**
- * Four leaderboard tabs / sort keys. Order matters for default tab selection
- * — `composite` is the default per spec §Requirement: Four filter tabs.
+ * Five leaderboard tabs / sort keys. Order here defines the UI tab strip
+ * order — `composite` is the default per spec §Requirement: Four filter tabs;
+ * `correct` (add-hospital-leaderboard-correct-count-filter) sits at position
+ * 2 between 綜合 and 聲望 so the most recently added discovery surface lives
+ * adjacent to the default tab.
+ *
+ * The Worker keeps a parallel `FILTERS` const for its dispatcher / cron loop /
+ * KV key generation in schema-natural order (composite/reputation/doctor/
+ * study/correct). The two orderings are independent — only the UI tab strip
+ * uses the order in this file.
  */
-export const LEADERBOARD_FILTERS = ['composite', 'reputation', 'doctor', 'study'] as const
+export const LEADERBOARD_FILTERS = [
+  'composite',
+  'correct',
+  'reputation',
+  'doctor',
+  'study',
+] as const
 
 export type LeaderboardFilter = (typeof LEADERBOARD_FILTERS)[number]
 
@@ -28,6 +42,7 @@ export type LeaderboardFilter = (typeof LEADERBOARD_FILTERS)[number]
  * opt-in modal / HelpMenu where space allows. */
 export const LEADERBOARD_FILTER_LABELS: Record<LeaderboardFilter, string> = {
   composite: '綜合',
+  correct: '答對',
   reputation: '聲望',
   doctor: '醫師',
   study: '唸書',
@@ -91,6 +106,14 @@ export interface LeaderboardRow {
    */
   badges_csv?: string
   subject_mastery_count?: number
+  /**
+   * Total correct answers across all subjects, derived from
+   * `SUM(mastery.correct)` at client push time. 5th leaderboard filter
+   * (add-hospital-leaderboard-correct-count-filter, migration 0005).
+   * Optional for back-compat with snapshots written before migration 0005;
+   * renderers MUST coalesce undefined → 0.
+   */
+  total_correct?: number
 }
 
 /**
@@ -131,6 +154,12 @@ export interface LeaderboardUpsertPayload {
    * `all-subjects-mastered` capstone.
    */
   subject_mastery_count?: number
+  /**
+   * Total correct answers across all subjects. Derived client-side from
+   * `SUM(mastery.correct)`. Optional for forward-compat during the
+   * 0005-migration rollout window — Worker treats missing as 0.
+   */
+  total_correct?: number
 }
 
 /** Response shape from `GET /leaderboard/nickname-check?n=<candidate>`. */

@@ -5342,10 +5342,12 @@ body:has(.modal-backdrop) {
 }
 
 /* Tabular grid — shared column template between inline <ol> and sticky <div>
-   so cells align vertically across both. */
+   so cells align vertically across both. 7 columns:
+   rank / nickname / tier / reputation / doctors / study / correct
+   (add-hospital-leaderboard-correct-count-filter added the 7th). */
 .leaderboard-list,
 .leaderboard-row--me-sticky {
-  --leaderboard-cols: 60px minmax(120px, 1fr) 50px 80px 60px 80px;
+  --leaderboard-cols: 60px minmax(120px, 1fr) 50px 80px 60px 80px 80px;
 }
 
 .leaderboard-list {
@@ -5414,7 +5416,8 @@ body:has(.modal-backdrop) {
 .leaderboard-cell--tier,
 .leaderboard-cell--reputation,
 .leaderboard-cell--doctors,
-.leaderboard-cell--study {
+.leaderboard-cell--study,
+.leaderboard-cell--correct {
   font-family: var(--font-pixel-num);
   font-variant-numeric: tabular-nums;
   justify-content: flex-end;
@@ -5487,7 +5490,10 @@ body:has(.modal-backdrop) {
   margin-top: 4px;
 }
 
-/* Mobile (< 768 px) — drop tier + doctors columns, give nickname room. */
+/* Mobile (< 768 px) — drop tier + doctors columns, give nickname room.
+   For the 答對 filter, swap the visible secondary column from 唸書 → 答對
+   (the active filter's primary stat always wins per spec §"Mobile-
+   prioritized columns hide secondary stats"). */
 @media (max-width: 767px) {
   .leaderboard-list,
   .leaderboard-row--me-sticky {
@@ -5495,7 +5501,22 @@ body:has(.modal-backdrop) {
   }
 
   .leaderboard-cell--tier,
-  .leaderboard-cell--doctors {
+  .leaderboard-cell--doctors,
+  .leaderboard-cell--correct {
+    display: none;
+  }
+
+  /* When correct is the active filter, surface the 答對 column on mobile and
+     hide 唸書 to keep the 4-column budget. The data-active-filter attribute
+     is set on both .leaderboard-list and .leaderboard-row--me-sticky from
+     LeaderboardPage. */
+  .leaderboard-list[data-active-filter="correct"] .leaderboard-cell--correct,
+  .leaderboard-row--me-sticky[data-active-filter="correct"] .leaderboard-cell--correct {
+    display: flex;
+  }
+
+  .leaderboard-list[data-active-filter="correct"] .leaderboard-cell--study,
+  .leaderboard-row--me-sticky[data-active-filter="correct"] .leaderboard-cell--study {
     display: none;
   }
 

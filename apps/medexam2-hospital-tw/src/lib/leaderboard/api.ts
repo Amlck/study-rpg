@@ -152,6 +152,14 @@ export interface LeaderboardServerRow {
   total_study_min: number
   is_public: boolean
   updated_at: number
+  /**
+   * Achievement system (v15) / 5th filter (0005). Optional for back-compat
+   * with pre-migration server responses; clients MUST coalesce undefined →
+   * '' / 0.
+   */
+  badges_csv?: string
+  subject_mastery_count?: number
+  total_correct?: number
 }
 
 export async function fetchLeaderboardMe(): Promise<LeaderboardServerRow | null> {

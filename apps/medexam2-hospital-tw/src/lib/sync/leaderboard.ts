@@ -33,6 +33,11 @@ export interface LeaderboardAttributes {
   /** Achievement system (v15): derived from local achievements table. */
   badges_csv: string
   subject_mastery_count: number
+  /**
+   * 5th leaderboard filter (add-hospital-leaderboard-correct-count-filter).
+   * Sum of `mastery.correct` across all subjects (clamped ≥ 0).
+   */
+  total_correct: number
 }
 
 // Tier sort order (P4 < P3 < P2 < P1). Used for per-category max-tier picker.
@@ -106,12 +111,21 @@ const TIER_TO_NUMBER: Record<HospitalTier, number> = {
 
 export async function buildLeaderboardAttributes(): Promise<LeaderboardAttributes> {
   const db = getHospitalDB()
-  const [counters, doctorCount, monotonic, achievementSnapshot] = await Promise.all([
+  const [counters, doctorCount, monotonic, achievementSnapshot, masteryRows] = await Promise.all([
     db.gameCounters.get('singleton'),
     db.doctors.count(),
     db.monotonicCounters.get('singleton'),
     deriveAchievementSnapshot(),
+    db.mastery.toArray(),
   ])
+
+  // mastery.ts is the only writer of `correct` and bumps it within the same
+  // Dexie transaction that updates questionHistory, so SUM(mastery.correct)
+  // matches what the existing「答對 X 題 / Y 題」UI shows. See design.md D1.
+  const totalCorrect = Math.max(
+    0,
+    Math.floor(masteryRows.reduce((acc, m) => acc + (m.correct ?? 0), 0)),
+  )
 
   const tierStr: HospitalTier = counters?.tier ?? '診所'
   return {
@@ -121,6 +135,7 @@ export async function buildLeaderboardAttributes(): Promise<LeaderboardAttribute
     total_study_min: Math.max(0, Math.floor(monotonic?.totalStudyMinutes ?? 0)),
     badges_csv: achievementSnapshot.badges_csv,
     subject_mastery_count: achievementSnapshot.subject_mastery_count,
+    total_correct: totalCorrect,
   }
 }
 
