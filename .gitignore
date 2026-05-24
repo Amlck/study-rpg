@@ -28,3 +28,6 @@ docs/status.html
 
 # Supabase CLI runtime state (pooler URL / project ref cache / version pins — per-machine)
 supabase/.temp/
+
+# codex CLI scratch image output (fallback workdir when running from project root)
+output/
