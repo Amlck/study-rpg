@@ -260,14 +260,20 @@ export function useSync(): UseSyncReturn {
             //      pull cycle (per spec scenario "Backfill error does not
             //      break the pull cycle").
             onPullComplete: async () => {
-              await checkAssignmentInvariants()
               try {
+                await checkAssignmentInvariants()
                 // Counter backfill MUST run first — achievement-backfill's
                 // buildAchievementStats() reads from monotonicCounters, so
                 // patched values need to be in place before predicate
                 // evaluation. See backfill-monotonic-counters spec D5.
                 await backfillMonotonicCounters()
-                await backfillAchievementsFromCurrentStats()
+                const unlocked = await backfillAchievementsFromCurrentStats()
+                if (unlocked > 0) {
+                  // eslint-disable-next-line no-console
+                  console.info(
+                    `[achievement-backfill] silently unlocked ${unlocked} achievements from current stats`,
+                  )
+                }
               } catch (err) {
                 // eslint-disable-next-line no-console
                 console.warn(
