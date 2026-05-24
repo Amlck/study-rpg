@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the opt-in global leaderboard for 二階 `apps/medexam2-hospital-tw`: a Cloudflare-D1-backed ranking system showing all opted-in players sorted by four criteria (綜合 / 聲望 / 醫師個數 / 累積唸書時間) up to top 100, with hourly KV-cached snapshots refreshed by a Worker scheduled cron. Lives in the Cloudflare data plane (`study-rpg-leaderboard` D1 + `LEADERBOARD_KV`) and integrates with the existing R2 sync engine (shares the 3-second debounce push window). Auth uses the existing Supabase JWT bridge — the Worker only consumes the public JWKS to verify tokens, never reads Supabase data.
+Defines the opt-in global leaderboard for 二階 `apps/medexam2-hospital-tw`: a Cloudflare-D1-backed ranking system showing all opted-in players sorted by five criteria (綜合 / 答對總題數 / 聲望 / 醫師個數 / 累積唸書時間) up to top 100, with hourly KV-cached snapshots refreshed by a Worker scheduled cron. Lives in the Cloudflare data plane (`study-rpg-leaderboard` D1 + `LEADERBOARD_KV`) and integrates with the existing R2 sync engine (shares the 3-second debounce push window). Auth uses the existing Supabase JWT bridge — the Worker only consumes the public JWKS to verify tokens, never reads Supabase data.
 
 Strict opt-in (unchecked consent checkbox + nickname required), case-insensitive unique nicknames (2–12 codepoints), full-trust anti-cheat (sanity bounds only + 「自填無驗證」UI disclosure), and toggle-based opt-out that preserves the D1 row while excluding it from KV snapshots. Account deletion is the only path that removes the leaderboard row entirely.
 
@@ -58,14 +58,17 @@ The system SHALL require the player to provide a display nickname during the opt
 
 ### Requirement: Four filter tabs for ranking criteria
 
-The leaderboard UI SHALL provide four filter tabs that determine the ranking criterion. The default tab SHALL be「綜合排名」. Switching tabs SHALL update the displayed ranking without re-querying if the data is already cached client-side for the current hour.
+The leaderboard UI SHALL provide **five** filter tabs that determine the ranking criterion. The default tab SHALL be「綜合排名」. Switching tabs SHALL update the displayed ranking without re-querying if the data is already cached client-side for the current hour.
 
-| Tab | Sort key |
-|---|---|
-| 綜合排名 | hospital_tier DESC, reputation DESC, doctor_count DESC |
-| 聲望排名 | reputation DESC |
-| 醫師個數排名 | doctor_count DESC |
-| 累積唸書時間排名 | total_study_min DESC |
+| Tab order | Tab | Sort key |
+|---|---|---|
+| 1 | 綜合排名 | hospital_tier DESC, reputation DESC, doctor_count DESC |
+| 2 | 答對總題數排名 | total_correct DESC |
+| 3 | 聲望排名 | reputation DESC |
+| 4 | 醫師個數排名 | doctor_count DESC |
+| 5 | 累積唸書時間排名 | total_study_min DESC |
+
+The「答對總題數排名」tab SHALL render at position 2 in the tab strip — immediately after「綜合排名」and before「聲望排名」— so that the most recently added discovery surface sits next to the default tab rather than at the far edge of the strip.
 
 #### Scenario: Default tab is 綜合排名
 
@@ -81,6 +84,11 @@ The leaderboard UI SHALL provide four filter tabs that determine the ranking cri
 
 - **WHEN** two players have identical hospital_tier and reputation in the 綜合排名 tab
 - **THEN** the player with higher doctor_count SHALL rank above the other; if doctor_count also ties, ordering between the tied players MAY be arbitrary but MUST be stable within a single snapshot
+
+#### Scenario: Answer-count tab orders by total_correct
+
+- **WHEN** the player clicks the「答對總題數排名」tab
+- **THEN** the displayed top-100 list SHALL re-order by `total_correct DESC` from the same hourly snapshot, and the my-rank chip SHALL update to show the player's rank within the `correct` filter; the「答對總題數」column SHALL be bolded as the primary stat in this tab
 
 ### Requirement: Top 100 list plus my-rank chip
 
@@ -133,12 +141,12 @@ The leaderboard UI SHALL display up to 100 ranked rows for the active filter as 
 
 ### Requirement: Hourly KV cache refresh
 
-The leaderboard backend SHALL pre-compute the top-100 ranking for each of the four filter tabs **twice per hour** via a Worker scheduled cron trigger at minutes `:00` and `:30`. Client read requests SHALL fetch from the KV cache, NOT directly from D1. The system MAY serve a stale snapshot (older than 30 min) if the cron has not yet refreshed, but MUST surface a「上次更新：HH:MM」timestamp in the leaderboard UI.
+The leaderboard backend SHALL pre-compute the top-100 ranking for each of the **five** filter tabs **twice per hour** via a Worker scheduled cron trigger at minutes `:00` and `:30`. Client read requests SHALL fetch from the KV cache, NOT directly from D1. The system MAY serve a stale snapshot (older than 30 min) if the cron has not yet refreshed, but MUST surface a「上次更新：HH:MM」timestamp in the leaderboard UI.
 
-#### Scenario: 30-min cron pre-computes all four filters
+#### Scenario: 30-min cron pre-computes all five filters
 
 - **WHEN** the Worker scheduled trigger fires at `:00` or `:30` of each hour
-- **THEN** the system SHALL run four D1 queries (one per filter) and write the resulting top-100 row arrays to four KV keys (`leaderboard:m2:top100:composite|reputation|doctor|study`), and SHALL log a single line entry for monitoring
+- **THEN** the system SHALL run five D1 queries (one per filter) and write the resulting top-100 row arrays to five KV keys (`leaderboard:m2:top100:composite|reputation|doctor|study|correct`), and SHALL log a single line entry for monitoring
 
 #### Scenario: Client read serves KV cache
 
@@ -157,7 +165,12 @@ The system SHALL upsert the player's leaderboard row to D1 via the Worker `POST 
 #### Scenario: Cloud sync triggers leaderboard upsert
 
 - **WHEN** an opted-in player completes a gameplay action that triggers cloud sync (e.g. recruits a doctor, completes a study session)
-- **THEN** within the next 3-second debounce window the sync engine SHALL POST the current `{user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at}` payload to `/leaderboard/upsert` in addition to the R2 bundle push
+- **THEN** within the next 3-second debounce window the sync engine SHALL POST the current `{user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, total_correct, is_public, updated_at}` payload to `/leaderboard/upsert` in addition to the R2 bundle push
+
+#### Scenario: total_correct computed from mastery aggregate
+
+- **WHEN** the leaderboard adapter computes the payload for an upsert
+- **THEN** the `total_correct` field SHALL equal `Math.max(0, Math.floor(SUM(mastery.correct)))` across all rows in the local Dexie `mastery` table; the adapter SHALL NOT query `questionHistory` for this value
 
 #### Scenario: Opted-out player still upserts is_public=0
 
@@ -171,7 +184,7 @@ The system SHALL upsert the player's leaderboard row to D1 via the Worker `POST 
 
 ### Requirement: Server-side LWW and sanity bounds
 
-The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantics using `updated_at` (millisecond epoch) and SHALL reject payloads whose values fall outside known sanity bounds: `hospital_tier ∈ [1, 4]`, `reputation ≥ 0`, `doctor_count ∈ [0, 50]`, `total_study_min ≥ 0`. Rejected payloads SHALL log a structured warning but MUST NOT surface a UI error to the player (silent server-side filtering). The D1 table `leaderboard_m2` SHALL declare `CHECK (hospital_tier BETWEEN 1 AND 4)` as defence-in-depth so any divergence between Worker bound and schema is caught at the database layer.
+The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantics using `updated_at` (millisecond epoch) and SHALL reject payloads whose values fall outside known sanity bounds: `hospital_tier ∈ [1, 4]`, `reputation ≥ 0`, `doctor_count ∈ [0, 50]`, `total_study_min ≥ 0`, `total_correct ≥ 0`. Rejected payloads SHALL log a structured warning but MUST NOT surface a UI error to the player (silent server-side filtering). The D1 table `leaderboard_m2` SHALL declare `CHECK (hospital_tier BETWEEN 1 AND 4)` and `CHECK (total_correct >= 0)` as defence-in-depth so any divergence between Worker bound and schema is caught at the database layer. The `total_correct` field MAY be omitted from the payload by older clients; in that case it SHALL be treated as `0` for forward-compatibility during the rollout window.
 
 #### Scenario: Older updated_at rejected
 
@@ -188,6 +201,16 @@ The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantic
 - **WHEN** an upsert arrives with `hospital_tier = 4` and all other fields are within bounds
 - **THEN** the Worker SHALL accept the payload, upsert the D1 row with `hospital_tier = 4`, and the next KV snapshot refresh SHALL include this row sortable as a distinct tier above `hospital_tier = 3` rows in the composite filter
 
+#### Scenario: Negative total_correct rejected
+
+- **WHEN** an upsert arrives with `total_correct = -1` or `total_correct = NaN`
+- **THEN** the Worker SHALL discard the upsert, log a structured warning `"[leaderboard] dropped upsert: correct oob"` with the offending user_id and value, and respond `200 OK` with `dropped: "correct_oob"` without writing to D1
+
+#### Scenario: Missing total_correct in legacy client payload defaults to 0
+
+- **WHEN** a client whose JS bundle predates this change pushes an upsert without the `total_correct` field
+- **THEN** the Worker SHALL treat the missing field as `0` and persist the row with `total_correct = 0`, allowing the legacy client to keep syncing the four pre-existing numeric fields while the new field stays at the default until the client bundle refreshes
+
 ### Requirement: Opt-out hides row without deletion
 
 The system SHALL provide a「公開到排行榜」toggle in the settings panel. When toggled off, the system SHALL POST to `/leaderboard/opt-out` which sets `is_public = 0` for the player's D1 row. Subsequent KV snapshots MUST exclude `is_public = 0` rows. The D1 row itself MUST be preserved so the player can re-enable opt-in without losing rank history.
@@ -195,7 +218,7 @@ The system SHALL provide a「公開到排行榜」toggle in the settings panel. 
 #### Scenario: Toggling opt-out hides player from snapshots
 
 - **WHEN** an opted-in player turns off the「公開到排行榜」toggle
-- **THEN** the next hourly KV refresh SHALL exclude this player's row from all four filter snapshots, and the player's my-rank chip SHALL switch to「未加入排行」state
+- **THEN** the next hourly KV refresh SHALL exclude this player's row from all five filter snapshots, and the player's my-rank chip SHALL switch to「未加入排行」state
 
 #### Scenario: Re-enabling opt-in restores ranking
 
@@ -437,3 +460,17 @@ The 二階 sync engine's `onPushComplete` callback in `apps/medexam2-hospital-tw
 
 - **WHEN** the player has unlocked `subject-master-內科` / `subject-master-外科` / `subject-master-小兒科` / `subject-master-皮膚科` / `subject-master-神經內科`
 - **THEN** the client SHALL push `subject_mastery_count: 5`
+
+### Requirement: total_correct column persists in D1
+
+The D1 `leaderboard_m2` table SHALL include a `total_correct INTEGER NOT NULL DEFAULT 0` column constrained by `CHECK (total_correct >= 0)`. A partial index `WHERE is_public = 1` SHALL exist on `total_correct DESC` to back the cron's `correct` filter query without a table scan. Existing rows at migration time SHALL receive `total_correct = 0` from the column default; no retroactive backfill from quiz history is required because each opted-in client's next sync push will overwrite the row with the real value.
+
+#### Scenario: Migration adds column without rewriting rows
+
+- **WHEN** the D1 migration `0005_add_total_correct.sql` is applied via `wrangler d1 migrations apply study-rpg-leaderboard --remote`
+- **THEN** all existing `leaderboard_m2` rows SHALL gain a `total_correct = 0` column value via SQLite's constant-default fast-path, and the new partial index `idx_leaderboard_m2_total_correct` SHALL be created with the same `WHERE is_public = 1` clause as the other indexes
+
+#### Scenario: Existing rows surface as zero on the correct tab until next push
+
+- **WHEN** a player who opted in before the migration opens the leaderboard within the first 30-min cron window after migration apply
+- **THEN** their row SHALL appear in the「答對總題數排名」tab with `total_correct = 0`; the value SHALL update to the real aggregate after their next `onPushComplete` upsert

@@ -4,13 +4,13 @@
  * Endpoints (all under /leaderboard/*):
  *   POST   /leaderboard/upsert           → JWT verify → sanity bounds → D1 UPSERT (LWW)
  *   GET    /leaderboard/:filter          → read KV snapshot (no D1 hit at request time)
- *                                          filter ∈ {composite, reputation, doctor, study}
+ *                                          filter ∈ {composite, correct, reputation, doctor, study}
  *   GET    /leaderboard/nickname-check?n=<candidate>   → JWT verify → D1 lookup
  *   POST   /leaderboard/opt-out          → JWT verify → set is_public = 0
  *   DELETE /leaderboard/me               → JWT verify → DELETE row (account deletion)
  *
  * Scheduled trigger (cron "0,30 * * * *", wired in index.ts):
- *   runLeaderboardCron(env)              → 4 D1 queries → 4 KV snapshots
+ *   runLeaderboardCron(env)              → 5 D1 queries → 5 KV snapshots
  *
  * Design decisions live in:
  *   openspec/changes/add-hospital-leaderboard/design.md (D1–D7)
@@ -29,7 +29,11 @@ import { extractBearer, verifyJWT } from "./auth";
 
 // === Constants ===
 
-const FILTERS = ["composite", "reputation", "doctor", "study"] as const;
+// FILTERS drives route regex / ORDER_BY map / cron loop / KV key generation.
+// Order here is schema-natural (cron + KV iteration order). The UI tab strip
+// uses an independent ordering (correct sits at position 2 in the UI; see
+// LeaderboardPage filter list).
+const FILTERS = ["composite", "reputation", "doctor", "study", "correct"] as const;
 type Filter = (typeof FILTERS)[number];
 
 const NICKNAME_MIN_CODEPOINTS = 2;
@@ -60,6 +64,9 @@ interface LeaderboardRowInternal {
   // pre-0002 snapshots; readers fall back to '' / 0 when undefined.
   badges_csv?: string;
   subject_mastery_count?: number;
+  // 5th filter (add-hospital-leaderboard-correct-count-filter, 0005). Optional
+  // for back-compat with pre-0005 KV snapshots; readers fall back to 0.
+  total_correct?: number;
 }
 
 interface SnapshotPayload {
@@ -80,6 +87,9 @@ interface UpsertBody {
   // treats omitted as '' / 0 (additive, doesn't clobber on partial bodies).
   badges_csv?: unknown;
   subject_mastery_count?: unknown;
+  // 5th filter (0005). Optional — pre-update clients omit; Worker treats
+  // omitted as 0 per design D5 (forward-compat during rollout window).
+  total_correct?: unknown;
 }
 
 // === Helpers ===
@@ -122,13 +132,14 @@ function snapshotKvKey(filter: Filter): string {
 const FILTER_ROUTE_REGEX = new RegExp(`^/leaderboard/(${FILTERS.join("|")})$`);
 
 const SNAPSHOT_COLUMNS =
-  "user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, updated_at, badges_csv, subject_mastery_count";
+  "user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, updated_at, badges_csv, subject_mastery_count, total_correct";
 
 const ORDER_BY: Record<Filter, string> = {
   composite: "hospital_tier DESC, reputation DESC, doctor_count DESC",
   reputation: "reputation DESC",
   doctor: "doctor_count DESC",
   study: "total_study_min DESC",
+  correct: "total_correct DESC",
 };
 
 // === Dispatcher ===
@@ -226,6 +237,16 @@ async function handleUpsert(
     return jsonResponse({ error: "invalid_updated_at" }, 400, headers);
   }
 
+  // total_correct (5th filter — add-hospital-leaderboard-correct-count-filter).
+  // Optional in body for forward-compat with pre-0005 client bundles; missing
+  // → treat as 0. Same drop-silently-with-200 pattern as the other sanity
+  // bounds so old clients don't retry-storm during the rollout window.
+  const correct = Number(body.total_correct ?? 0);
+  if (!Number.isFinite(correct) || correct < 0) {
+    console.warn("[leaderboard] dropped upsert: correct oob", { user: userSub, correct });
+    return jsonResponse({ ok: true, dropped: "correct_oob" }, 200, headers);
+  }
+
   // === Achievement system (v15) — badges_csv + subject_mastery_count ===
   // Both optional; default to '' / 0 when missing. Invalid values rejected
   // with 400 (NOT silently dropped — these are client-derived values, not
@@ -282,8 +303,8 @@ async function handleUpsert(
     // "empty" values aren't a defensive concept there.
     await env.LEADERBOARD_DB.prepare(
       `INSERT INTO leaderboard_m2
-         (user_id, nickname, nickname_lower, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at, badges_csv, subject_mastery_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (user_id, nickname, nickname_lower, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at, badges_csv, subject_mastery_count, total_correct)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          nickname              = excluded.nickname,
          nickname_lower        = excluded.nickname_lower,
@@ -302,6 +323,11 @@ async function handleUpsert(
                                    WHEN excluded.subject_mastery_count = 0 AND leaderboard_m2.subject_mastery_count > 0
                                    THEN leaderboard_m2.subject_mastery_count
                                    ELSE excluded.subject_mastery_count
+                                 END,
+         total_correct         = CASE
+                                   WHEN excluded.total_correct = 0 AND leaderboard_m2.total_correct > 0
+                                   THEN leaderboard_m2.total_correct
+                                   ELSE excluded.total_correct
                                  END
        WHERE leaderboard_m2.updated_at < excluded.updated_at`,
     )
@@ -317,6 +343,7 @@ async function handleUpsert(
         updatedAt,
         badgesCsv,
         subjectMastery,
+        correct,
       )
       .run();
 
@@ -433,7 +460,7 @@ async function handleGetMe(
 
   const row = await env.LEADERBOARD_DB
     .prepare(
-      "SELECT user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at, badges_csv, subject_mastery_count FROM leaderboard_m2 WHERE user_id = ?",
+      "SELECT user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at, badges_csv, subject_mastery_count, total_correct FROM leaderboard_m2 WHERE user_id = ?",
     )
     .bind(userSub)
     .first<{
@@ -447,6 +474,7 @@ async function handleGetMe(
       updated_at: number;
       badges_csv: string | null;
       subject_mastery_count: number | null;
+      total_correct: number | null;
     }>();
 
   if (!row) {
@@ -466,6 +494,7 @@ async function handleGetMe(
         updated_at: row.updated_at,
         badges_csv: row.badges_csv ?? "",
         subject_mastery_count: row.subject_mastery_count ?? 0,
+        total_correct: row.total_correct ?? 0,
       },
     },
     200,
@@ -502,11 +531,11 @@ async function handleDeleteMe(
 // === Scheduled cron ===
 
 export async function runLeaderboardCron(env: Env): Promise<void> {
-  // 4 D1 queries → 4 KV snapshots, all parallel. Each snapshot is the
+  // 5 D1 queries → 5 KV snapshots, all parallel. Each snapshot is the
   // top-100 rows for the corresponding filter; client GETs read these
   // directly. Partial indexes (WHERE is_public = 1) make these queries
   // cheap even as the table grows — index seek + LIMIT 100 ≈ < 5 ms each
-  // at < 1k rows. Parallelising COUNT + 4 SELECTs cuts wall time ~3×.
+  // at < 1k rows. Parallelising COUNT + 5 SELECTs cuts wall time ~3×.
   const buildQuery = (filter: Filter) =>
     `SELECT ${SNAPSHOT_COLUMNS}
      FROM leaderboard_m2
