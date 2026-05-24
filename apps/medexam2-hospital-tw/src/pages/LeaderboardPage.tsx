@@ -38,6 +38,7 @@ import {
   markOptedIn,
 } from '../services/leaderboard-profile'
 import { buildLeaderboardAttributes } from '../lib/sync/leaderboard'
+import { tierLabelFromNumber } from '../lib/tier-labels'
 
 type SnapshotState =
   | { kind: 'loading' }
@@ -361,7 +362,7 @@ function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
                 subjectMasteryCount={row.subject_mastery_count}
               />
             </span>
-            <span className={cellClass('tier', activeFilter)}>T{row.hospital_tier}</span>
+            <span className={cellClass('tier', activeFilter)}>{tierLabelFromNumber(row.hospital_tier)}</span>
             <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
             <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
             <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
@@ -491,7 +492,7 @@ function MyRowSticky({ rows, activeFilter, currentUserId }: ListProps) {
           subjectMasteryCount={row.subject_mastery_count}
         />
       </span>
-      <span className={cellClass('tier', activeFilter)}>T{row.hospital_tier}</span>
+      <span className={cellClass('tier', activeFilter)}>{tierLabelFromNumber(row.hospital_tier)}</span>
       <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
       <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
       <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
