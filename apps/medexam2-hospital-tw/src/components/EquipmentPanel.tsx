@@ -70,33 +70,23 @@ export function EquipmentPanel({ tier }: EquipmentPanelProps) {
   }
 
   return (
-    <section className="hospital-equipment-section">
-      <header
-        className="hospital-equipment-section__header"
-        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+    <section className="room-extension-panel" aria-label="設備">
+      <h2
+        className="section-heading"
+        style={{ cursor: 'pointer', userSelect: 'none' }}
         onClick={() => {
           userToggledRef.current = true
           setCollapsed((v) => !v)
         }}
       >
-        <h2 style={{ margin: 0 }}>
-          <EmojiIcon char="🏥" size={18} /> 設備
-        </h2>
-        <span className="muted" style={{ fontSize: 14 }}>
+        設備
+        <span className="muted" style={{ fontSize: 14, marginLeft: 8, fontWeight: 'normal' }}>
           {collapsed ? '（點擊展開）' : '（點擊收合）'} · 已擁有 {owned.length} / 10
         </span>
-      </header>
+      </h2>
 
       {!collapsed && (
-        <div
-          className="hospital-equipment-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: 12,
-            marginTop: 12,
-          }}
-        >
+        <div className="equipment-grid">
           {EQUIPMENT_CATALOG.map((def) => {
             const ownedRow = ownedById.get(def.id) ?? null
             return (
