@@ -14,6 +14,7 @@ import { tierLabel } from '../lib/tier-labels'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { RoomCard } from '../components/RoomCard'
 import { AssignDoctorModal } from '../components/AssignDoctorModal'
+import { EquipmentPanel } from '../components/EquipmentPanel'
 import { purchaseRoomExtension, type ExtensionResult } from '../services/room-extension'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
@@ -183,6 +184,8 @@ export function Hospital() {
           onClose={() => setActiveRoom(null)}
         />
       )}
+
+      <EquipmentPanel tier={counters?.tier ?? '診所'} />
     </main>
   )
 }

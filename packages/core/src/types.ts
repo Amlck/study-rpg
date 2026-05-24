@@ -482,3 +482,38 @@ export interface EngineConfig {
   theme: ThemePack
   statSchema: StatSchema
 }
+
+// ─── Hospital equipment (二階 hospital mode) ──────────────────────────────────
+// Added by add-hospital-equipment-medexam2 (2026-05-24). 10 named equipment items
+// with 3-level upgrade ladders; bonuses stack additively across owned items per
+// design D2. Pure type contract — catalog content lives in content-medexam2-tw.
+
+export type EquipmentId =
+  | 'ct'
+  | 'mri'
+  | 'endoscopy'
+  | 'davinci'
+  | 'cathlab'
+  | 'petct'
+  | 'linac'
+  | 'ecmo'
+  | 'hybridor'
+  | 'ngs'
+
+export interface EquipmentDef {
+  id: EquipmentId
+  displayName: string
+  spriteKey: string
+  costByLevel: [number, number, number]
+  reputationBonusByLevel: [number, number, number]
+  throughputBonusByLevel: [number, number, number]
+  description: string
+}
+
+export interface OwnedEquipmentRow {
+  equipmentId: EquipmentId
+  level: 1 | 2 | 3
+  purchasedAt: number
+  upgradedAt: number
+  updatedAt: number
+}

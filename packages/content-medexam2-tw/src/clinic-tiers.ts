@@ -18,15 +18,17 @@ export type HospitalTier = '診所' | '區域醫院' | '醫學中心' | '國家�
 
 export const TIER_ORDER: HospitalTier[] = ['診所', '區域醫院', '醫學中心', '國家級教學醫院']
 
-// TUNED 2026-05-18 — first dogfood pass; revisit after 1-2 weeks of telemetry.
-// Recalibrated by `add-quiz-economy-redesign` to align with the 30-day endgame
-// target under the new quiz-driven reward formula (see that change's design.md
-// 1-month full-clear math model). Old values (48k / 192k / 2M) assumed reading
-// session was the sole income source; quiz-first economy lowers the bar.
+// TUNED 2026-05-24 — 醫學中心 threshold bumped 150k → 300k by
+// `add-hospital-equipment-medexam2` for ~30-day endgame phase (game arc ~60 days
+// from cold start at typical play ~5k rep/day). Paired with new T4 equipment
+// gate (≥ 3 unique equipment installed at level ≥ 1) — see clinic-level-up
+// modified Requirements + tick.ts T3→T4 evaluation. 30k / 80k unchanged
+// (players already crossed those gates). Previously TUNED 2026-05-18 by
+// `add-quiz-economy-redesign` for quiz-first economy.
 export const TIER_UPGRADE_THRESHOLDS: Record<HospitalTier, number | null> = {
   診所: 30_000,
   區域醫院: 80_000,
-  醫學中心: 150_000,
+  醫學中心: 300_000,
   國家級教學醫院: null,
 }
 

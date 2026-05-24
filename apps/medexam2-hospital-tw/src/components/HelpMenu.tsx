@@ -34,13 +34,16 @@ interface AccordionSection {
 
 // Sourced from TIER_UPGRADE_THRESHOLDS so future recalibrations propagate
 // automatically — see `fix-helpmenu-copy-stale` (2026-05-19).
+// add-hospital-equipment-medexam2 (2026-05-24): T3 → T4 third condition added
+// (≥ 3 unique equipment). T3 threshold auto-displays new 300k value since this
+// pulls from TIER_UPGRADE_THRESHOLDS.醫學中心 (bumped 150_000 → 300_000).
 const tierUpgradeBody = `升級不只看聲望，還要科別多樣性。${tierLabel('診所')}（診所）→ ${tierLabel('區域醫院')}（區域醫院）：${(
   TIER_UPGRADE_THRESHOLDS.診所! / 1000
 ).toFixed(0)}k 聲望 + 5 不同科別；${tierLabel('區域醫院')} → ${tierLabel('醫學中心')}（醫學中心）：${(
   TIER_UPGRADE_THRESHOLDS.區域醫院! / 1000
 ).toFixed(0)}k + 8 P3+ 不同科別；${tierLabel('醫學中心')} → ${tierLabel('國家級教學醫院')}（國家級教學醫院）：${(
   TIER_UPGRADE_THRESHOLDS.醫學中心! / 1000
-).toFixed(0)}k + 10 P2+ + 至少 1 位 P1。`
+).toFixed(0)}k + 10 P2+ + 至少 1 位 P1 + 安裝 3 種以上設備。`
 
 const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
   {

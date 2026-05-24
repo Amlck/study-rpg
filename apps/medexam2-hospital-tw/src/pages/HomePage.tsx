@@ -70,6 +70,8 @@ export function HomePage() {
   const mono = useLiveQuery(() => db.monotonicCounters.get('singleton'), [])
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const allDoctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
+  // add-hospital-equipment-medexam2 (2026-05-24): T3 → T4 equipment gate display
+  const ownedEquipment = useLiveQuery(() => db.hospitalEquipment.toArray(), []) ?? []
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
@@ -222,6 +224,15 @@ export function HomePage() {
                     {' 至少 1 位 P1'}
                   </>
                 )}
+              </p>
+            )}
+            {tier === '醫學中心' && (
+              <p className="home-tier-line home-tier-line--equipment">
+                T4 設備門檻：
+                <strong>
+                  {ownedEquipment.filter((e) => e.level >= 1).length} / 3
+                </strong>
+                {' 種設備已安裝'}
               </p>
             )}
           </>

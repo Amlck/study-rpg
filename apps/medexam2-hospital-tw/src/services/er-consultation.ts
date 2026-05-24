@@ -10,6 +10,7 @@
  * Telemetry: `erConsultLog` table, capped at ER_CONSULT_LOG_CAP rows (local-only).
  */
 
+import { computeReputationMultiplier, getOwnedEquipment } from '../lib/equipment'
 import {
   ER_CONSULT_AUTO_SKIP_MS,
   ER_CONSULT_LOG_CAP,
@@ -254,6 +255,9 @@ export async function answerERConsult(opts: {
   reactionTimeMs: number
 }): Promise<AnswerERConsultResult | null> {
   const db = getHospitalDB()
+  // add-hospital-equipment-medexam2 (2026-05-24): pre-fetch equipment multiplier
+  const ownedEquipment = await getOwnedEquipment()
+  const equipmentReputationMultiplier = computeReputationMultiplier(ownedEquipment)
   return db.transaction(
     'rw',
     [
@@ -289,8 +293,10 @@ export async function answerERConsult(opts: {
         revenueDelta = computeERConsultReward(
           Math.round(QUIZ_REVENUE_PER_CORRECT_BASE * tierMult),
         )
-        reputationDelta = computeERConsultReward(
-          Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult),
+        reputationDelta = Math.round(
+          computeERConsultReward(
+            Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult),
+          ) * equipmentReputationMultiplier,
         )
       }
 

@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { initialGachaStats, type GachaStats } from '@study-rpg/core'
+import { initialGachaStats, type GachaStats, type OwnedEquipmentRow } from '@study-rpg/core'
 import {
   RECRUITMENT_PITY_RULES,
   RECRUITMENT_WEIGHTS,
@@ -398,6 +398,8 @@ export class HospitalDB extends Dexie {
   erConsultLog!: EntityTable<ERConsultLogRow, 'id'>
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
   achievements!: EntityTable<AchievementRow, 'id'>
+  hospitalEquipment!: EntityTable<OwnedEquipmentRow, 'equipmentId'>
+
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -768,6 +770,37 @@ export class HospitalDB extends Dexie {
       erConsultLog: '++id, triggeredAt, subjectId',
       leaderboardProfile: '&user_id',
       achievements: '&id, unlockedAt',
+    })
+
+    // v16: add-hospital-equipment-medexam2 — new hospitalEquipment table for
+    // 10 named equipment items with 3-level upgrade ladder. Schema-only
+    // upgrade — table starts empty for everyone, no migration step needed.
+    // Passenger of R2 m2 bundle (per achievements precedent in v15).
+    this.version(16).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+      leaderboardProfile: '&user_id',
+      achievements: '&id, unlockedAt',
+      hospitalEquipment: '&equipmentId, updatedAt',
     })
   }
 }
