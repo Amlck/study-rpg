@@ -3,9 +3,21 @@ import type { BugReportCategory, Question, QuestionId, SubjectId } from '@study-
 import { BugReportModal } from './BugReportModal'
 import { QuizBugReportSheet } from './QuizBugReportSheet'
 import { buildQuestionSnapshot, type QuizQuestionSnapshot } from '../services/bug-report'
+import { incrementEasyClick, incrementGuessedClick } from '../lib/srs-telemetry'
 
 export interface QuizResult { correct: boolean }
-export interface QuestionResult { questionId: QuestionId; correct: boolean; elapsedMs: number }
+/** Quality modifier signaled by player click on opt-in action-bar button after a correct answer. */
+export type QuestionResultQuality = 'default' | 'easy' | 'guessed'
+export interface QuestionResult {
+  questionId: QuestionId
+  correct: boolean
+  elapsedMs: number
+  /**
+   * Set when the player clicks 「太簡單」 or 「我亂猜的」 after a correct answer.
+   * Defaults to `'default'`. Wrong answers always carry `'default'` (buttons hidden).
+   */
+  quality?: QuestionResultQuality
+}
 
 /** Max questions presented in one review-mode session. */
 export const REVIEW_BATCH_SIZE = 20
@@ -90,7 +102,27 @@ export function QuizModal({ pool, subjectFilter, count = 5, dueQuestionIds, mode
     if (picked !== null) return
     const elapsedMs = Date.now() - questionStartedAt
     setPicked(optionKey)
-    setQuestionResults((prev) => [...prev, { questionId: q.id, correct: optionKey === q.answer, elapsedMs }])
+    setQuestionResults((prev) => [...prev, { questionId: q.id, correct: optionKey === q.answer, elapsedMs, quality: 'default' }])
+  }
+
+  /**
+   * Replace the in-place quality on the most recently recorded result.
+   * Debounced — re-clicking the same modifier or switching modifiers
+   * within the reveal window mutates the trailing entry; no extra row added.
+   */
+  function setLastQuality(quality: QuestionResultQuality) {
+    if (picked === null || picked !== q.answer) return // only on correct answer
+    setQuestionResults((prev) => {
+      if (prev.length === 0) return prev
+      const last = prev[prev.length - 1]
+      if (last.questionId !== q.id) return prev // safety: only mutate current question
+      // DEV-only telemetry: count click on first non-default selection (not toggles).
+      if (last.quality !== quality) {
+        if (quality === 'easy') incrementEasyClick()
+        else if (quality === 'guessed') incrementGuessedClick()
+      }
+      return [...prev.slice(0, -1), { ...last, quality }]
+    })
   }
 
   function handleNext() {
@@ -218,6 +250,46 @@ export function QuizModal({ pool, subjectFilter, count = 5, dueQuestionIds, mode
                   <pre>{q.explanation}</pre>
                 </details>
                 <div className="quiz-actions">
+                  {picked === q.answer && (() => {
+                    const currentQuality = questionResults[questionResults.length - 1]?.questionId === q.id
+                      ? questionResults[questionResults.length - 1]?.quality ?? 'default'
+                      : 'default'
+                    const base = import.meta.env.BASE_URL
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          className={`quiz-quality-btn quiz-quality-easy${currentQuality === 'easy' ? ' is-active' : ''}`}
+                          onClick={() => setLastQuality(currentQuality === 'easy' ? 'default' : 'easy')}
+                          title="這題很簡單 — 下次更晚再考"
+                        >
+                          <img
+                            src={`${base}icons/emoji/2728.png`}
+                            alt="✨"
+                            width={16}
+                            height={16}
+                            style={{ imageRendering: 'pixelated', verticalAlign: 'middle' }}
+                          />
+                          <span>太簡單</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`quiz-quality-btn quiz-quality-guessed${currentQuality === 'guessed' ? ' is-active' : ''}`}
+                          onClick={() => setLastQuality(currentQuality === 'guessed' ? 'default' : 'guessed')}
+                          title="其實是亂猜 — 明天再考一次驗證"
+                        >
+                          <img
+                            src={`${base}icons/emoji/1f914.png`}
+                            alt="🤔"
+                            width={16}
+                            height={16}
+                            style={{ imageRendering: 'pixelated', verticalAlign: 'middle' }}
+                          />
+                          <span>我亂猜的</span>
+                        </button>
+                      </>
+                    )
+                  })()}
                   <button onClick={handleNext}>{isLast ? '看結果' : '下一題 →'}</button>
                 </div>
               </>

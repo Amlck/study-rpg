@@ -4,6 +4,46 @@ All notable changes to the public API of `@study-rpg/core`. Follows [Semantic
 Versioning](https://semver.org/). Breaking changes bump the MAJOR; additive opt-in
 changes bump the MINOR; bug fixes bump the PATCH.
 
+## [0.5.0] — 2026-05-25
+
+### Added
+
+- `reviewCardEasy(card, now?)` — 一階 「太簡單」 modifier: `ease *= 1.5`,
+  `interval *= 3` (clamped to `MAX_INTERVAL_DAYS`)
+- `reviewCardGuessed(card, now?)` — 一階 「我亂猜的」 modifier: `interval = 1`,
+  `ease` / `lapses` unchanged
+- `reviewCardBinaryEasy({ prev, now? })` — 二階 binary analogue of Easy modifier
+- `reviewCardBinaryGuessed({ prev, now? })` — 二階 binary analogue of Guessed
+  modifier
+- `EASY_EASE_MULTIPLIER` = 1.5 (named export)
+- `EASY_INTERVAL_MULTIPLIER` = 3 (named export)
+- `GUESSED_RESET_INTERVAL` = 1 (named export)
+
+### Changed
+
+- `STANDARD_INITIAL_INTERVALS` value changed from `[1, 6]` to `[3, 7]`. First
+  correct review now schedules 3 days out (was 1); second correct review
+  schedules 7 days out (was 6). Constant identity unchanged — consumers reading
+  the array see the new values automatically.
+- `reviewCard` (一階) refactored to read `STANDARD_INITIAL_INTERVALS` instead
+  of hardcoding `1` and `6`. Behavior now consistent with `reviewCardBinary`.
+
+### Why
+
+Players answering correctly were seeing the same question resurface ~1 day
+later — "我答對為何又考". Combined with the shipped 「歷史曾錯」 tab providing
+proactive wrong-answer review, the SRS due queue's job narrows to algorithmic
+spaced cadence only. The new opt-in modifiers give players finer agency without
+forcing per-question self-rating.
+
+Companion change: `tune-srs-binary-modifiers-and-intervals` (2026-05-25).
+
+### Migration
+
+No code change required for consumers — additive API. Save files with
+pre-existing `interval = 1` or `interval = 6` are not migrated; they age out
+naturally on next review under the new constants.
+
 ## [0.4.0] — 2026-05-19
 
 ### Added

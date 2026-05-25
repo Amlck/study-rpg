@@ -1,7 +1,11 @@
 /**
- * Adapter-level tests for the questionHistory monotonic-OR merge — guards
- * against the v1↔v2 cross-version sync race documented in Decision 8 of
- * add-bookmarks-filters-and-wrong-history-medexam2.
+ * Adapter-level tests for the questionHistory merge logic.
+ *
+ * As of `tune-srs-binary-modifiers-and-intervals` (2026-05-25), this merge
+ * uses row-level LWW with a "preserve local on cloud omission" fallback.
+ * Previously (Decision 8 of add-bookmarks-filters-and-wrong-history-medexam2)
+ * it was monotonic-OR — the change relaxes the invariant so that explicit
+ * `everWrong = false` writes (from 「太簡單」 clicks) can propagate cross-device.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
@@ -72,7 +76,7 @@ describe('questionHistory adapter — snapshotAll round-trip', () => {
     expect(back?.everWrong).toBe(true)
   })
 
-  it('monotonic-OR: incoming missing everWrong does NOT overwrite local true (even if cloud wins LWW)', async () => {
+  it('omission-preserve: incoming missing everWrong does NOT overwrite local true (even if cloud wins LWW)', async () => {
     const db = getHospitalDB()
     const OLDER_ISO = '2026-05-24T00:00:00.000Z'
     const NEWER_ISO = '2026-05-25T00:00:00.000Z'
@@ -103,21 +107,58 @@ describe('questionHistory adapter — snapshotAll round-trip', () => {
     // LWW won for other fields (cloud's correctCount=3, lastResult='correct')
     expect(merged?.correctCount).toBe(3)
     expect(merged?.lastResult).toBe('correct')
-    // BUT everWrong stays true (monotonic-OR with local true)
+    // everWrong stays true (cloud omitted the field → preserve local)
     expect(merged?.everWrong).toBe(true)
   })
 
-  it('monotonic-OR: incoming everWrong=true promotes local even when cloud LOSES LWW for other fields', async () => {
+  it('LWW clear propagation: newer cloud everWrong=false (explicit 「太簡單」 clear) overwrites local true', async () => {
     const db = getHospitalDB()
     const OLDER_ISO = '2026-05-24T00:00:00.000Z'
     const NEWER_ISO = '2026-05-25T00:00:00.000Z'
-    // Local: NEWER updated_at, everWrong=false
+    // Local: everWrong=true (player got Q wrong previously)
+    await db.questionHistory.put({
+      ...mkRow({ everWrong: true, lastResult: 'wrong' }),
+      _updatedAt: Date.parse(OLDER_ISO),
+    } as unknown as Parameters<typeof db.questionHistory.put>[0])
+
+    // Cloud: NEWER updated_at, everWrong=false (player clicked 「太簡單」 on device B)
+    const cloudData = {
+      questionId: 'Q-1',
+      subjectId: '內科',
+      attempts: 5,
+      correctCount: 3,
+      lastAnsweredAt: 2_000_000,
+      lastResult: 'correct',
+      everWrong: false, // explicit clear from 「太簡單」 click
+      nextDueAt: null,
+      interval: 21,
+      easeFactor: 3.75,
+    }
+    const cloudRow = mkCloudRow(cloudData, NEWER_ISO)
+    const wrote = await HOSPITAL_QUESTION_HISTORY.applyToLocal(db, cloudRow, undefined)
+    expect(wrote).toBe(true)
+
+    const merged = await db.questionHistory.get('Q-1')
+    // Cloud wins LWW; explicit false propagates
+    expect(merged?.lastResult).toBe('correct')
+    expect(merged?.everWrong).toBe(false)
+    expect(merged?.interval).toBe(21)
+    expect(merged?.easeFactor).toBe(3.75)
+  })
+
+  it('LWW guard: older cloud everWrong=true loses to newer local everWrong=false', async () => {
+    // Mirror of the above — confirms stale-clock device cannot revoke a fresh
+    // 「太簡單」 clear via an old monotonic-OR-style write.
+    const db = getHospitalDB()
+    const OLDER_ISO = '2026-05-24T00:00:00.000Z'
+    const NEWER_ISO = '2026-05-25T00:00:00.000Z'
+    // Local: NEWER updated_at, everWrong=false (fresh 「太簡單」 click)
     await db.questionHistory.put({
       ...mkRow({ everWrong: false, lastResult: 'correct', correctCount: 5 }),
       _updatedAt: Date.parse(NEWER_ISO),
     } as unknown as Parameters<typeof db.questionHistory.put>[0])
 
-    // Incoming: OLDER updated_at, but everWrong=true
+    // Incoming: OLDER updated_at, everWrong=true (stale write)
     const cloudData = {
       questionId: 'Q-1',
       subjectId: '內科',
@@ -130,15 +171,14 @@ describe('questionHistory adapter — snapshotAll round-trip', () => {
       interval: 0,
       easeFactor: 2.5,
     }
-    const cloudRow = mkCloudRow(cloudData, OLDER_ISO) // older
+    const cloudRow = mkCloudRow(cloudData, OLDER_ISO)
     const wrote = await HOSPITAL_QUESTION_HISTORY.applyToLocal(db, cloudRow, undefined)
-    expect(wrote).toBe(true) // promoted everWrong → still a write
+    expect(wrote).toBe(false) // cloud loses LWW, no write
 
     const merged = await db.questionHistory.get('Q-1')
-    // Other fields keep their local LWW-winning values
+    // Local stays unchanged
     expect(merged?.correctCount).toBe(5)
     expect(merged?.lastResult).toBe('correct')
-    // BUT everWrong gets promoted to true (monotonic-OR with incoming true)
-    expect(merged?.everWrong).toBe(true)
+    expect(merged?.everWrong).toBe(false)
   })
 })

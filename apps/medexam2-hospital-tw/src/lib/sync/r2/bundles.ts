@@ -14,9 +14,15 @@ import type { CloudRow, RowPayload } from '../types'
 // v2 (add-bookmarks-filters-and-wrong-history-medexam2): m2 bundle now
 // carries `everWrong: boolean` on questionHistory rows. v2-aware clients
 // pulling v1 bundles treat missing field as undefined → false. v1 clients
-// pulling v2 bundles drop the unknown field harmlessly. CRITICAL: the
-// `everWrong` field uses monotonic-OR merge in tables.ts applyToLocal,
-// NOT standard LWW — neutralizes the v1↔v2 cross-version race.
+// pulling v2 bundles drop the unknown field harmlessly.
+//
+// Merge semantics for `everWrong` (revised 2026-05-25 by
+// tune-srs-binary-modifiers-and-intervals): row-level LWW with a
+// "preserve local on cloud omission" fallback. The 「太簡單」 opt-in button
+// explicitly writes `everWrong = false` AND bumps `lastAnsweredAt`, so an
+// explicit clear propagates cross-device. Older clients that omit the field
+// no longer overwrite a local true (preserving prior protection against
+// silent revocation). See tables.ts applyToLocal for the canonical impl.
 const SCHEMA_VERSION = 2
 const CLIENT_ID_KEY = 'study-rpg.sync.clientId'
 const BUNDLE_APP_VERSION = '0.3.0'

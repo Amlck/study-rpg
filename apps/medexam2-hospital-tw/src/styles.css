@@ -2552,15 +2552,21 @@ body:has(.modal-backdrop) {
 }
 
 .quiz-modal__next {
-  padding: 10px 22px;
+  height: 46px;
+  padding: 0 22px;
   font-family: inherit;
   font-size: 16px;
+  line-height: 1;
   background: var(--accent-gold);
   color: var(--frame-dark);
   border: 2px solid var(--frame-dark);
   border-radius: 4px;
   cursor: pointer;
   box-shadow: 2px 2px 0 var(--frame-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .quiz-modal__next:hover:not(:disabled) {
@@ -2571,6 +2577,82 @@ body:has(.modal-backdrop) {
 .quiz-modal__next:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ─── 「太簡單」/「我亂猜的」 opt-in quality buttons (correct-answer only) ─── */
+.quiz-quality-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Match `.quiz-bug-trigger--in-footer` + `.quiz-modal__next` height so all
+     4 footer chips line up at the same baseline. */
+  height: 46px;
+  padding: 0 18px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+  background: var(--bg-cream);
+  color: var(--frame-dark);
+  border: 2px solid var(--frame-dark);
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--frame-dark);
+  transition: transform 80ms, box-shadow 80ms, background 160ms;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+}
+.quiz-quality-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--frame-dark);
+}
+.quiz-quality-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--frame-dark);
+}
+.quiz-quality-btn.is-active {
+  background: var(--accent-gold, #e3b341);
+  font-weight: 600;
+}
+.quiz-quality-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.quiz-quality-guessed.is-active {
+  background: var(--quiz-warning, #f0b86e);
+}
+
+/* Footer flex layout: let the two quality buttons share the space between
+   🐞 (icon, fixed) and 下一題 (gold accent), no large gaps. */
+.quiz-modal__foot {
+  gap: 8px;
+}
+.quiz-modal__foot .quiz-bug-trigger--in-footer {
+  flex: 0 0 auto;
+}
+.quiz-modal__foot .quiz-modal__next {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .quiz-quality-btn {
+    padding: 0 10px;
+    font-size: 13px;
+    gap: 4px;
+  }
+  .quiz-modal__foot {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 420px) {
+  .quiz-quality-btn {
+    padding: 0 8px;
+    font-size: 12px;
+  }
 }
 
 /* ─── M4 cloud sync auth button ─────────────────────────────────────────── */
