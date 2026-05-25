@@ -273,6 +273,11 @@ export interface QuestionHistoryRow {
   nextDueAt: number | null
   interval: number
   easeFactor: number
+  // Persistent "has this question ever been answered wrong" flag.
+  // Set true on first wrong answer in recordWrongAnswer; never unset.
+  // Merge semantics: monotonic-OR (NOT LWW) — see r2/tables.ts applyToLocal.
+  // Added in Dexie v17 (add-bookmarks-filters-and-wrong-history-medexam2).
+  everWrong?: boolean
 }
 
 export interface BookmarkRow {
@@ -786,6 +791,38 @@ export class HospitalDB extends Dexie {
       mastery: '&subjectId',
       questionHistory:
         '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+      leaderboardProfile: '&user_id',
+      achievements: '&id, unlockedAt',
+      hospitalEquipment: '&equipmentId, updatedAt',
+    })
+
+    // v17: add-bookmarks-filters-and-wrong-history-medexam2 — adds
+    // `everWrong` boolean to questionHistory + single-column index for the
+    // 「歷史曾錯」 sub-view query. No backfill — existing rows default to
+    // undefined/false; they migrate forward naturally on next answer write.
+    // R2 m2 bundle schema_version bumps 1 → 2 in lockstep (bundles.ts).
+    this.version(17).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt], everWrong',
       meta: '&key',
       localBackup: '&key, takenAt',
       monotonicCounters: '&id',

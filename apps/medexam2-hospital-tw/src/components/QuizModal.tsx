@@ -7,6 +7,7 @@ import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
 import { loadPoolSizeMap, pickQuestionById, pickRandomQuestion } from '../lib/quiz'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
+import { emitGraceToast } from '../lib/grace-toast'
 import { applyQuizReward } from '../services/quiz-rewards'
 import { getNextDueCardForSubject } from '../lib/srs-scheduler'
 import { lookupSprite } from '../lib/sprite-lookup'
@@ -302,10 +303,16 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
         const priorHistory = await db.questionHistory.get(capturedQuestion.id)
         const isFresh = priorHistory === undefined
         if (wasCorrect) {
-          await recordCorrectAnswer(payload, {
-            subjectId: capturedDoctor.subjectId,
-            rarity: capturedDoctor.rarity,
-          })
+          await recordCorrectAnswer(
+            payload,
+            {
+              subjectId: capturedDoctor.subjectId,
+              rarity: capturedDoctor.rarity,
+            },
+            {
+              onTransitionToCorrect: (qid) => emitGraceToast({ questionId: qid }),
+            },
+          )
         } else {
           await recordWrongAnswer(payload)
         }

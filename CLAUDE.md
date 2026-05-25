@@ -318,6 +318,29 @@ $HOME/Desktop/國考/一階國考/陽明國考考古/_extracted/
 
 Build script 預設讀此路徑；其他環境設 `MEDEXAM_SOURCE_ROOT` env var 覆寫。
 
+## Bookmarks filters + 歷史曾錯 + grace toast (M_2nd ext, 2026-05-25)
+
+`apps/medexam2-hospital-tw` `/bookmarks` route gains: (1) year × subject multi-select chip filter shared across all sub-tabs (visually mirrors `YearFilterBar` + `DoctorRoster` rarity filter — `.filter-bar` / `.filter-chip[aria-pressed]` / `.filter-bar__pager*` / `.filter-bar__count` reused as-is), (2) persistent `everWrong` flag on `questionHistory` (Dexie v17) — 「錯題」 tab splits into 「目前未答對」 (existing `lastResult='wrong'`) + 「歷史曾錯」 (`everWrong=true`, never auto-leaves), (3) 10-second grace toast on local wrong→correct transition with ⭐ promote action.
+
+Key handles:
+- Filter component: `src/components/BookmarkFilterBar.tsx` (local React state, NO interaction with `services/year-filter.ts` gameplay filter)
+- Filter helper: `src/lib/bookmarks-filter.ts` — pure `matchesFilter()` function, unit-tested
+- Grace toast: `src/lib/grace-toast.ts` (pub-sub queue + 10s auto-dismiss + `useSyncExternalStore` hook) + `src/components/GraceToastContainer.tsx` (fixed bottom-right, max 3 visible)
+- Wrong-answer query: `src/services/wrong-answers.ts` — `useWrongAnswers()` (current) + `useEverWrongAnswers()` (history)
+- 50-row pagination unified across all 3 list surfaces (手動收藏 / 目前未答對 / 歷史曾錯) — pager reuses `.filter-bar__pager*` CSS
+
+**Critical sync semantics — `everWrong` uses monotonic-OR merge, NOT LWW.** `apps/medexam2-hospital-tw/src/lib/sync/r2/tables.ts` `HOSPITAL_QUESTION_HISTORY.applyToLocal` carries the carve-out: after LWW resolves all other fields, `finalRow.everWrong = local.everWrong || incoming.everWrong`. This neutralizes the v1↔v2 cross-version race (v1 client drops `everWrong` field → reads then writes back v1 bundle → would silently overwrite local `true` to `false` under naive LWW). The R2 m2 bundle `SCHEMA_VERSION` bumps 1 → 2 in lockstep. v1 clients tolerate v2 bundles (drop unknown field), v2 clients tolerate v1 bundles (default to false). **DO NOT 'fix' the monotonic-OR by removing it** — it's intentional, called out in inline doc, and locked by Vitest test `question-history-merge.test.ts`.
+
+`recordCorrectAnswer` in `src/lib/mastery.ts` takes a `CorrectAnswerOpts` 3rd arg with `onTransitionToCorrect?: (questionId) => void` — every call site (currently `QuizModal` + `er-consultation.ts`; future game modes too) MUST wire this to `emitGraceToast`. Code review enforces; TS doesn't force it (optional opts keep tests / helpers ergonomic).
+
+Migration discipline: v17 schema upgrade does NOT backfill `everWrong` on existing wrong-answer rows. Helper banner on 錯題 tab explicitly notes 「歷史紀錄從升級當下開始累積」 to manage user expectations. Pre-existing rows naturally migrate forward on next answer.
+
+Dexie versions claimed in flight: v15 = `add-achievement-system`, v16 = `add-hospital-equipment-medexam2`, v17 = `add-bookmarks-filters-and-wrong-history-medexam2`.
+
+Test coverage: `apps/medexam2-hospital-tw/src/__tests__/{mastery,bookmarks-filter,question-history-merge}.test.ts` — 13 Vitest unit tests (mastery writes + filter logic + bundle round-trip + monotonic-OR). Run via `pnpm --filter @study-rpg/medexam2-hospital-tw test`.
+
+Full change reference: `openspec/changes/add-bookmarks-filters-and-wrong-history-medexam2/` (proposal / design / specs / tasks).
+
 ## Known sharp edges
 
 - TypeScript `tsconfig.base.json` 不要再加 `paths` — leaf packages 透過 pnpm workspace symlink 解析 `@study-rpg/core`，加 paths 反而觸發 rootDir 衝突（2026-05-14 踩過）

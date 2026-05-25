@@ -1,204 +1,4 @@
-# wrong-answer-list Specification
-
-## Purpose
-
-Auto-tracks the player's most-recently-wrong hospital quiz questions as a derived view of the existing `hospital_question_history` Dexie store (`WHERE lastResult = 'wrong'`). Exposes a 「錯題」 tab on the `/bookmarks` page alongside 「手動收藏」, with a promote affordance (⭐) that adds the question to the manual `bookmarks` store for permanent retention. No separate cloud table — cross-device consistency is inherited for free via the already-synced `hospital_question_history`. Created by archiving change `add-wrong-answer-list-medexam2`.
-## Requirements
-### Requirement: The 「錯題」 list SHALL be derived from `hospital_question_history` at read time, not stored separately
-
-The system SHALL define the 「錯題」 (wrong-answer) list as live derived views of the `questionHistory` Dexie store:
-
-- 「目前未答對」 sub-view: filter `lastResult === 'wrong'`
-- 「歷史曾錯」 sub-view: filter `everWrong === true`
-
-There SHALL be no separate `wrongAnswers` Dexie store, no `question_wrong_answers` Supabase table, and no dedicated cloud-sync adapter for wrong-answers. The wrong-answer lists update automatically whenever `questionHistory[questionId]` is written — by the existing `recordWrongAnswer` / `recordCorrectAnswer` flow in `lib/mastery.ts` (per `hospital-quiz` capability) and synced cross-device via the existing R2 m2 bundle's `questionHistory` adapter.
-
-The `questionHistory` Dexie store SHALL include:
-- A compound index `[lastResult+lastAnsweredAt]` (added in Dexie schema version 11) so the 「目前未答對」 query can use the index
-- A single-column index on `everWrong` (added in Dexie schema version 17) so the 「歷史曾錯」 query can use the index
-
-#### Scenario: Wrong answer appears in 「目前未答對」 immediately
-
-- **GIVEN** the player has no `questionHistory` row for question `106-2-醫學三-內科-Q10`
-- **WHEN** the player selects an incorrect option for that question in `QuizModal`
-- **AND** `recordWrongAnswer` writes `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true, ... }`
-- **THEN** the derived 「目前未答對」 list SHALL contain that question
-- **AND** the derived 「歷史曾錯」 list SHALL ALSO contain that question
-- **AND** the 「目前未答對」 entry SHALL update via `useLiveQuery` without manual reload
-
-#### Scenario: Correct answer removes from 「目前未答對」 but preserves in 「歷史曾錯」
-
-- **GIVEN** `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }`
-- **WHEN** the player selects the correct option for that question
-- **AND** `recordCorrectAnswer` writes `lastResult = 'correct'` (everWrong stays `true`)
-- **THEN** the derived 「目前未答對」 list SHALL no longer contain that question
-- **AND** the derived 「歷史曾錯」 list SHALL STILL contain that question
-- **AND** a grace toast SHALL appear (per the grace toast requirement above)
-- **AND** the 「目前未答對」 entry SHALL disappear via `useLiveQuery` reactivity
-
-#### Scenario: Cross-device — correct answer on device B updates both lists on device A
-
-- **GIVEN** the player is authenticated on devices A and B
-- **AND** device A's local `questionHistory[Q_W] = { lastResult: 'wrong', everWrong: true }` (Q_W appears in both sub-views on A)
-- **WHEN** the player on device B answers `Q_W` correctly
-- **AND** device B's `recordCorrectAnswer` updates `questionHistory[Q_W]` to `{ lastResult: 'correct', everWrong: true }` locally
-- **AND** the sync engine pushes the updated m2 bundle to R2
-- **AND** device A pulls (on tab focus or pull cycle)
-- **THEN** device A's local `questionHistory[Q_W]` SHALL equal `{ lastResult: 'correct', everWrong: true }` (LWW newer wins)
-- **AND** the derived 「目前未答對」 list on device A SHALL no longer contain `Q_W`
-- **AND** the derived 「歷史曾錯」 list on device A SHALL STILL contain `Q_W` with `✅ 已答對` chip
-- **AND** no grace toast SHALL appear on device A (sync apply path)
-
-#### Scenario: A question can simultaneously be in 「歷史曾錯」 and 「手動收藏」
-
-- **GIVEN** the player has manually bookmarked question `106-2-醫學三-內科-Q10` (row exists in `bookmarks`)
-- **AND** `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }`
-- **THEN** the question SHALL appear in 「手動收藏」 tab
-- **AND** the question SHALL appear in 「目前未答對」 sub-view
-- **AND** the question SHALL appear in 「歷史曾錯」 sub-view
-- **AND** the `bookmarks` row SHALL remain unchanged across subsequent wrong/correct answer cycles
-
-### Requirement: `/bookmarks` route SHALL host a 「錯題」 tab alongside the 「手動收藏」 tab
-
-The `/bookmarks` route SHALL render a top-level tab control with exactly two tabs: 「手動收藏」 (manual bookmarks, default landing) and 「錯題」 (derived wrong-answer list). The active tab SHALL be reflected in the URL query string via `?tab=manual` (default, also when the param is absent or invalid) or `?tab=wrong`. Tab clicks SHALL update the query string via `history.replaceState` (no full page reload). Direct navigation to `/bookmarks?tab=wrong` SHALL land on the 「錯題」 tab.
-
-The page-level filter bar (per `question-bookmarks` capability) SHALL render above the tab switcher and apply to BOTH tabs.
-
-The 「手動收藏」 tab SHALL render manual bookmarks per the `question-bookmarks` spec (existing behavior, scoped to that tab, with filter applied).
-
-The 「錯題」 tab SHALL render a secondary sub-tab control (per the `「錯題」 tab sub-view split` requirement above) containing 「目前未答對」 and 「歷史曾錯」 sub-views. Both sub-views SHALL respect the page-level filter.
-
-Each list entry in either sub-view SHALL display the question identifier verbatim, the full question stem, all four options with their texts, the correct-answer label, and the explanation — using the same `ExplanationMarkdown` render pipeline as the 「手動收藏」 tab. Wrong-answer entries whose `questionId` is not present in the currently-loaded `questions.json` SHALL render a stub with the identifier and a 「題目已不在題庫」 notice (no remove button — wrong-answer entries are auto-managed by `lastResult` / `everWrong` flags).
-
-#### Scenario: Default landing is 「手動收藏」 tab
-
-- **GIVEN** the player navigates to `/bookmarks` (no query string)
-- **WHEN** the page renders
-- **THEN** the 「手動收藏」 tab SHALL be visually active
-- **AND** the URL SHALL be updated to `/bookmarks?tab=manual` (or remain at `/bookmarks` if no replaceState; either acceptable)
-- **AND** the manual bookmarks list SHALL be rendered
-- **AND** the filter bar SHALL be visible above the tab switcher
-
-#### Scenario: Direct deep-link to wrong-answer tab lands correctly
-
-- **GIVEN** the player opens `/bookmarks?tab=wrong` directly (e.g., from a shared link or F5 reload)
-- **WHEN** the page loads
-- **THEN** the 「錯題」 tab SHALL be visually active
-- **AND** the secondary sub-tab control SHALL be visible
-- **AND** the 「目前未答對」 sub-view SHALL be active by default
-- **AND** the filter bar SHALL be visible above the tab switcher
-
-#### Scenario: Tab click switches view without full page reload
-
-- **GIVEN** the player is on `/bookmarks?tab=manual`
-- **WHEN** the player clicks the 「錯題」 tab
-- **THEN** the URL SHALL update to `/bookmarks?tab=wrong` via `history.replaceState`
-- **AND** the secondary sub-tab control with 「目前未答對」 / 「歷史曾錯」 SHALL render
-- **AND** the 「目前未答對」 sub-view SHALL be active
-- **AND** no full page reload SHALL occur
-
-#### Scenario: Invalid tab query string falls back to manual
-
-- **GIVEN** the player opens `/bookmarks?tab=invalid_value_xyz`
-- **WHEN** the page loads
-- **THEN** the 「手動收藏」 tab SHALL be active
-- **AND** the URL MAY be normalized to `/bookmarks?tab=manual`
-
-#### Scenario: Filter bar visible on all tab + sub-view combinations
-
-- **GIVEN** the player navigates to any of `/bookmarks?tab=manual`, `/bookmarks?tab=wrong` (current sub-view), `/bookmarks?tab=wrong` (history sub-view)
-- **THEN** the year × subject filter bar SHALL render at the top of the page in all three cases
-- **AND** the filter selection SHALL be consistent across all switches
-
-### Requirement: The 「錯題」 tab SHALL surface a header helper banner explaining ephemeral behavior and promote affordance
-
-The 「錯題」 tab SHALL render a fixed helper banner at the top of the list area (above the secondary sub-tab control OR above the first entry — implementation choice, sticky or non-scrolling). The banner SHALL contain the following in Traditional Chinese:
-
-1. A brief explanation that 「目前未答對」 = currently-wrong questions (auto-leave on next correct answer) and 「歷史曾錯」 = persistent record of any question ever answered wrong (never auto-leave).
-2. A pointer to the grace toast: instruct players that when they answer correctly, a 10-second window appears with ⭐ to save the question to 「手動收藏」.
-3. A promote affordance hint: clicking ★ on any entry adds the question to 「手動收藏」 for permanent retention.
-4. A migration-gap note: 「歷史曾錯」 紀錄從升級當下開始累積；之前已經答錯但尚未再次答題的題目，會在下次答到時自動補上紀錄。Or equivalent copy that conveys: the persistent history starts accruing from upgrade time, pre-existing wrong-answer rows backfill naturally on next answer.
-
-The exact copy is implementation-detail (UI polish in apply phase) but SHALL include all four pieces above. The banner SHALL remain visible while the player scrolls through the list (sticky positioning at tab top, OR rendered as the first non-scrolling element above a scrollable list — either acceptable).
-
-#### Scenario: Helper banner renders on wrong-answer tab landing
-
-- **WHEN** the player lands on `/bookmarks?tab=wrong`
-- **THEN** a helper banner SHALL be rendered above the sub-tab control or list area
-- **AND** the banner SHALL explain both sub-views (「目前未答對」 ephemeral, 「歷史曾錯」 persistent)
-- **AND** the banner SHALL mention the grace toast on wrong→correct transition
-- **AND** the banner SHALL mention ★ promotion to 「手動收藏」
-- **AND** the banner SHALL include a migration-gap note explaining the 「歷史曾錯」 record starts accruing from upgrade time
-
-#### Scenario: Helper banner does NOT render on manual tab
-
-- **WHEN** the player is on `/bookmarks?tab=manual`
-- **THEN** the wrong-answer helper banner SHALL NOT be visible (it is wrong-answer-tab-scoped)
-- **AND** the filter bar SHALL still be visible
-
-### Requirement: Wrong-answer list entries SHALL expose a ★ toggle to promote to 「手動收藏」
-
-Each entry in BOTH 「目前未答對」 and 「歷史曾錯」 sub-views SHALL include a ★ toggle. Clicking the toggle when the question is NOT in `bookmarks` SHALL add a new row to the `bookmarks` Dexie store (with `addedAt = Date.now()`, behavior identical to `QuizModal` bookmark toggle per `question-bookmarks` spec). Clicking the toggle when the question IS already in `bookmarks` SHALL remove the bookmark row (un-bookmark). The toggle's visual state (filled ★ vs outline ☆) SHALL reflect the current `bookmarks` membership. The wrong-answer derivation itself SHALL NOT be affected by this toggle — sub-view membership is determined by `questionHistory.lastResult` / `questionHistory.everWrong`, orthogonal to manual bookmark state.
-
-#### Scenario: Promoting a wrong-answer entry adds a bookmark row
-
-- **GIVEN** `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }` and no `bookmarks` row for that question
-- **WHEN** the player clicks the ★ toggle on that entry in either 「目前未答對」 or 「歷史曾錯」 sub-view
-- **THEN** a new `bookmarks` row SHALL exist with `questionId = "106-2-醫學三-內科-Q10"` and `addedAt = Date.now()`
-- **AND** the `questionHistory` row SHALL remain unchanged
-- **AND** the toggle SHALL re-render with the filled ★ glyph
-
-#### Scenario: Un-promoting (toggling ★ off) removes the bookmark row but keeps the wrong-answer entry
-
-- **GIVEN** both `bookmarks[106-2-醫學三-內科-Q10]` exists and `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }`
-- **WHEN** the player clicks the ★ toggle (now filled) on either wrong-answer sub-view entry
-- **THEN** the `bookmarks` row SHALL be deleted
-- **AND** the `questionHistory` row SHALL remain unchanged
-- **AND** the entry SHALL still appear in both 「目前未答對」 and 「歷史曾錯」 sub-views
-
-#### Scenario: Subsequent correct answer removes from 「目前未答對」 but bookmark persists in 「手動收藏」 if promoted
-
-- **GIVEN** both `bookmarks[Q]` exists and `questionHistory[Q] = { lastResult: 'wrong', everWrong: true }` (after promoting via ★)
-- **WHEN** the player answers Q correctly
-- **AND** `recordCorrectAnswer` flips `lastResult = 'correct'` (everWrong stays `true`)
-- **THEN** Q SHALL no longer appear in the 「目前未答對」 sub-view
-- **AND** Q SHALL STILL appear in the 「歷史曾錯」 sub-view with `✅ 已答對 1 次` chip
-- **AND** the `bookmarks[Q]` row SHALL persist
-- **AND** Q SHALL continue to appear in the 「手動收藏」 tab
-
-### Requirement: Wrong-answer list SHALL render an empty-state placeholder when no entries exist
-
-When the active sub-view's primary predicate matches zero rows (after filter application), the sub-view SHALL render a friendly empty-state message in Traditional Chinese:
-
-- 「目前未答對」 empty: e.g., 「目前還沒有答錯的題目 — 答錯後會自動收進這裡」 or equivalent
-- 「歷史曾錯」 empty: e.g., 「目前還沒有歷史錯題紀錄 — 答錯題目後會永久記錄在這裡」 or equivalent
-- Filter-active-but-no-matches: e.g., 「沒有符合篩選條件的錯題」 or equivalent
-
-Exact copy is UI polish. The helper banner SHALL still render above the empty state. The secondary sub-tab control SHALL still render (so the player can switch sub-views).
-
-#### Scenario: Empty state renders when no rows match in 「目前未答對」
-
-- **GIVEN** no `questionHistory` row has `lastResult = 'wrong'`
-- **WHEN** the player navigates to `/bookmarks?tab=wrong` (defaults to 「目前未答對」 sub-view)
-- **THEN** the helper banner SHALL be visible at the top
-- **AND** the secondary sub-tab control SHALL be visible
-- **AND** a friendly empty-state message SHALL be displayed in the list area
-- **AND** no list entries SHALL render
-- **AND** the player CAN click the 「歷史曾錯」 sub-tab to switch
-
-#### Scenario: Empty state in 「歷史曾錯」 when no rows have everWrong = true
-
-- **GIVEN** no `questionHistory` row has `everWrong = true`
-- **WHEN** the player clicks the 「歷史曾錯」 sub-tab
-- **THEN** a friendly empty-state message SHALL be displayed
-- **AND** no list entries SHALL render
-
-#### Scenario: Filter-active empty state distinguishes from no-data empty state
-
-- **GIVEN** the player has 3 questions with `lastResult = 'wrong'` all in 內科
-- **WHEN** the player selects subject chip `外科` on the 「目前未答對」 sub-view
-- **THEN** an empty-state message SHALL be displayed referencing the active filter
-- **AND** no list entries SHALL render
+## ADDED Requirements
 
 ### Requirement: The `questionHistory` store SHALL persist an `everWrong` flag set on first wrong answer and never unset
 
@@ -469,3 +269,200 @@ The toast SHALL NOT block the player's input — the player can continue using t
 - **AND** the 4th toast SHALL be queued and appear after the first dismisses or auto-expires
 - **AND** each toast's ⭐ button SHALL independently bookmark its respective question
 
+## MODIFIED Requirements
+
+### Requirement: `/bookmarks` route SHALL host a 「錯題」 tab alongside the 「手動收藏」 tab
+
+The `/bookmarks` route SHALL render a top-level tab control with exactly two tabs: 「手動收藏」 (manual bookmarks, default landing) and 「錯題」 (derived wrong-answer list). The active tab SHALL be reflected in the URL query string via `?tab=manual` (default, also when the param is absent or invalid) or `?tab=wrong`. Tab clicks SHALL update the query string via `history.replaceState` (no full page reload). Direct navigation to `/bookmarks?tab=wrong` SHALL land on the 「錯題」 tab.
+
+The page-level filter bar (per `question-bookmarks` capability) SHALL render above the tab switcher and apply to BOTH tabs.
+
+The 「手動收藏」 tab SHALL render manual bookmarks per the `question-bookmarks` spec (existing behavior, scoped to that tab, with filter applied).
+
+The 「錯題」 tab SHALL render a secondary sub-tab control (per the `「錯題」 tab sub-view split` requirement above) containing 「目前未答對」 and 「歷史曾錯」 sub-views. Both sub-views SHALL respect the page-level filter.
+
+Each list entry in either sub-view SHALL display the question identifier verbatim, the full question stem, all four options with their texts, the correct-answer label, and the explanation — using the same `ExplanationMarkdown` render pipeline as the 「手動收藏」 tab. Wrong-answer entries whose `questionId` is not present in the currently-loaded `questions.json` SHALL render a stub with the identifier and a 「題目已不在題庫」 notice (no remove button — wrong-answer entries are auto-managed by `lastResult` / `everWrong` flags).
+
+#### Scenario: Default landing is 「手動收藏」 tab
+
+- **GIVEN** the player navigates to `/bookmarks` (no query string)
+- **WHEN** the page renders
+- **THEN** the 「手動收藏」 tab SHALL be visually active
+- **AND** the URL SHALL be updated to `/bookmarks?tab=manual` (or remain at `/bookmarks` if no replaceState; either acceptable)
+- **AND** the manual bookmarks list SHALL be rendered
+- **AND** the filter bar SHALL be visible above the tab switcher
+
+#### Scenario: Direct deep-link to wrong-answer tab lands correctly
+
+- **GIVEN** the player opens `/bookmarks?tab=wrong` directly (e.g., from a shared link or F5 reload)
+- **WHEN** the page loads
+- **THEN** the 「錯題」 tab SHALL be visually active
+- **AND** the secondary sub-tab control SHALL be visible
+- **AND** the 「目前未答對」 sub-view SHALL be active by default
+- **AND** the filter bar SHALL be visible above the tab switcher
+
+#### Scenario: Tab click switches view without full page reload
+
+- **GIVEN** the player is on `/bookmarks?tab=manual`
+- **WHEN** the player clicks the 「錯題」 tab
+- **THEN** the URL SHALL update to `/bookmarks?tab=wrong` via `history.replaceState`
+- **AND** the secondary sub-tab control with 「目前未答對」 / 「歷史曾錯」 SHALL render
+- **AND** the 「目前未答對」 sub-view SHALL be active
+- **AND** no full page reload SHALL occur
+
+#### Scenario: Invalid tab query string falls back to manual
+
+- **GIVEN** the player opens `/bookmarks?tab=invalid_value_xyz`
+- **WHEN** the page loads
+- **THEN** the 「手動收藏」 tab SHALL be active
+- **AND** the URL MAY be normalized to `/bookmarks?tab=manual`
+
+#### Scenario: Filter bar visible on all tab + sub-view combinations
+
+- **GIVEN** the player navigates to any of `/bookmarks?tab=manual`, `/bookmarks?tab=wrong` (current sub-view), `/bookmarks?tab=wrong` (history sub-view)
+- **THEN** the year × subject filter bar SHALL render at the top of the page in all three cases
+- **AND** the filter selection SHALL be consistent across all switches
+
+### Requirement: The 「錯題」 list SHALL be derived from `hospital_question_history` at read time, not stored separately
+
+The system SHALL define the 「錯題」 (wrong-answer) list as live derived views of the `questionHistory` Dexie store:
+
+- 「目前未答對」 sub-view: filter `lastResult === 'wrong'`
+- 「歷史曾錯」 sub-view: filter `everWrong === true`
+
+There SHALL be no separate `wrongAnswers` Dexie store, no `question_wrong_answers` Supabase table, and no dedicated cloud-sync adapter for wrong-answers. The wrong-answer lists update automatically whenever `questionHistory[questionId]` is written — by the existing `recordWrongAnswer` / `recordCorrectAnswer` flow in `lib/mastery.ts` (per `hospital-quiz` capability) and synced cross-device via the existing R2 m2 bundle's `questionHistory` adapter.
+
+The `questionHistory` Dexie store SHALL include:
+- A compound index `[lastResult+lastAnsweredAt]` (added in Dexie schema version 11) so the 「目前未答對」 query can use the index
+- A single-column index on `everWrong` (added in Dexie schema version 17) so the 「歷史曾錯」 query can use the index
+
+#### Scenario: Wrong answer appears in 「目前未答對」 immediately
+
+- **GIVEN** the player has no `questionHistory` row for question `106-2-醫學三-內科-Q10`
+- **WHEN** the player selects an incorrect option for that question in `QuizModal`
+- **AND** `recordWrongAnswer` writes `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true, ... }`
+- **THEN** the derived 「目前未答對」 list SHALL contain that question
+- **AND** the derived 「歷史曾錯」 list SHALL ALSO contain that question
+- **AND** the 「目前未答對」 entry SHALL update via `useLiveQuery` without manual reload
+
+#### Scenario: Correct answer removes from 「目前未答對」 but preserves in 「歷史曾錯」
+
+- **GIVEN** `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }`
+- **WHEN** the player selects the correct option for that question
+- **AND** `recordCorrectAnswer` writes `lastResult = 'correct'` (everWrong stays `true`)
+- **THEN** the derived 「目前未答對」 list SHALL no longer contain that question
+- **AND** the derived 「歷史曾錯」 list SHALL STILL contain that question
+- **AND** a grace toast SHALL appear (per the grace toast requirement above)
+- **AND** the 「目前未答對」 entry SHALL disappear via `useLiveQuery` reactivity
+
+#### Scenario: Cross-device — correct answer on device B updates both lists on device A
+
+- **GIVEN** the player is authenticated on devices A and B
+- **AND** device A's local `questionHistory[Q_W] = { lastResult: 'wrong', everWrong: true }` (Q_W appears in both sub-views on A)
+- **WHEN** the player on device B answers `Q_W` correctly
+- **AND** device B's `recordCorrectAnswer` updates `questionHistory[Q_W]` to `{ lastResult: 'correct', everWrong: true }` locally
+- **AND** the sync engine pushes the updated m2 bundle to R2
+- **AND** device A pulls (on tab focus or pull cycle)
+- **THEN** device A's local `questionHistory[Q_W]` SHALL equal `{ lastResult: 'correct', everWrong: true }` (LWW newer wins)
+- **AND** the derived 「目前未答對」 list on device A SHALL no longer contain `Q_W`
+- **AND** the derived 「歷史曾錯」 list on device A SHALL STILL contain `Q_W` with `✅ 已答對` chip
+- **AND** no grace toast SHALL appear on device A (sync apply path)
+
+#### Scenario: A question can simultaneously be in 「歷史曾錯」 and 「手動收藏」
+
+- **GIVEN** the player has manually bookmarked question `106-2-醫學三-內科-Q10` (row exists in `bookmarks`)
+- **AND** `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }`
+- **THEN** the question SHALL appear in 「手動收藏」 tab
+- **AND** the question SHALL appear in 「目前未答對」 sub-view
+- **AND** the question SHALL appear in 「歷史曾錯」 sub-view
+- **AND** the `bookmarks` row SHALL remain unchanged across subsequent wrong/correct answer cycles
+
+### Requirement: The 「錯題」 tab SHALL surface a header helper banner explaining ephemeral behavior and promote affordance
+
+The 「錯題」 tab SHALL render a fixed helper banner at the top of the list area (above the secondary sub-tab control OR above the first entry — implementation choice, sticky or non-scrolling). The banner SHALL contain the following in Traditional Chinese:
+
+1. A brief explanation that 「目前未答對」 = currently-wrong questions (auto-leave on next correct answer) and 「歷史曾錯」 = persistent record of any question ever answered wrong (never auto-leave).
+2. A pointer to the grace toast: instruct players that when they answer correctly, a 10-second window appears with ⭐ to save the question to 「手動收藏」.
+3. A promote affordance hint: clicking ★ on any entry adds the question to 「手動收藏」 for permanent retention.
+4. A migration-gap note: 「歷史曾錯」 紀錄從升級當下開始累積；之前已經答錯但尚未再次答題的題目，會在下次答到時自動補上紀錄。Or equivalent copy that conveys: the persistent history starts accruing from upgrade time, pre-existing wrong-answer rows backfill naturally on next answer.
+
+The exact copy is implementation-detail (UI polish in apply phase) but SHALL include all four pieces above. The banner SHALL remain visible while the player scrolls through the list (sticky positioning at tab top, OR rendered as the first non-scrolling element above a scrollable list — either acceptable).
+
+#### Scenario: Helper banner renders on wrong-answer tab landing
+
+- **WHEN** the player lands on `/bookmarks?tab=wrong`
+- **THEN** a helper banner SHALL be rendered above the sub-tab control or list area
+- **AND** the banner SHALL explain both sub-views (「目前未答對」 ephemeral, 「歷史曾錯」 persistent)
+- **AND** the banner SHALL mention the grace toast on wrong→correct transition
+- **AND** the banner SHALL mention ★ promotion to 「手動收藏」
+- **AND** the banner SHALL include a migration-gap note explaining the 「歷史曾錯」 record starts accruing from upgrade time
+
+#### Scenario: Helper banner does NOT render on manual tab
+
+- **WHEN** the player is on `/bookmarks?tab=manual`
+- **THEN** the wrong-answer helper banner SHALL NOT be visible (it is wrong-answer-tab-scoped)
+- **AND** the filter bar SHALL still be visible
+
+### Requirement: Wrong-answer list entries SHALL expose a ★ toggle to promote to 「手動收藏」
+
+Each entry in BOTH 「目前未答對」 and 「歷史曾錯」 sub-views SHALL include a ★ toggle. Clicking the toggle when the question is NOT in `bookmarks` SHALL add a new row to the `bookmarks` Dexie store (with `addedAt = Date.now()`, behavior identical to `QuizModal` bookmark toggle per `question-bookmarks` spec). Clicking the toggle when the question IS already in `bookmarks` SHALL remove the bookmark row (un-bookmark). The toggle's visual state (filled ★ vs outline ☆) SHALL reflect the current `bookmarks` membership. The wrong-answer derivation itself SHALL NOT be affected by this toggle — sub-view membership is determined by `questionHistory.lastResult` / `questionHistory.everWrong`, orthogonal to manual bookmark state.
+
+#### Scenario: Promoting a wrong-answer entry adds a bookmark row
+
+- **GIVEN** `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }` and no `bookmarks` row for that question
+- **WHEN** the player clicks the ★ toggle on that entry in either 「目前未答對」 or 「歷史曾錯」 sub-view
+- **THEN** a new `bookmarks` row SHALL exist with `questionId = "106-2-醫學三-內科-Q10"` and `addedAt = Date.now()`
+- **AND** the `questionHistory` row SHALL remain unchanged
+- **AND** the toggle SHALL re-render with the filled ★ glyph
+
+#### Scenario: Un-promoting (toggling ★ off) removes the bookmark row but keeps the wrong-answer entry
+
+- **GIVEN** both `bookmarks[106-2-醫學三-內科-Q10]` exists and `questionHistory[106-2-醫學三-內科-Q10] = { lastResult: 'wrong', everWrong: true }`
+- **WHEN** the player clicks the ★ toggle (now filled) on either wrong-answer sub-view entry
+- **THEN** the `bookmarks` row SHALL be deleted
+- **AND** the `questionHistory` row SHALL remain unchanged
+- **AND** the entry SHALL still appear in both 「目前未答對」 and 「歷史曾錯」 sub-views
+
+#### Scenario: Subsequent correct answer removes from 「目前未答對」 but bookmark persists in 「手動收藏」 if promoted
+
+- **GIVEN** both `bookmarks[Q]` exists and `questionHistory[Q] = { lastResult: 'wrong', everWrong: true }` (after promoting via ★)
+- **WHEN** the player answers Q correctly
+- **AND** `recordCorrectAnswer` flips `lastResult = 'correct'` (everWrong stays `true`)
+- **THEN** Q SHALL no longer appear in the 「目前未答對」 sub-view
+- **AND** Q SHALL STILL appear in the 「歷史曾錯」 sub-view with `✅ 已答對 1 次` chip
+- **AND** the `bookmarks[Q]` row SHALL persist
+- **AND** Q SHALL continue to appear in the 「手動收藏」 tab
+
+### Requirement: Wrong-answer list SHALL render an empty-state placeholder when no entries exist
+
+When the active sub-view's primary predicate matches zero rows (after filter application), the sub-view SHALL render a friendly empty-state message in Traditional Chinese:
+
+- 「目前未答對」 empty: e.g., 「目前還沒有答錯的題目 — 答錯後會自動收進這裡」 or equivalent
+- 「歷史曾錯」 empty: e.g., 「目前還沒有歷史錯題紀錄 — 答錯題目後會永久記錄在這裡」 or equivalent
+- Filter-active-but-no-matches: e.g., 「沒有符合篩選條件的錯題」 or equivalent
+
+Exact copy is UI polish. The helper banner SHALL still render above the empty state. The secondary sub-tab control SHALL still render (so the player can switch sub-views).
+
+#### Scenario: Empty state renders when no rows match in 「目前未答對」
+
+- **GIVEN** no `questionHistory` row has `lastResult = 'wrong'`
+- **WHEN** the player navigates to `/bookmarks?tab=wrong` (defaults to 「目前未答對」 sub-view)
+- **THEN** the helper banner SHALL be visible at the top
+- **AND** the secondary sub-tab control SHALL be visible
+- **AND** a friendly empty-state message SHALL be displayed in the list area
+- **AND** no list entries SHALL render
+- **AND** the player CAN click the 「歷史曾錯」 sub-tab to switch
+
+#### Scenario: Empty state in 「歷史曾錯」 when no rows have everWrong = true
+
+- **GIVEN** no `questionHistory` row has `everWrong = true`
+- **WHEN** the player clicks the 「歷史曾錯」 sub-tab
+- **THEN** a friendly empty-state message SHALL be displayed
+- **AND** no list entries SHALL render
+
+#### Scenario: Filter-active empty state distinguishes from no-data empty state
+
+- **GIVEN** the player has 3 questions with `lastResult = 'wrong'` all in 內科
+- **WHEN** the player selects subject chip `外科` on the 「目前未答對」 sub-view
+- **THEN** an empty-state message SHALL be displayed referencing the active filter
+- **AND** no list entries SHALL render
