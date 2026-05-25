@@ -62,6 +62,7 @@ const TIER_UPGRADE_EQUIPMENT_TICKETS: Partial<Record<HospitalTier, number>> = {
 
 /** Study time (in minutes) between hourly equipment ticket grants. */
 const EQUIPMENT_TICKET_STUDY_INTERVAL_MIN = 60
+import { computeThroughputMultiplier, computeUniqueEquipmentCount } from './equipment'
 
 export interface TickEventToastInfo {
   event: EventDefinition
@@ -116,7 +117,22 @@ const ZERO_TICK: TickResult = {
  */
 export async function runTick(): Promise<TickResult> {
   const db = getHospitalDB()
-  return db.transaction(
+
+  // Achievement Phase 7 hook: capture prev stats before tick mutations.
+  // Hot path — but tick runs every 5s, and buildAchievementStats is ~50-200ms.
+  // Net overhead per tick: ~100-400ms. Acceptable for MVP; if dogfood shows
+  // tick jank, optimize by only running achievement check when meaningful
+  // delta detected (tier change / event resolved / monotonic counter bumped).
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    './achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import(
+    '../services/achievement-reward'
+  )
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  const result = await db.transaction(
     'rw',
     [
       db.rooms,
@@ -128,6 +144,7 @@ export async function runTick(): Promise<TickResult> {
       db.erConsultLog,
       db.equipment,
       db.equipmentTickets,
+      db.hospitalEquipment,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -161,13 +178,20 @@ export async function runTick(): Promise<TickResult> {
         totalThroughput += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
       }
 
+      // add-hospital-equipment-medexam2 (2026-05-24): apply equipment
+      // throughput multiplier hospital-wide. Multiplier = 1 + Σ bonuses;
+      // returns 1.0 when no equipment owned (no-op for fresh saves).
+      const ownedEquipment = await db.hospitalEquipment.toArray()
+      const equipmentThroughputMultiplier = computeThroughputMultiplier(ownedEquipment)
+
       const elapsedMin = elapsedSec / 60
       // VIP boost — doubles throughput when vipBoostUntil > now
       const vipActive = (counters.vipBoostUntil ?? 0) > now
       const effectiveThroughput = vipActive ? totalThroughput * VIP_BOOST_MULTIPLIER : totalThroughput
       // Tick only runs when session is active (early-returned above), so the
       // reading buff always applies — no branch needed.
-      const idleAdjustedThroughput = effectiveThroughput * READING_SESSION_BUFF_MULTIPLIER
+      const idleAdjustedThroughput =
+        effectiveThroughput * READING_SESSION_BUFF_MULTIPLIER * equipmentThroughputMultiplier
       const deltaRevenueGross = idleAdjustedThroughput * elapsedMin
       const deltaSalary = computeSalaryDrain(doctors, counters.tier) * elapsedMin
       const deltaReputation = idleAdjustedThroughput * elapsedMin
@@ -213,6 +237,13 @@ export async function runTick(): Promise<TickResult> {
             const hasP1 = doctors.some((d) => rarityIsAtLeast(d.rarity, 'P1'))
             if (!hasP1) break
           }
+        }
+        // add-hospital-equipment-medexam2 (2026-05-24): T3 → T4 third gate —
+        // ≥ 3 unique equipment installed at level ≥ 1. Counts unique IDs, not
+        // total levels (5 L3 of same equipment = 1, not 5). Lower transitions
+        // unaffected.
+        if (currentTier === '醫學中心') {
+          if (computeUniqueEquipmentCount(ownedEquipment) < 3) break
         }
         const existingIds = new Set(rooms.map((r) => r.id))
         const newRooms = TIER_ROOMS[next].filter((r) => !existingIds.has(r.id))
@@ -367,6 +398,12 @@ export async function runTick(): Promise<TickResult> {
           ...mono,
           totalStudyMinutes: newTotalStudyMinutes,
           lastEquipmentTicketStudyMinutes: newLastMilestone,
+          totalStudyMinutes: mono.totalStudyMinutes + deltaStudyMinutes,
+          // Achievement Phase 7: bump tierUpgradeCount when tier changed.
+          // Stays unchanged across ticks that don't upgrade.
+          tierUpgradeCount: upgradedTo
+            ? (mono.tierUpgradeCount ?? 0) + 1
+            : (mono.tierUpgradeCount ?? 0),
         })
       }
 
@@ -397,6 +434,18 @@ export async function runTick(): Promise<TickResult> {
       }
     },
   )
+
+  // Achievement check post-tx: catches study-time, tier-upgrade, and event-
+  // resolved (eventLog write inside tx is visible to next stat scan) milestones.
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[tick] achievement check failed:', err)
+  }
+
+  return result
 }
 
 /**

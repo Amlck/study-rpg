@@ -645,3 +645,291 @@ If the overwrite itself fails (e.g., the corrupt blob's ETag is stale because a 
 - **THEN** the engine SHALL preserve the underlying error message in the thrown exception, formatted as `r2_push_exhausted: <original error>` (so CORS misconfigurations remain identifiable in logs)
 - **AND** the engine SHALL NOT mask the network error with the corrupt-blob recovery messages
 
+### Requirement: Worker Custom Domain `api.med-study-rpg.com` serves as canonical API base
+
+The Cloudflare Worker `study-rpg-sync-worker` SHALL be bound to a Custom Domain `api.med-study-rpg.com` such that requests to `https://api.med-study-rpg.com/<path>` reach the same Worker instance as the existing `https://study-rpg-sync-worker.tony85314.workers.dev/<path>` URL. Both URLs SHALL resolve to identical Worker logic — no version split, no traffic split.
+
+Binding SHALL be configured via either:
+
+1. Cloudflare dashboard → Workers → `study-rpg-sync-worker` → Settings → Triggers → Custom Domains → Add Custom Domain (auto-creates DNS records since `med-study-rpg.com` is on Cloudflare), OR
+2. `cloudflare/sync-worker/wrangler.toml` with a `[[routes]]` entry: `{ pattern = "api.med-study-rpg.com/*", zone_name = "med-study-rpg.com" }`
+
+Either method satisfies the requirement; the chosen method SHALL be documented in `cloudflare/sync-worker/README.md`.
+
+The client-side env var `VITE_SYNC_WORKER_URL` SHALL be set to `https://api.med-study-rpg.com` for the Cloudflare Pages build, while the GitHub Pages workflow continues to default to `https://study-rpg-sync-worker.tony85314.workers.dev`.
+
+#### Scenario: api subdomain reaches the Worker
+
+- **GIVEN** the Custom Domain binding is active
+- **WHEN** any HTTP request is sent to `https://api.med-study-rpg.com/<any-path>`
+- **THEN** the request SHALL be handled by `study-rpg-sync-worker`
+- **AND** the response SHALL be byte-identical to what the same request to `https://study-rpg-sync-worker.tony85314.workers.dev/<same-path>` produces
+
+#### Scenario: New domain client pushes to R2 via api subdomain
+
+- **GIVEN** a user on `https://med-study-rpg.com/1st/` has dirty local state and is signed in
+- **WHEN** the sync engine debounce fires and pushes an R2 bundle snapshot
+- **THEN** the network request SHALL be a POST/PUT to `https://api.med-study-rpg.com/<r2-endpoint>`
+- **AND** the Worker SHALL mint a presigned URL and the client SHALL complete the binary upload
+- **AND** `Performance.getEntriesByType('resource')` SHALL show a successful round-trip (per the `chrome_mcp_preflight.md` PUT-via-Performance-API verification rule)
+
+### Requirement: Worker CORS allowed origins include both legacy and new domains during bake
+
+The Worker's CORS allowed origins list SHALL include:
+
+- `https://fireman333.github.io` (legacy GitHub Pages — required during bake)
+- `https://med-study-rpg.com` (new Cloudflare Pages — required for new domain clients)
+- `http://localhost:5173` (existing development — unchanged)
+
+Any other origin SHALL be rejected with the standard CORS deny response.
+
+The Worker SHALL apply CORS to all R2 sync endpoints (presign, healthz, etc.) and to all leaderboard endpoints (cross-referenced from the `hospital-leaderboard` capability — same Worker, same CORS code path).
+
+The bake-end follow-up change SHALL remove `https://fireman333.github.io` from the allowed origins once the GitHub Pages site is decommissioned (or switched to redirect-only mode).
+
+#### Scenario: New domain preflight succeeds
+
+- **GIVEN** the Worker's `ALLOWED_ORIGINS` includes `https://med-study-rpg.com`
+- **WHEN** a browser on `https://med-study-rpg.com/1st/` issues a CORS preflight OPTIONS to `https://api.med-study-rpg.com/<endpoint>`
+- **THEN** the Worker SHALL respond with `Access-Control-Allow-Origin: https://med-study-rpg.com`
+- **AND** the browser SHALL proceed with the actual request
+
+#### Scenario: Legacy GitHub Pages preflight still succeeds during bake
+
+- **GIVEN** the Worker's `ALLOWED_ORIGINS` still includes `https://fireman333.github.io`
+- **WHEN** a browser on `https://fireman333.github.io/study-rpg/` issues a CORS preflight to `https://study-rpg-sync-worker.tony85314.workers.dev/<endpoint>`
+- **THEN** the Worker SHALL respond with `Access-Control-Allow-Origin: https://fireman333.github.io`
+- **AND** existing sync flows SHALL function unchanged
+
+#### Scenario: Unrecognized origin is rejected
+
+- **WHEN** any browser on an origin not in the allowed list (e.g., `https://med-study-rpg.com.evil.tld/`) issues a CORS preflight
+- **THEN** the Worker SHALL NOT include that origin in the `Access-Control-Allow-Origin` response header
+- **AND** the browser SHALL block the subsequent fetch
+
+### Requirement: Client picks Worker URL from `VITE_SYNC_WORKER_URL` env, defaulting to workers.dev
+
+Each app's R2 sync client (and leaderboard client) SHALL read `import.meta.env.VITE_SYNC_WORKER_URL` at runtime. If the env var is unset or empty, the client SHALL default to `https://study-rpg-sync-worker.tony85314.workers.dev` (preserving GitHub Pages behavior).
+
+The env var SHALL be validated to be a `https://` URL with no trailing slash and a non-empty host before use. Empty strings, `undefined`, or whitespace-only values SHALL fall back to the default.
+
+The GitHub Pages workflow `.github/workflows/deploy.yml` MAY explicitly set `VITE_SYNC_WORKER_URL` to the workers.dev URL (preferred for explicitness) or leave it unset and rely on the default.
+
+The Cloudflare Pages build SHALL set `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com` in its build environment.
+
+#### Scenario: CF Pages build env switches Worker URL
+
+- **GIVEN** the Cloudflare Pages dashboard sets `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com` for both Production and Preview environments
+- **WHEN** the build runs `vite build` for either app
+- **THEN** the resulting bundle SHALL reference `https://api.med-study-rpg.com` as the sync API base
+- **AND** runtime sync operations on `med-study-rpg.com` SHALL hit `api.med-study-rpg.com`
+
+#### Scenario: Missing env var falls back to workers.dev
+
+- **GIVEN** the GitHub Pages workflow does not set `VITE_SYNC_WORKER_URL`
+- **WHEN** the build runs
+- **THEN** the resulting bundle SHALL reference `https://study-rpg-sync-worker.tony85314.workers.dev`
+- **AND** legacy clients SHALL continue using the workers.dev URL
+
+#### Scenario: Empty-string env var falls back to default
+
+- **GIVEN** the CI environment sets `VITE_SYNC_WORKER_URL=` (empty string)
+- **WHEN** the client reads the env var
+- **THEN** the client SHALL apply the default (`https://study-rpg-sync-worker.tony85314.workers.dev`)
+- **AND** no runtime error SHALL surface from an empty URL
+
+<!-- Added by add-achievement-system (synced 2026-05-24) -->
+
+### Requirement: Achievement TableAdapter registered in M2_ADAPTERS only
+
+A new `ACHIEVEMENTS: TableAdapter` SHALL be defined in `apps/medexam2-hospital-tw/src/lib/sync/tables.ts` following the existing `TableAdapter` contract (snapshotAll + applyToLocal + diff methods + `postgresTable` field). The adapter SHALL be registered in `M2_ADAPTERS` only and MUST NOT appear in `HOSPITAL_ADAPTERS`. This mirrors the `LEADERBOARD_PROFILE` precedent (commit `cfaaa32`, 2026-05-21).
+
+#### Scenario: Adapter feeds m2 bundle
+
+- **WHEN** the sync engine builds the m2-snapshot.json.gz bundle
+- **THEN** `buildBundleSnapshot` SHALL call `ACHIEVEMENTS.snapshotAll(db, userId, updatedAt, BUNDLE_APP_VERSION)` and include the rows under the bundle's `data[<postgresTable>]` key
+
+#### Scenario: Adapter NOT invoked on Supabase push path
+
+- **WHEN** the sync engine runs its legacy Supabase per-row push path (still active during Phase 2 dual-write window OR for backward compat)
+- **THEN** the engine SHALL iterate over `HOSPITAL_ADAPTERS` only, NOT touch `ACHIEVEMENTS`; no Supabase RPC call is made for achievements
+
+### Requirement: Achievement state survives R2 bundle pull-merge cycles
+
+When a client receives an R2 m2 bundle containing achievements rows (e.g., after pulling on a second device), `ACHIEVEMENTS.applyToLocal` SHALL be invoked for each row. Conflict resolution SHALL follow the existing per-row LWW pattern based on `updated_at`. Already-unlocked-locally achievements SHALL NOT be re-unlocked (notification not re-emitted) — the apply path MUST only update DB state, not trigger UI unlock toasts.
+
+#### Scenario: Cross-device pull does not double-fire unlock toast
+
+- **WHEN** device A unlocks achievement X (toast shown), pushes to R2; device B pulls the bundle and applies the row
+- **THEN** device B's IndexedDB gains the achievement row but NO unlock toast appears on device B for X (toast is local-event-driven, not sync-driven)
+
+#### Scenario: LWW resolves identical-id conflicts
+
+- **WHEN** device A applies a row with `id='first-quiz-answered'`, `unlockedAt: 1700000000`; device B has the same `id` with `unlockedAt: 1700000500`; sync merge happens
+- **THEN** the row with the larger `updated_at` wins; the unlockedAt of the local record is preserved if it is newer
+
+### Requirement: Achievements table absent from Supabase schema
+
+The achievement system SHALL NOT introduce any Supabase migration files. No `supabase/migrations/0009_*.sql` or later file SHALL be authored for achievements. The `upsert_lww` RPC whitelist SHALL NOT be extended. The reasoning: R2 has become the canonical write path post Phase-3 cut; new tables introduced after this point are R2-only by convention (established by `leaderboard_profile`).
+
+#### Scenario: No new Supabase migration in change
+
+- **WHEN** reviewing the file tree of this change
+- **THEN** `supabase/migrations/` SHALL contain no new files
+
+#### Scenario: Old upsert_lww whitelist preserved
+
+- **WHEN** examining the most-recent `upsert_lww` migration (currently `0006_upsert_lww_bookmarks.sql`)
+- **THEN** no newer migration extending the whitelist SHALL exist; the whitelist remains at 9 tables (the cap from before this change)
+
+### Requirement: Migration.ts handles fresh-start and silent-pull paths
+
+The existing `apps/medexam2-hospital-tw/src/lib/sync/migration.ts` state machine SHALL be extended to initialize the empty `achievements` table on the `fresh-start` and `silent-pull` gate states. Mirror the v14 leaderboardProfile initialization pattern.
+
+#### Scenario: Fresh-start gate creates empty achievements table
+
+- **WHEN** a new player completes Google OAuth sign-in for the first time and the migration state machine transitions to `fresh-start`
+- **THEN** the engine SHALL ensure an empty `achievements` table exists in IndexedDB (no rows); subsequent unlock writes proceed normally
+
+#### Scenario: Silent-pull initializes from R2 bundle
+
+- **WHEN** an existing player signs in on a new device, the migration state transitions to `silent-pull`, and the m2 bundle is pulled
+- **THEN** any achievements rows from the R2 bundle SHALL be applied to local IndexedDB via `ACHIEVEMENTS.applyToLocal`; locally unlocked achievements (if any from a prior session) SHALL be merged via LWW
+
+### Requirement: R2 conditional bundle pull SHALL use HEAD-then-unconditional-GET to work around R2 304 CORS bug
+
+The sync engine's `pullBundle(bundle, opts)` SHALL NOT issue a body-fetching `GET` with an `If-None-Match: <lastEtag>` request header against a cross-origin R2 presigned URL. When the caller requests a conditional pull (`opts.conditional !== false`) AND the engine has a cached `lastEtag` for the bundle AND `opts.force !== true`, the engine SHALL first issue a `HEAD` request against the presigned URL, extract the server's current `ETag` response header, and compare it byte-for-byte against the cached `lastEtag`. The engine SHALL issue a body-fetching `GET` ONLY when the etags differ or no cached etag is available; the body-fetching `GET` SHALL NOT carry an `If-None-Match` request header (so R2 SHALL respond with `200 OK` and a body, never `304`).
+
+**Rationale**: Cloudflare R2's S3-compatible `304 Not Modified` responses omit the `Access-Control-Allow-Origin` response header. When a browser receives a 304 from a cross-origin presigned R2 URL, the cross-origin policy treats the CORS-headerless response as inaccessible and surfaces it to JavaScript as `TypeError: Failed to fetch`. The sync engine cannot distinguish this from a real network failure. Switching to HEAD avoids the 304 path entirely (HEAD never returns 304 per HTTP/1.1 RFC 9110 §15.4.5). The `GET` issued on cache-miss carries no `If-None-Match` header so R2 cannot produce a 304 response.
+
+#### Scenario: Cache hit — HEAD etag matches lastEtag, body never fetched
+
+- **GIVEN** the engine has a cached `lastEtag` of `"a2686478f3307e2fc6f6393d0b1ae279"` for bundle `m2`
+- **AND** the R2 blob's current ETag is `"a2686478f3307e2fc6f6393d0b1ae279"` (unchanged)
+- **WHEN** `pullBundle('m2', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL issue exactly one `HEAD` request against the presigned R2 URL
+- **AND** the HEAD response SHALL be `200 OK` with an `ETag` header matching `lastEtag`
+- **AND** the engine SHALL return `{kind: 'noChange'}` without issuing any body-fetching `GET`
+- **AND** no `If-None-Match` request header SHALL appear on any request issued by this call
+
+#### Scenario: Cache miss — HEAD etag differs, unconditional GET fetches new body
+
+- **GIVEN** the engine has a cached `lastEtag` of `"oldetag"` for bundle `m1`
+- **AND** the R2 blob's current ETag is `"newetag"` (server-side updated since last pull)
+- **WHEN** `pullBundle('m1', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL first issue a `HEAD` request and read `ETag: "newetag"`
+- **AND** the engine SHALL then issue a `GET` request against the presigned URL
+- **AND** the `GET` request SHALL NOT carry an `If-None-Match` request header
+- **AND** the `GET` response SHALL be `200 OK` with the gzipped snapshot body
+- **AND** the engine SHALL unzip the body, return `{kind: 'changed', snapshot: <parsed>, etag: '"newetag"'}`
+- **AND** the call site SHALL update its `lastEtag` cache to `"newetag"`
+
+#### Scenario: Blob does not exist — HEAD returns 404
+
+- **GIVEN** the user has no prior cloud snapshot for bundle `bookmarks` (first-ever sign-in OR account-reset)
+- **WHEN** `pullBundle('bookmarks', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL issue a `HEAD` request
+- **AND** R2 SHALL respond `404 Not Found`
+- **AND** the engine SHALL return `{kind: 'blobMissing'}` without issuing any `GET`
+
+#### Scenario: HEAD throws — defensive fallback to unconditional GET
+
+- **GIVEN** the engine has a cached `lastEtag` of `"someEtag"` for bundle `m2`
+- **AND** the `HEAD` request rejects (network error, CORS misconfig on HEAD, or unexpected non-ok status)
+- **WHEN** `pullBundle('m2', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL emit a visible warning (e.g., `console.warn` with the `[sync:pullR2:<bundle>]` channel prefix matching the existing `[sync:pushR2:...]` convention) so the HEAD failure is not silently swallowed
+- **AND** the engine SHALL fall back to issuing an unconditional `GET` (no `If-None-Match` header) against the presigned URL
+- **AND** if the fallback `GET` succeeds with `200 OK`, the engine SHALL return `{kind: 'changed', snapshot, etag}` as in the cache-miss path
+- **AND** if the fallback `GET` itself fails, the engine SHALL surface the error normally (the call SHALL throw, which the engine.ts call-site catches and feeds into `recentErrors` via `recordError`)
+
+#### Scenario: Force pull skips HEAD probe entirely
+
+- **GIVEN** the caller invokes `pullBundle('m1', {conditional: true, force: true})` (e.g., from `pullAllNow({force: true})` cold-start path per the existing `Cold-start force-pull bypasses incremental cursor` requirement)
+- **WHEN** the engine evaluates the request
+- **THEN** the engine SHALL NOT issue a `HEAD` request
+- **AND** the engine SHALL issue a single unconditional `GET` (no `If-None-Match` header) and process the response per the cache-miss path
+
+#### Scenario: No cached etag — first conditional pull skips HEAD
+
+- **GIVEN** the engine has no cached `lastEtag` for bundle `m2` (e.g., first pull after a fresh engine `start()`)
+- **WHEN** `pullBundle('m2', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL skip the HEAD probe (no etag to compare against)
+- **AND** the engine SHALL issue a single unconditional `GET` (no `If-None-Match` header)
+- **AND** on `200 OK` the engine SHALL store the returned ETag as `lastEtag` for subsequent calls
+
+#### Scenario: No If-None-Match header ever sent on body-fetching GET
+
+- **GIVEN** any invocation of `pullBundle(bundle, opts)` for any bundle and any opts
+- **WHEN** the engine issues a body-fetching `GET` request
+- **THEN** the request headers SHALL NOT include `If-None-Match`
+- **AND** R2 SHALL therefore never respond with `304 Not Modified` to a body-fetching `GET` issued by this engine
+
+### Requirement: Multi-table singleton adapters SHALL install Dexie hooks on every contributing table
+
+A `TableAdapter` whose `snapshotDirty()` / `snapshotAll()` reads from more than one Dexie table (i.e. its snapshot aggregates rows from multiple local tables into a single cloud blob) SHALL declare every additional contributing table in an optional `extraDexieTables: readonly string[]` field. The sync engine SHALL install identical `creating` / `updating` / `deleting` hooks on **every** table in `[adapter.dexieTable, ...adapter.extraDexieTables ?? []]`. Every hooked table SHALL call `markDirty` under the canonical `adapter.dexieTable` key (not the actual mutated table name), so the dirty marker stays singular per adapter and the existing `snapshotDirty` / `clear()` paths require no modification.
+
+The engine SHALL detect overlap at construction time: if any Dexie table name appears in `[adapter.dexieTable, ...adapter.extraDexieTables ?? []]` for two or more adapters within the same engine instance, engine construction SHALL throw a descriptive error in DEV builds. Prod builds MAY choose to log a warning and continue, since accidental overlap stacks hooks redundantly but does not corrupt data.
+
+Adapters with a single contributing Dexie table SHALL leave `extraDexieTables` unset (or empty); the engine SHALL treat the field as defaulting to an empty array.
+
+The `applyingFromCloud` echo-prevention gate inside each hook callback SHALL be unchanged. Hook callbacks for extra tables SHALL exercise the same gate: when `applyingFromCloud === true` (i.e. a pull is writing back the canonical singleton blob via `writeHospitalStateBlob` or equivalent), no dirty marker SHALL be emitted and no `_updatedAt` SHALL be stamped.
+
+#### Scenario: HOSPITAL_STATE write to a passenger table fires push within debounce window
+
+- **GIVEN** an authed 二階 session with `globalThis.__sync.getStatus() === 'idle'`
+- **AND** `HOSPITAL_STATE.extraDexieTables` contains `'rooms'`
+- **WHEN** `services/facility.ts` calls `db.rooms.put({ ...room, facilityLevel: nextLevel, roomFacility: newMultiplier })`
+- **AND** no other table is touched in the same debounce window
+- **THEN** within `debounceMs` (default 3000) the engine SHALL call `pushNow()` once
+- **AND** the upserted `hospital_state` cloud row's `data.rooms[<roomId>].facilityLevel` SHALL equal `nextLevel`
+
+#### Scenario: Burst writes across multiple passenger tables coalesce into one push
+
+- **GIVEN** the same authed session
+- **WHEN** within 100 ms the app writes to `rooms` (facility upgrade), `tickets` (gacha spend), and `gachaStats` (pity update)
+- **THEN** the engine SHALL schedule exactly one debounced push
+- **AND** the push SHALL upsert a single `hospital_state` row whose `data` blob reflects all three writes
+
+#### Scenario: Echo-prevention prevents pull-applied passenger writes from re-pushing
+
+- **GIVEN** an in-flight `pullNow` has set `applyingFromCloud = true`
+- **WHEN** `writeHospitalStateBlob` calls `db.rooms.bulkPut(...)`, `db.tickets.put(...)`, `db.gachaStats.put(...)`, `db.affinity.bulkPut(...)` inside the apply transaction
+- **THEN** no dirty marker SHALL be added for the `HOSPITAL_STATE` adapter
+- **AND** no debounced push SHALL be scheduled as a side effect of the apply
+
+#### Scenario: Engine rejects adapter list with duplicate Dexie tables
+
+- **GIVEN** two adapters A and B in the same `adapters` array
+- **AND** A has `dexieTable: 'rooms'`
+- **AND** B has `extraDexieTables: ['rooms']`
+- **WHEN** `createSyncEngine({ adapters: [A, B], ... })` runs in DEV
+- **THEN** the call SHALL throw an error naming `'rooms'` as the conflicting table
+- **AND** the error message SHALL identify both A's `postgresTable` and B's `postgresTable`
+
+### Requirement: Tab-close / network drop SHALL NOT lose unpushed singleton-passenger writes any more than other synced writes
+
+For any write to a Dexie table contributing to a singleton adapter's snapshot (whether the canonical `dexieTable` or any entry in `extraDexieTables`), the dirty-marker timing relative to tab close, network drop, and visibility-pull SHALL be identical to a write against a single-table adapter. The push SHALL be enqueued at write time (not at next tick / next cron / next user action), so the existing offline-queue requirement applies symmetrically.
+
+This requirement strengthens the existing **Debounced auto-push on local writes** requirement: every IndexedDB mutation to a synced table — including passenger tables of multi-table singleton adapters — SHALL enqueue a debounced cloud push at the time of the write.
+
+#### Scenario: Facility upgrade survives tab close after debounce flush
+
+- **GIVEN** an authed 二階 session, no active study session
+- **WHEN** the user clicks "升級設施" on `outpatient-1`, raising its `facilityLevel` from L0 to L0+1
+- **AND** the debounce window (default 3000 ms) elapses without further writes, allowing the engine to flush the push
+- **AND** after the flush completes, the user closes the browser tab
+- **AND** the user later reopens the tab (same browser session or cold-start re-auth)
+- **THEN** `db.rooms.get('outpatient-1').facilityLevel` SHALL equal L0+1
+- **AND** the cloud `hospital_state.data.rooms` row for `outpatient-1` SHALL also reflect L0+1
+
+Sub-debounce tab close (close < 3000 ms after click, before flush fires) falls under the same pre-existing failure mode as any unpushed Dexie write under cold-start force-pull (handled by the local-backup safety net in `services/snapshot.ts`); the contract here is parity with other synced tables, not stronger guarantees.
+
+#### Scenario: Cross-device pull preserves uncommitted facility upgrade
+
+- **GIVEN** device A and device B both signed into the same account
+- **AND** device B last pushed `hospital_state` 10 minutes ago with `rooms.outpatient-1.facilityLevel = L0`
+- **WHEN** device A upgrades `outpatient-1` to L0+1
+- **AND** within 500 ms of the upgrade, device B's tab returns to focus and triggers a visibility-pull
+- **THEN** the debounced push from device A SHALL fire before device B's pull resolves OR after; in either order, **device A's `db.rooms.get('outpatient-1').facilityLevel` SHALL remain L0+1**
+- **AND** within one push/pull cycle, both devices SHALL converge on L0+1
+

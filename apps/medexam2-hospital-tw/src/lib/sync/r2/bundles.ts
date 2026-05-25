@@ -11,7 +11,13 @@ import type Dexie from 'dexie'
 import type { TableAdapter } from '../tables'
 import type { CloudRow, RowPayload } from '../types'
 
-const SCHEMA_VERSION = 1
+// v2 (add-bookmarks-filters-and-wrong-history-medexam2): m2 bundle now
+// carries `everWrong: boolean` on questionHistory rows. v2-aware clients
+// pulling v1 bundles treat missing field as undefined → false. v1 clients
+// pulling v2 bundles drop the unknown field harmlessly. CRITICAL: the
+// `everWrong` field uses monotonic-OR merge in tables.ts applyToLocal,
+// NOT standard LWW — neutralizes the v1↔v2 cross-version race.
+const SCHEMA_VERSION = 2
 const CLIENT_ID_KEY = 'study-rpg.sync.clientId'
 const BUNDLE_APP_VERSION = '0.3.0'
 

@@ -60,7 +60,7 @@ vi.mock('../etag', () => ({
 }))
 
 // Import after mocks so the SUT picks up the mocked deps.
-import { pushBundle } from '../engine-r2'
+import { pullBundle, pushBundle } from '../engine-r2'
 
 function makeResponse(status: number, body: BodyInit | null, etag?: string): Response {
   const headers = new Headers()
@@ -132,5 +132,236 @@ describe('pushBundle 412 recovery paths', () => {
     await expect(pushBundle({} as never, {} as never, [], 'm1', 'u1')).rejects.toThrow(
       /r2_push_exhausted: Failed to fetch/,
     )
+  })
+})
+
+// Helpers for pullBundle tests: a gzip body that gunzipBundle accepts (mock
+// returns a valid snapshot regardless of payload) and assertion helpers that
+// inspect fetch call shape.
+
+function gzipResponse(status: number, etag?: string): Response {
+  return makeResponse(status, new Uint8Array([0x1f, 0x8b, 0x08, 0x00]), etag)
+}
+
+function methodOf(call: unknown[]): string | undefined {
+  return (call[1] as { method?: string } | undefined)?.method
+}
+
+function headersOf(call: unknown[]): Record<string, string> {
+  return ((call[1] as { headers?: Record<string, string> } | undefined)?.headers ?? {}) as Record<
+    string,
+    string
+  >
+}
+
+describe('pullBundle HEAD-then-unconditional-GET path (R2 304 CORS workaround)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.etagMap.clear()
+    // Default gunzip success — tests that need failure override locally.
+    mocks.gunzipBundle.mockReset()
+    mocks.gunzipBundle.mockResolvedValue({
+      meta: { schema_version: 1, updated_at: '2026-05-24T00:00:00.000Z', client_id: 'test-client' },
+      data: { player_state: [{ user_id: 'u1', updated_at: '2026-05-24T00:00:00.000Z' }] },
+    })
+  })
+
+  it('cache-hit: HEAD etag matches cached lastEtag → noChange, body never fetched', async () => {
+    mocks.etagMap.set('m2', '"a268"')
+    const fetchMock = vi.fn()
+    fetchMock.mockResolvedValueOnce(makeResponse(200, null, '"a268"'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await pullBundle({} as never, {} as never, [], 'm2', { conditional: true })
+
+    expect(result.notModified).toBe(true)
+    expect(result.blobMissing).toBe(false)
+    expect(result.applied).toBeNull()
+    expect(result.etag).toBe('"a268"')
+    // Exactly one fetch — the HEAD probe. No body GET.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(methodOf(fetchMock.mock.calls[0])).toBe('HEAD')
+    expect(mocks.applyBundleSnapshot).not.toHaveBeenCalled()
+  })
+
+  it('cache-miss: HEAD etag differs → unconditional GET fetches body, applies snapshot', async () => {
+    mocks.etagMap.set('m1', '"old"')
+    const fetchMock = vi.fn()
+    fetchMock.mockResolvedValueOnce(makeResponse(200, null, '"new"'))
+    fetchMock.mockResolvedValueOnce(gzipResponse(200, '"new"'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await pullBundle({} as never, {} as never, [], 'm1', { conditional: true })
+
+    expect(result.notModified).toBe(false)
+    expect(result.blobMissing).toBe(false)
+    expect(result.applied).not.toBeNull()
+    expect(result.etag).toBe('"new"')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(methodOf(fetchMock.mock.calls[0])).toBe('HEAD')
+    expect(methodOf(fetchMock.mock.calls[1])).not.toBe('HEAD') // body-fetching GET
+    // Critical invariant: GET request MUST NOT carry If-None-Match.
+    expect(headersOf(fetchMock.mock.calls[1])['If-None-Match']).toBeUndefined()
+    expect(mocks.applyBundleSnapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it('blobMissing: HEAD returns 404 → no body GET, returns blobMissing', async () => {
+    mocks.etagMap.set('bookmarks', '"x"')
+    const fetchMock = vi.fn()
+    fetchMock.mockResolvedValueOnce(makeResponse(404, ''))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await pullBundle({} as never, {} as never, [], 'bookmarks', { conditional: true })
+
+    expect(result.blobMissing).toBe(true)
+    expect(result.notModified).toBe(false)
+    expect(result.etag).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(methodOf(fetchMock.mock.calls[0])).toBe('HEAD')
+    expect(mocks.applyBundleSnapshot).not.toHaveBeenCalled()
+  })
+
+  it('fallback: HEAD throws → console.warn fires, unconditional GET still attempted', async () => {
+    mocks.etagMap.set('m2', '"some"')
+    const fetchMock = vi.fn()
+    fetchMock.mockRejectedValueOnce(new TypeError('boom'))
+    fetchMock.mockResolvedValueOnce(gzipResponse(200, '"new"'))
+    vi.stubGlobal('fetch', fetchMock)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const result = await pullBundle({} as never, {} as never, [], 'm2', { conditional: true })
+
+    expect(result.applied).not.toBeNull()
+    expect(result.etag).toBe('"new"')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(methodOf(fetchMock.mock.calls[0])).toBe('HEAD')
+    expect(headersOf(fetchMock.mock.calls[1])['If-None-Match']).toBeUndefined()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/\[sync:pullR2:m2\] HEAD probe failed/))
+  })
+
+  it('force=true: skips HEAD entirely, single unconditional GET', async () => {
+    mocks.etagMap.set('m1', '"cached"')
+    const fetchMock = vi.fn()
+    fetchMock.mockResolvedValueOnce(gzipResponse(200, '"new"'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await pullBundle({} as never, {} as never, [], 'm1', {
+      conditional: true,
+      force: true,
+    })
+
+    expect(result.applied).not.toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Single GET (not HEAD).
+    expect(methodOf(fetchMock.mock.calls[0])).not.toBe('HEAD')
+    expect(headersOf(fetchMock.mock.calls[0])['If-None-Match']).toBeUndefined()
+  })
+
+  it('no cached etag: skips HEAD on first conditional pull', async () => {
+    // etagMap empty for 'm2'
+    const fetchMock = vi.fn()
+    fetchMock.mockResolvedValueOnce(gzipResponse(200, '"first"'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await pullBundle({} as never, {} as never, [], 'm2', { conditional: true })
+
+    expect(result.applied).not.toBeNull()
+    expect(result.etag).toBe('"first"')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(methodOf(fetchMock.mock.calls[0])).not.toBe('HEAD')
+    expect(headersOf(fetchMock.mock.calls[0])['If-None-Match']).toBeUndefined()
+  })
+
+  it('invariant: no If-None-Match header on body-fetching GET in any scenario', async () => {
+    const scenarios: Array<{
+      label: string
+      setup: () => void
+      opts: { conditional?: boolean; force?: boolean }
+      expectedFetches: number
+    }> = [
+      {
+        label: 'cache-miss after HEAD diff',
+        setup: () => {
+          mocks.etagMap.set('m1', '"old"')
+          const fetchMock = vi.fn()
+          fetchMock.mockResolvedValueOnce(makeResponse(200, null, '"new"'))
+          fetchMock.mockResolvedValueOnce(gzipResponse(200, '"new"'))
+          vi.stubGlobal('fetch', fetchMock)
+        },
+        opts: { conditional: true },
+        expectedFetches: 2,
+      },
+      {
+        label: 'HEAD-throws fallback',
+        setup: () => {
+          mocks.etagMap.set('m1', '"old"')
+          const fetchMock = vi.fn()
+          fetchMock.mockRejectedValueOnce(new TypeError('boom'))
+          fetchMock.mockResolvedValueOnce(gzipResponse(200, '"new"'))
+          vi.stubGlobal('fetch', fetchMock)
+          vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        },
+        opts: { conditional: true },
+        expectedFetches: 2,
+      },
+      {
+        label: 'force=true bypass',
+        setup: () => {
+          mocks.etagMap.set('m1', '"old"')
+          const fetchMock = vi.fn()
+          fetchMock.mockResolvedValueOnce(gzipResponse(200, '"new"'))
+          vi.stubGlobal('fetch', fetchMock)
+        },
+        opts: { conditional: true, force: true },
+        expectedFetches: 1,
+      },
+      {
+        label: 'no cached etag',
+        setup: () => {
+          // etagMap empty
+          const fetchMock = vi.fn()
+          fetchMock.mockResolvedValueOnce(gzipResponse(200, '"first"'))
+          vi.stubGlobal('fetch', fetchMock)
+        },
+        opts: { conditional: true },
+        expectedFetches: 1,
+      },
+      {
+        label: 'conditional=false (pushBundle recovery path)',
+        setup: () => {
+          mocks.etagMap.set('m1', '"old"')
+          const fetchMock = vi.fn()
+          fetchMock.mockResolvedValueOnce(gzipResponse(200, '"new"'))
+          vi.stubGlobal('fetch', fetchMock)
+        },
+        opts: { conditional: false },
+        expectedFetches: 1,
+      },
+    ]
+
+    for (const sc of scenarios) {
+      mocks.etagMap.clear()
+      vi.clearAllMocks()
+      mocks.gunzipBundle.mockResolvedValue({
+        meta: { schema_version: 1, updated_at: '2026-05-24T00:00:00.000Z', client_id: 'test-client' },
+        data: {},
+      })
+      sc.setup()
+
+      await pullBundle({} as never, {} as never, [], 'm1', sc.opts)
+
+      const fetchMock = (globalThis.fetch as unknown) as ReturnType<typeof vi.fn>
+      expect(fetchMock).toHaveBeenCalledTimes(sc.expectedFetches)
+      // Every GET-shaped call (method undefined, since GET is the default) MUST
+      // NOT include If-None-Match. HEAD calls (method 'HEAD') are not subject
+      // to this assertion.
+      for (const call of fetchMock.mock.calls) {
+        if (methodOf(call) === 'HEAD') continue
+        expect(
+          headersOf(call)['If-None-Match'],
+          `${sc.label}: unexpected If-None-Match on body-fetching GET`,
+        ).toBeUndefined()
+      }
+    }
   })
 })

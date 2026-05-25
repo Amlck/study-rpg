@@ -10,6 +10,8 @@
 
 **M_2nd track**（與 M2 並行）：第二份 content/theme dogfood — 二階醫師國考 + 經營型 tycoon idle game mode（招募各科醫師 / 醫院從診所升級到醫學中心）。同一 owner、不同 game mode、共用 core engine。完整 capability spec 見 `openspec/specs/hospital-management-mode/spec.md`。
 
+**M_3rd track**（與 M2 / M_2nd 並行；2026-05-25 起步）：第三份 dogfood — 神經元主題（Long-term potentiation / Hebbian）reskin of 一階國考。複用全部 ~3505 題題庫 / 答案 / 詳解，但把主題敘事換成「neurons that fire together, wire together」收集養成。主視覺 = Linnean phylogenetic taxonomy tree（4 NT 分支 × N family × P1–P5 variant），跨 family 共同 firing 在連線層長出 synapse。配合此 track 開始，**`apps/medexam-tw` 進入 maintenance mode**（不接新 feature；critical bug fix 仍照 L1 hotfix workflow 收）。完整 capability spec 見 `openspec/specs/neurons-mode/spec.md`（lands after `add-neurons-mode-scaffold` archives）。
+
 ## Target Users
 
 - **主要**：台灣一階醫師國考考生（醫五 / 醫六 / RA / 重考生），數千級潛在受眾
@@ -47,6 +49,7 @@
 - **版權投訴**: 24h takedown SLA — `CREDITS.md` + 每題卡底 inline source 連結；陽明小組可開 Issue 觸發
 - **題目附圖缺失**: YAML 有 `hasImage` 但圖不在 .md（196/418 題受影響）；MVP 顯示「[圖]」placeholder，M2 解
 - **跨裝置存檔**: MVP 不解；提供 export/import JSON；M4 才接 Supabase
+- **神經學 fact 嚴謹度（M_3rd / neurons-tw）**: 設計過程涉及神經解剖學 / 神經生理學的決定（neuron family → NT branch / 解剖位置 / 機制描述 / spec scenario 中的 mechanism 文字 / UI 文案中的神經學 metaphor）一律先走 `/oe`（OpenEvidence）查 PubMed-anchored 證據再 lock，**不憑記憶或泛用 LLM 知識決定**。Persona 視覺 / 故事 hook 可自由創作；neuron 本身的科學 fact 必須嚴謹（per `wire-neurons-content-and-theme` design.md Decision 1 既有原則）。Game-loop 數值平衡（N、decay 天數、AP threshold ladder）不適用本規則 — 那是 game design 直覺 + dogfood telemetry。詳細 rationale 見 project root `CLAUDE.md` 同名 section
 
 ## Out of Scope
 
@@ -67,27 +70,33 @@
 | M3 — 公開 API + dogfood fork validation | ✓ `@study-rpg/core@0.1.0` + `@0.2.0` 發 npm (2026-05-16) + ✓ `docs/CONTENT_SCHEMA.md` / `THEME_API.md` 完整 + ✓ migrate-m2nd-to-published-core（二階 fork `workspace:*` → `^0.2.0` 真實 consume published pkg） | ✓ shipped (2026-05-16) |
 | **M4 — 跨裝置存檔** | Supabase Auth (Google OAuth) + 雲端 sync；IndexedDB 仍 source of truth。一階 + 二階皆已 wire（auth module + sync engine + sign-in resolution modals + settings panel with export/delete RPC + 二階 collection-table adapters: hospital_state / hospital_doctors / hospital_mastery / hospital_question_history）。詳見 `openspec/changes/archive/2026-05-17-add-cloud-sync/`. **Backend migration in-flight** (2026-05-19+, `add-r2-cloud-sync-migration`): data plane moving from Supabase Postgres (500 MB DB cap + 5 GB egress/月) to Cloudflare R2 object storage (10 GB + zero egress) via auth-bridging Worker. Sync unit: per-row LWW → per-bundle blob LWW (3 bundles: m1 / m2 / bookmarks). Supabase Auth + `bug_reports` table stay (latter needs server-side SQL for owner dashboard). Currently dual-write (Supabase + R2), reads still Supabase; full cutover after 14-day bake. | ✓ shipped (2026-05-17); 🔄 backend migrating to R2 |
 | **M4.5 — In-app bug report → Supabase** | `bug_reports` table (migration 0004) + RLS + per-app `BugReportModal` (一階 SettingsPanel 新 section / 二階 HelpMenu 9th accordion) + auto-context snapshot (game_state JSONB / route / commit_sha / recent_console_errors ring buffer) + force sign-in gate + per-field opt-out. **+ inline quiz 🐞 entry** (add-quiz-inline-bug-report 2026-05-19) — `QuizBugReportSheet` 在 `QuizModal` 內 4-radio target picker + 單行說明 + `question_id` column (migration 0007) + 3 個新 category enum。Owner reads via dashboard SQL today; future `/bug-reports` skill follows. 詳見 `openspec/changes/archive/2026-05-18-add-bug-report-pipeline/` + `openspec/changes/add-quiz-inline-bug-report/` + `docs/BUG_REPORTING.md`. | ✓ shipped (2026-05-18) + inline 🐞 (2026-05-19) |
+| **Domain migration — `med-study-rpg.com`** | Move both apps off `fireman333.github.io/study-rpg/` to the owner's custom Cloudflare domain. 一階 → `https://med-study-rpg.com/1st/`; 二階 → `https://med-study-rpg.com/2nd/`. New Cloudflare Pages deploy alongside existing GH Pages deploy (parallel bake 2–4 週); Worker bound to `api.med-study-rpg.com`; OAuth + Supabase Auth allowlist supports both origins during bake; `DomainMigrationBanner` surfaces on GH Pages with Export-JSON CTA for anonymous users. Bake-end follow-up change flips GH Pages to client-side 301 redirect-only. 詳見 `openspec/changes/add-med-study-rpg-domain-migration/` + `docs/AUTH_REDIRECT_URIS.md`. | 🔄 in-progress (code edits 2026-05-22; CF Pages + Supabase dashboard tasks pending owner) |
 | **M_2nd ext — 排名 leaderboard** | Opt-in 全二階對位榜：5 公開欄位（hospital tier / reputation / doctor count / total study min / 2–12 codepoint nickname）。Backend = Cloudflare D1 `study-rpg-leaderboard` + KV `LEADERBOARD_KV` via existing sync Worker（**不**走 Supabase — 避開 R2 cutover + 零 egress 成本），新 module `cloudflare/sync-worker/src/leaderboard.ts` + 5 endpoints + hourly cron `0 * * * *` 預先排序 Top 100 寫 KV。Client 側：Dexie v14 `leaderboardProfile` table + `LeaderboardOptInModal` + `NicknameField`（NFKC + lowercase 撞名檢查） + `LeaderboardPage`（4 filter tabs + my-rank chip）+ HelpMenu 雙 section（doc + settings controls）+ `safeResetAccountData` 接 `deleteLeaderboardMe()`。Push hook 在 sync engine `onPushComplete` 成功 callback（`firstError === null && !anyOffline`）順手 POST upsert。詳見 `openspec/changes/add-hospital-leaderboard/` + `docs/LEADERBOARD.md`. | 🔄 in-progress (Phase 8 smoke + Phase 9 docs + Phase 10 verify 剩 ~15 task) |
 | **M5 — 養成元素加深** | ✓ **模擬考全套**（36 papers / stopwatch / auto-pause / 全展開詳解 / 進步曲線 / boss-tier reward / SRS enqueue）+ ✓ **導師 NPC 每日一題**（Hybrid SRS/weak picker / MentorDialog / 1.5× reward / 跨天 backlog / skip semantics）+ ✓ **宿舍 + cosmetic**（20 cosmetic 5 categories milestone unlock / DormRoute sprite layer overlay / 「?」剪影 locked preview / CosmeticPicker 裝扮間） | ✓ shipped (2026-05-15) |
+| **M_2nd ext — 成就系統 (achievement-system)** | 7 大類別 (學習 / 答題 / 招募 / 經營 / 時運 / 隱藏 / 科別精通) × 4 tier (P1 鑽石 / P2 金 / P3 銀 / P4 銅) = ~42 條 catalog。Engine = `packages/core/src/lib/achievement.ts` (mirror cosmetic milestone pattern)；catalog = `packages/content-medexam2-tw/src/achievements.ts` (build-time validator rejects pure-grind P1)；Dexie v15 新 `achievements` table，R2-only adapter (mirror `LEADERBOARD_PROFILE` precedent, 不寫 Supabase)；5 處 trigger hook (quiz-rewards / tick / recruitment / fate-card / retire + training)；2 張 atlas asset (badge-atlas 6×4 + subject-atlas 7×2) 走 codex CLI 一次生成；UI = AchievementsPage + AchievementCard + BadgeSprite + AchievementUnlockToast (P2-P4) + AchievementUnlockModal (P1 全屏)；獎勵走 3 channel (leaderboard 勳章 / cosmetic / 稱號)，**不發**裝備 / 抽卡券 / 新 currency；D1 migration 0002 加 `badges_csv` + `subject_mastery_count` 兩 column；LeaderboardPage 在 nickname 旁顯示 inline badges + `🩺 X/14` chip。詳見 `openspec/changes/add-achievement-system/`. | 🔄 code-complete (2026-05-24)；剩 owner manual D1 apply + dual-prod smoke + archive |
+| **M_2nd ext — 醫院設備 (hospital-equipment)** | 10 件命名設備 (CT / MRI / 內視鏡 / 達文西 / 心導管室 / PET-CT / LINAC / ECMO / 複合式手術房 / NGS) × 3 級升級階梯，總 L1 buy-all ~24M / 全 L3 ~244M (~6 週 dedicated grind at 國家級 default)。Catalog = `packages/content-medexam2-tw/src/equipment-catalog.ts`；types in `@study-rpg/core`；Dexie v16 新 `hospitalEquipment` table；UI = `EquipmentPanel/Card/Modal` 掛在 Hospital page (responsive grid + collapsible)；sprite 走 `theme-pixel-hospital/sprites/equipment/` (10 個 384×384 16-color PNG via codex CLI)。雙倍率: reputation +1/3/7%、throughput +2/5/12% per level, additive across owned (5 L3 + 5 L1 → 1.40 rep / 1.70 throughput)。Multiplier 接 4 處 (tick throughput / quiz-rewards rep / er-consultation rep / event emergency-shift rep)；不影響 idle AFK reputation (per design D3 — 保留 fate-card cost gate). T4 升級條件加第 3 gate（≥ 3 unique equipment）+ reputation threshold 150k → 300k bump（pair 改 `TIER_UPGRADE_THRESHOLDS.醫學中心`）；既有 T4 玩家 grandfathered (tier monotonicity)。**§1–§8 + §10–§11 已 ship 進 dirty tree (2026-05-24)、§9 R2 sync 等 R2 migration Phase 3 cutover (~2026-05-29) 才動**。詳見 `openspec/changes/add-hospital-equipment-medexam2/`. | 🔄 §1-§8+§10-§11 shipped (2026-05-24)；§9 R2 sync blocks on R2 cutover；剩 owner commit + archive |
+| **M_3rd — 神經元主題 reskin (neurons-mode)** | LTP / Hebbian-themed reskin of 一階。Worktree `~/coding-scratch/study-rpg-neurons/` + branch `track-neurons`。`packages/content-neurons-tw/` + `packages/theme-pixel-neurons/` + `apps/neurons-tw/` + umbrella capability `neurons-mode`。資料 100% 獨立於 medexam-tw / medexam2-hospital-tw（各自 Dexie / R2 bundle / streak / leaderboard）。借鏡 二階 4 個 capability 設計 pattern（`recruitment-gacha` / `hospital-mastery` / `hospital-leaderboard` / `achievement-system`）但建立獨立 `neuron-variant-gacha` / `neuron-family-mastery` / `neurons-leaderboard` / `neurons-achievements` capability spec。**Deploy live**：`https://med-study-rpg.com/neurons/`（Cloudflare Pages direct-upload via `pnpm deploy:cf`；Worker presign whitelist 加 `'neurons'` bundle；Supabase Auth allowlist 加 `/neurons/**`）。Capabilities (all shipped 2026-05-25): scaffold / motion-library / wire-neurons-content-and-theme / connectome-collection / wire-neuron-variant-gacha / wire-neuron-family-mastery / generate-neurons-sprites / add-neurons-leaderboard / add-neurons-achievements / generate-neurons-achievement-atlases / add-neurons-deploy. 配合此 track，**medexam-tw 進入 maintenance mode**（no new feature；critical bug fix 仍由 L1 hotfix workflow 接）。 | ✓ shipped (2026-05-25) — 11/11 |
 | M6 — Social light | 朋友 leaderboard（純 read-time / mastery%）+ 公開分享角色卡 OG image | ⏳ |
 | M7 (stretch) | 社群 content/theme PR + maintain awesome-study-rpg list + `content-toefl-mini` 50Q demo（external-facing forkability example — 從 M3 降級至此，等真有外部 contributor 才啟動） | ⏳ |
 
 ## Development Workflow
 
-### Dual-worktree pattern (2026-05-15 onwards)
+### Triple-worktree pattern (2026-05-15 dual; 2026-05-25 triple)
 
-M2（一階 medexam-tw）跟 M_2nd（二階 medexam2-hospital-tw）並行開發，用 git worktree 隔離：
+M2（一階 medexam-tw）/ M_2nd（二階 medexam2-hospital-tw）/ M_3rd（神經元 neurons-tw）三條 track 並行開發，用 git worktree 隔離：
 
 | Worktree path | Branch | 用途 |
 |---|---|---|
-| `~/coding-scratch/study-rpg/` | `main` | 一階 M2 開發；core / theme-pixel-medical / content-medexam-tw / apps/medexam-tw；所有 track 的 merge target |
+| `~/coding-scratch/study-rpg/` | `main` | 一階 M2（maintenance mode；critical bug fix 走 L1 hotfix）；core / theme-pixel-medical / content-medexam-tw / apps/medexam-tw；所有 track 的 merge target |
 | `~/coding-scratch/study-rpg-m2/` | `track-m2` | 二階 M_2nd 開發；theme-pixel-hospital / content-medexam2-tw / apps/medexam2-hospital-tw；所有 `add-hospital-*` / `wire-hospital-*` / `*-medexam2-*` / `*-doctor-*` changes 在這跑 |
+| `~/coding-scratch/study-rpg-neurons/` | `track-neurons` | 神經元 M_3rd 開發；theme-pixel-neurons / content-neurons-tw / apps/neurons-tw；所有 `*-neurons-*` / `*-connectome-*` changes 在這跑 |
 
 `.claude/worktrees/<random>/` 是 Claude Code agent 自動建的暫用 worktree（M1 dev 期間用過），ephemeral，merge 完可移除。
 
 ### Naming convention（避免 OpenSpec change folder 撞）
 
 - 二階 changes：含 `hospital` / `medexam2` / `doctor` 字眼（例 `add-hospital-mode-scaffold`、`ingest-medexam2-tw-corpus`、`wire-recruitment-gacha`、`add-doctor-sprite-roster`）
+- 神經元 changes：含 `neurons` / `connectome` 字眼（例 `add-neurons-mode-scaffold`、`wire-neurons-content-and-theme`、`add-connectome-collection`、`wire-neuron-variant-gacha`、`generate-neurons-sprites`）
 - 一階 changes：含 `medexam-tw` 或 generic feature name（例 `expand-content-build-to-all-subjects`、`wire-srs-queue`、`add-gh-pages-deploy`）
 - Generic cross-track changes（core engine / deps）允許但 commit message 要標明影響範圍
 
@@ -97,11 +106,17 @@ M2（一階 medexam-tw）跟 M_2nd（二階 medexam2-hospital-tw）並行開發�
 # 二階 ship 進度回 main (post-archive, 每 1–3 個 changes 同步一次)
 cd ~/coding-scratch/study-rpg && git merge track-m2
 
-# 二階 catch up main 變動 (main 有 一階 commit 時)
+# 神經元 ship 進度回 main (post-archive, 每 1–3 個 changes 同步一次)
+cd ~/coding-scratch/study-rpg && git merge track-neurons
+
+# 二階 catch up main 變動 (main 有 一階 / 神經元 commit 時)
 cd ~/coding-scratch/study-rpg-m2 && git merge main
+
+# 神經元 catch up main 變動 (main 有 一階 / 二階 commit 時)
+cd ~/coding-scratch/study-rpg-neurons && git merge main
 ```
 
-Merge 衝突最常見點：`openspec/project.md` Roadmap row（M2 vs M_2nd 同檔不同行）+ root `package.json` scripts。Merge 完兩 worktree 各自 `pnpm install` 對齊 lockfile。
+Merge 衝突最常見點：`openspec/project.md` Roadmap row（三 track 同檔不同行）+ root `package.json` scripts（dev / build / dev:m2 / dev:neurons alias）。Merge 完三 worktree 各自 `pnpm install` 對齊 lockfile。
 
 ### Planning home (non-git)
 

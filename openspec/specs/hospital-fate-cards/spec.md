@@ -2,7 +2,7 @@
 
 ## Purpose
 
-命運卡 — 消耗 reputation 抽 4 階卡包（普通 1k / 稀有 10k / 史詩 100k / 傳奇 1M），內容池含招募券、進修保證券、facility / throughput 加成。Pity 3：連續 3 次衰運後第 4 次必中（每階獨立 counter，via monotonicCounters MAX-merge）。
+命運卡 — 消耗 reputation 抽 4 階卡包（普通 1k / 稀有 10k / 史詩 50k / 傳奇 300k），內容池含招募券、進修保證券、facility / throughput 加成。普通 + 稀有 為 5% 衰運機率（搭配 pity 3 保底）；史詩 + 傳奇 為 0% 衰運（純獎勵）。傳奇成本 300k = `TIER_UPGRADE_THRESHOLDS.醫學中心`，跨越 T3→T4 門檻時自然湊出一張傳奇抽券。
 
 ## Requirements
 ### Requirement: Four card-pack tiers SHALL be available with locked costs
@@ -13,10 +13,16 @@ The system SHALL provide exactly 4 card-pack tiers with locked reputation costs 
 |---|---|---|---|
 | 普通命運（白） | 1,000 | recruitment ticket ×3 / minor revenue / event-immunity card | 5% (penalty: `-1,000 rep`) |
 | 稀有命運（藍） | 10,000 | recruitment ticket ×10 / training guarantee voucher ×1 / event-positive trigger | 5% (penalty: `-10,000 rep`) |
-| 史詩命運（紫） | 100,000 | targeted P3+ recruitment ticket / facility +0.5 permanent / 1-week salary waiver | 5% (penalty: `-50,000 rep`) |
-| 傳奇命運（金） | 1,000,000 | targeted P2 recruitment ticket / all-room facility +1 / 1-week throughput ×2 | 0% |
+| 史詩命運（紫） | 50,000 | targeted P3+ recruitment ticket / facility +0.5 permanent / targeted P3+ recruitment ticket ×2 | 0% |
+| 傳奇命運（金） | 300,000 | targeted P2 recruitment ticket / all-room facility +1 / 1-week throughput ×2 | 0% |
 
 The costs SHALL be recorded as literals in `packages/content-medexam2-tw/src/fate-cards.ts`. Insufficient-reputation attempts SHALL be blocked client-side BEFORE the draw.
+
+Rationale (per `redesign-fate-card-economy` 2026-05-25, Option C):
+- 史詩 cost dropped 100k → 50k (≈ 10 days at typical 5k rep/day play = ~17% of 60-day game arc), making mid-late game draws reachable.
+- 傳奇 cost dropped 1M → 300k to match the `TIER_UPGRADE_THRESHOLDS.醫學中心 = 300_000` rep threshold, creating a "tier-up tribute" loop where crossing T3→T4 also funds one 傳奇 draw.
+- 史詩 pool drops the `salary-waiver-1-week` slot (negative-EV: pays in revenue, not the reputation spent) and adds a second `targeted-p3-ticket` reward (now ×2 multiplier) to accelerate T2→T3 / T3→T4 diversification gates.
+- 史詩 bad-luck rate 5% → 0% so both top-tier packs (史詩, 傳奇) are pure-positive draws. 普通 / 稀有 keep 5% bad luck to preserve the low-cost lottery feel at the bottom.
 
 #### Scenario: Common pack draw deducts reputation
 
@@ -31,6 +37,34 @@ The costs SHALL be recorded as literals in `packages/content-medexam2-tw/src/fat
 - **WHEN** the draw button is pressed
 - **THEN** no reputation deduction SHALL occur
 - **AND** the UI SHALL display an insufficient-reputation error
+
+#### Scenario: Epic pack draw deducts 50,000 reputation
+
+- **GIVEN** `reputation = 80,000` and player initiates a 史詩命運 draw
+- **WHEN** the draw completes
+- **THEN** `reputation` SHALL equal `30,000` (50,000 deducted regardless of result)
+- **AND** a row SHALL appear in `fateCardHistory` with `costPaid = 50,000`
+
+#### Scenario: Epic pack never produces bad-luck result
+
+- **GIVEN** any number of 史詩命運 draws performed
+- **WHEN** each draw resolves
+- **THEN** no `fateCardHistory` row SHALL have `resultType = 'badLuck'` for a `packTier = 'epic'` row drawn under the current economy
+- **AND** the per-tier `consecutiveBadLuckCount` for `epic` SHALL never increment
+
+#### Scenario: Legendary pack draw deducts 300,000 reputation
+
+- **GIVEN** `reputation = 320,000` and player initiates a 傳奇命運 draw
+- **WHEN** the draw completes
+- **THEN** `reputation` SHALL equal `20,000` (300,000 deducted regardless of result)
+- **AND** a row SHALL appear in `fateCardHistory` with `costPaid = 300,000`
+
+#### Scenario: Epic pool no longer includes salary-waiver
+
+- **GIVEN** the `FATE_CARD_POOLS.epic` content pool
+- **WHEN** the system enumerates pool entries
+- **THEN** no entry SHALL have `key = 'salary-waiver-1-week'`
+- **AND** the pool SHALL contain a reward whose effect grants two targeted P3+ recruitment tickets per draw (replacing the removed salary-waiver slot)
 
 ### Requirement: Fate card draw history SHALL be persisted
 

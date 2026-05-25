@@ -1,7 +1,7 @@
 /**
  * POST /presign — returns a presigned R2 URL scoped to the JWT-bound user.
  *
- * Request body: { bundle: 'm1' | 'm2' | 'bookmarks', op: 'put' | 'get' }
+ * Request body: { bundle: 'm1' | 'm2' | 'bookmarks' | 'neurons', op: 'put' | 'get' }
  * Response:     { url: string, expiresAt: number }
  *
  * The R2 key is ALWAYS `users/<jwt.sub>/<bundle>.json.gz` — body fields like
@@ -12,10 +12,10 @@ import { AwsClient } from "aws4fetch";
 import type { Env } from "./index";
 import { extractBearer, verifyJWT } from "./auth";
 
-type Bundle = "m1" | "m2" | "bookmarks";
+type Bundle = "m1" | "m2" | "bookmarks" | "neurons";
 type Op = "put" | "get";
 
-const BUNDLES: ReadonlyArray<Bundle> = ["m1", "m2", "bookmarks"];
+const BUNDLES: ReadonlyArray<Bundle> = ["m1", "m2", "bookmarks", "neurons"];
 const OPS: ReadonlyArray<Op> = ["put", "get"];
 
 function bundleKey(userSub: string, bundle: Bundle): string {
@@ -26,6 +26,10 @@ function bundleKey(userSub: string, bundle: Bundle): string {
       return `users/${userSub}/m2-snapshot.json.gz`;
     case "bookmarks":
       return `users/${userSub}/bookmarks.json.gz`;
+    case "neurons":
+      // M_3rd bundle. Added by add-neurons-deploy. delete.ts and backup.ts
+      // walk users/<sub>/* prefix so they auto-handle this bundle.
+      return `users/${userSub}/neurons-snapshot.json.gz`;
   }
 }
 

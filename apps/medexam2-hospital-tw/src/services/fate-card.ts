@@ -19,7 +19,10 @@
  *   - targeted-p3-ticket / p2-ticket     → create pending targetedTickets row
  *                                          (subject pick + rarity-floor reroll
  *                                          handled by RecruitmentPage consume UX)
- *   - others (training-guarantee, event-immunity, salary-waiver,
+ *   - targeted-p3-ticket-x2              → create TWO pending targetedTickets rows
+ *                                          (first routes to picker; second waits
+ *                                          in inbox)
+ *   - others (training-guarantee, event-immunity,
  *     throughput-x2-week)                → log only; effect TBD when inventory ships
  */
 
@@ -53,7 +56,18 @@ export type FateCardServiceResult =
 
 export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardServiceResult> {
   const db = getHospitalDB()
-  return db.transaction(
+
+  // Achievement Phase 7 hook: capture prev stats before tx so post-tx diff
+  // sees the legendary/epic draw. Dynamic import — keeps hook isolated from
+  // imports list and avoids load-time circular dep.
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    '../lib/achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import('./achievement-reward')
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  const result: FateCardServiceResult = await db.transaction(
     'rw',
     [
       db.gameCounters,
@@ -65,7 +79,7 @@ export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardSe
       db.targetedTickets,
       db.targetedTicketHistory,
     ],
-    async () => {
+    async (): Promise<FateCardServiceResult> => {
       const counters = await db.gameCounters.get('singleton')
       const mono = await db.monotonicCounters.get('singleton')
       if (!counters || !mono) {
@@ -141,6 +155,18 @@ export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardSe
       return { ok: true, draw: result, appliedEffect, targetedTicketId }
     },
   )
+
+  // Achievement check post-tx (legendary/epic draw counters refresh from
+  // fateCardHistory; p1DoctorsRetired stays 0 since fate cards don't retire).
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[fate-card] achievement check failed:', err)
+  }
+
+  return result
 }
 
 interface RewardEffectResult {
@@ -182,6 +208,18 @@ async function applyRewardEffect(key: string, label: string): Promise<RewardEffe
         targetedTicketId: ticket.id,
       }
     }
+    case 'targeted-p3-ticket-x2': {
+      // 2× single-ticket grant: first routes to picker immediately, second
+      // sits in the targeted-ticket inbox until the player consumes the first.
+      // Each ticket gets its own TARGETED_REROLL_CAP budget on consume.
+      const first = await createPendingTargetedTicket('epic')
+      await createPendingTargetedTicket('epic')
+      return {
+        description: `${label} — 已建立 2 張，請先指派第 1 張`,
+        revenueDelta: 0,
+        targetedTicketId: first.id,
+      }
+    }
     case 'facility-plus-0.5': {
       const bumped = await bumpRandomRoomFacility()
       return {
@@ -218,7 +256,6 @@ async function applyRewardEffect(key: string, label: string): Promise<RewardEffe
     case 'training-guarantee-x1':
     case 'event-immunity-1':
     case 'event-positive-trigger':
-    case 'salary-waiver-1-week':
     case 'throughput-x2-1-week':
       return { description: `${label}（已紀錄；庫存系統實裝後生效）`, revenueDelta: 0 }
     default:

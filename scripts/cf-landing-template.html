@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>med-study-rpg — 醫師國考養成 RPG</title>
+  <meta name="description" content="開源養成型 RPG engine — 一階 / 二階醫師國考考古題打 boss、升等、抽卡。">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", sans-serif;
+      background: linear-gradient(160deg, #1a1f2e 0%, #2a3147 100%);
+      color: #e8eaf0;
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 6vh 24px 4vh;
+      text-align: center;
+    }
+    h1 {
+      font-size: clamp(28px, 5vw, 44px);
+      margin: 0 0 8px;
+      letter-spacing: 0.02em;
+    }
+    .tagline {
+      color: #a0a8bc;
+      font-size: clamp(14px, 2.2vw, 17px);
+      line-height: 1.6;
+      margin: 0 0 6vh;
+    }
+    .apps {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-bottom: 5vh;
+    }
+    @media (min-width: 640px) {
+      .apps { grid-template-columns: 1fr 1fr; }
+    }
+    a.app-card {
+      display: block;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 28px 20px;
+      text-decoration: none;
+      color: inherit;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    }
+    a.app-card:hover, a.app-card:focus-visible {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(120, 160, 255, 0.5);
+      transform: translateY(-2px);
+    }
+    .app-card .title {
+      font-size: clamp(20px, 3vw, 26px);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .app-card .sub {
+      color: #a0a8bc;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    footer {
+      color: #6b7388;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    footer a {
+      color: #8ba3ce;
+      text-decoration: none;
+    }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>med-study-rpg</h1>
+    <p class="tagline">開源養成型 RPG engine — 醫師國考考古題打 boss、升等、抽卡、跨裝置 cloud sync。</p>
+
+    <div class="apps">
+      <a class="app-card" href="/1st/">
+        <div class="title">一階國考</div>
+        <div class="sub">醫學一 + 醫學二 ~ 3300 題 / 10 科 / SRS 隊列</div>
+      </a>
+      <a class="app-card" href="/2nd/">
+        <div class="title">二階國考經營</div>
+        <div class="sub">~ 6000 題 / 14 科 + 醫院 tycoon idle 模式 + 排名榜</div>
+      </a>
+      <a class="app-card" href="/neurons/">
+        <div class="title">神經元主題版</div>
+        <div class="sub">一階題庫 reskin / Hebbian neurons that fire together, wire together / 跨族成就連線</div>
+      </a>
+    </div>
+
+    <footer>
+      <a href="https://github.com/fireman333/study-rpg" rel="noopener">GitHub</a>
+      &nbsp;·&nbsp;
+      Engine + theme: AGPL-3.0
+      &nbsp;·&nbsp;
+      Default content: CC-BY-NC-4.0
+    </footer>
+  </div>
+</body>
+</html>

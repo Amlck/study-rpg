@@ -4,7 +4,7 @@
 
 ## Why it exists
 
-二階's core fantasy is hospital growth. A leaderboard amplifies that by giving players cross-account peer comparison, but only after explicit opt-in. The feature deliberately stays small (5 fields, 4 filter tabs, Top 100 only) so privacy disclosure is short and the surface area doesn't bleed into the rest of the app.
+二階's core fantasy is hospital growth. A leaderboard amplifies that by giving players cross-account peer comparison, but only after explicit opt-in. The feature deliberately stays small (5 filter tabs, Top 100 only) so privacy disclosure is short and the surface area doesn't bleed into the rest of the app.
 
 Backend chose Cloudflare D1 + KV over Supabase Postgres for three reasons:
 
@@ -30,12 +30,12 @@ Player → [LeaderboardOptInModal] → upsertLeaderboard()
         (firstError===null
          && !anyOffline)           Cron "0,30 * * * *":
               ↓                    runLeaderboardCron
-       pushLeaderboardIfOptedIn      → 4 D1 SELECTs (Top 100)
-       (best-effort, errors swallowed)→ 4 KV writes (leaderboard:m2:top100:<filter>)
+       pushLeaderboardIfOptedIn      → 5 D1 SELECTs (Top 100)
+       (best-effort, errors swallowed)→ 5 KV writes (leaderboard:m2:top100:<filter>)
                                          ↓
                                    GET /leaderboard/:filter → KV (public, no auth)
                                          ↓
-                                   LeaderboardPage 4-tab UI
+                                   LeaderboardPage 5-tab UI
 ```
 
 ## Schema
@@ -49,12 +49,15 @@ Migration: `cloudflare/sync-worker/migrations/0001_leaderboard.sql` (Worker D1 m
 | `user_id` | TEXT PRIMARY KEY | Always equals the verified JWT `sub` claim — body fields can't override. |
 | `nickname` | TEXT NOT NULL | Display form (preserves case + diacritics). |
 | `nickname_lower` | TEXT NOT NULL UNIQUE | `normalizeNickname(raw) = raw.normalize('NFKC').toLowerCase()`. The UNIQUE constraint is the uniqueness gate. |
-| `hospital_tier` | INTEGER NOT NULL | 1 (診所) / 2 (區域醫院) / 3 (醫學中心 or 國家級教學醫院, client clamps tier 4 → 3 to match Worker `TIER_MAX`). CHECK 1–3. |
+| `hospital_tier` | INTEGER NOT NULL | 1 (診所) / 2 (區域醫院) / 3 (醫學中心 or 國家級教學醫院, client clamps tier 4 → 3 to match Worker `TIER_MAX`). CHECK 1–3. UI render walks through `tierLabel()` helper for short display labels (診所 / 區域 / 醫中 / 大廟) per `add-abbreviated-tier-labels-medexam2`; canonical names above are storage-layer values only. |
 | `reputation` | INTEGER NOT NULL | CHECK ≥ 0. |
 | `doctor_count` | INTEGER NOT NULL | CHECK 0–50. |
 | `total_study_min` | INTEGER NOT NULL | CHECK ≥ 0. From `monotonicCounters.totalStudyMinutes` (monotonic, never decrements). |
 | `is_public` | INTEGER NOT NULL DEFAULT 1 | CHECK ∈ (0, 1). Row stays in D1 even when 0 — cron filters via partial index. |
 | `updated_at` | INTEGER NOT NULL | Epoch ms. LWW resolution: `ON CONFLICT DO UPDATE ... WHERE current.updated_at < incoming.updated_at`. |
+| `badges_csv` | TEXT NOT NULL DEFAULT '' | Achievement system v15 — per-category highest tier (`cat:Pn,...`, ≤ 6 entries, ≤ 60 chars). Migration `0002_add_badges.sql`. |
+| `subject_mastery_count` | INTEGER NOT NULL DEFAULT 0 | Count of `subject-master-*` unlocks (0–14). Same migration as above. |
+| `total_correct` | INTEGER NOT NULL DEFAULT 0 | CHECK ≥ 0. Sum of `questionHistory.correctCount` across all answered questions (re-attempts of the same question count separately). **Not** `mastery.correct` — that field carries a partner-specialty multiplier weighting (e.g. 0.6 / 0.8) that doesn't match the player's intuitive「答對總題數」expectation, and was also historically subject to outer-tx rollback drops. Migration `0005_add_total_correct.sql` (add-hospital-leaderboard-correct-count-filter); derivation source changed by `fix-hospital-leaderboard-correct-source` (2026-05-24, client-only). |
 
 Partial indexes (all `WHERE is_public = 1`):
 
@@ -63,6 +66,7 @@ idx_leaderboard_m2_composite      (hospital_tier DESC, reputation DESC, doctor_c
 idx_leaderboard_m2_reputation     (reputation DESC)
 idx_leaderboard_m2_doctor_count   (doctor_count DESC)
 idx_leaderboard_m2_study_min      (total_study_min DESC)
+idx_leaderboard_m2_total_correct  (total_correct DESC)
 ```
 
 Partial indexing means opted-out rows do not bloat the snapshot indexes and `runLeaderboardCron` doesn't need an extra `WHERE is_public = 1` filter step beyond the index seek.
@@ -96,14 +100,17 @@ Body:
   "reputation": 5400,
   "doctor_count": 7,
   "total_study_min": 312,
+  "total_correct": 1245,
   "is_public": 1,
   "updated_at": 1716000000000
 }
 ```
 
+`total_correct`, `badges_csv`, and `subject_mastery_count` are optional in the body — older client bundles that predate the corresponding migrations omit them, and the Worker treats omitted as `0` / `''`. The one-way ratchet in the UPSERT preserves a populated server-side value when an incoming push omits these fields (defends against stale-cache clients clobbering with empties).
+
 Responses:
 - `200 {"ok": true}` — succeeded.
-- `200 {"ok": true, "dropped": "tier_oob" | "rep_oob" | "doctor_oob" | "study_oob"}` — out-of-bounds, silently dropped (warn log, no retry storm).
+- `200 {"ok": true, "dropped": "tier_oob" | "rep_oob" | "doctor_oob" | "study_oob" | "correct_oob"}` — out-of-bounds, silently dropped (warn log, no retry storm).
 - `400 {"error": "invalid_nickname_length" | "invalid_body" | "invalid_updated_at"}`.
 - `401 {"error": "unauthenticated"}` — JWT missing / invalid.
 - `409 {"error": "nickname_taken"}` — `nickname_lower` collision with a different `user_id`.
@@ -111,13 +118,13 @@ Responses:
 
 ### `GET /leaderboard/:filter`
 
-Public (no JWT). `filter ∈ {composite, reputation, doctor, study}`. Reads pre-computed KV snapshot — never hits D1 at request time.
+Public (no JWT). `filter ∈ {composite, reputation, doctor, study, correct}`. Reads pre-computed KV snapshot — never hits D1 at request time.
 
 Response:
 ```json
 {
   "rows": [
-    {"user_id": "uuid", "nickname": "wlk", "hospital_tier": 3, "reputation": 18200, "doctor_count": 12, "total_study_min": 480, "updated_at": 1716000000000}
+    {"user_id": "uuid", "nickname": "wlk", "hospital_tier": 3, "reputation": 18200, "doctor_count": 12, "total_study_min": 480, "total_correct": 1830, "badges_csv": "study:P2,quiz:P3", "subject_mastery_count": 4, "updated_at": 1716000000000}
   ],
   "last_updated_at": 1716003600000,
   "total_count": 17
@@ -147,9 +154,9 @@ Called by `safeResetAccountData` in `useSync.ts` when player confirms「重置�
 Schedule: `0,30 * * * *` (every 30 min at `:00` and `:30`, UTC). Dispatched in `src/index.ts` `scheduled()` by matching `event.cron` against the schedule string.
 
 Per invocation:
-1. 4 D1 SELECTs against partial indexes — `ORDER BY <filter-specific column(s)> DESC LIMIT 100 WHERE is_public = 1`.
+1. 5 D1 SELECTs against partial indexes — `ORDER BY <filter-specific column(s)> DESC LIMIT 100 WHERE is_public = 1`.
 2. 1 COUNT(*) for `total_count`.
-3. 4 KV writes — `leaderboard:m2:top100:<filter>` ← `{rows, last_updated_at: Date.now(), total_count}`.
+3. 5 KV writes — `leaderboard:m2:top100:<filter>` ← `{rows, last_updated_at: Date.now(), total_count}`.
 4. One structured log line: `[leaderboard cron] computed snapshots`.
 
 No D1 writes from cron — read-only. 30-min cadence picked over per-upsert because: (a) KV write rate quota matters at edge (steady state 8 writes/hr = 192/day ≈ 19% of free-tier 1K/day), (b) Top 100 visibility lag of ≤ 30 min is acceptable for a personal-dogfood scale leaderboard, (c) avoids hot-spotting the index when many players push within minutes of each other. Original hourly cadence (`"0 * * * *"`) bumped to 30-min post-MVP per dogfood feedback that 60-min staleness felt too slow during active play sessions.

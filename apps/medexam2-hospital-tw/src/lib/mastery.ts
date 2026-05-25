@@ -16,13 +16,17 @@ async function upsertHistory(
   db: ReturnType<typeof getHospitalDB>,
   record: AnswerRecord,
   wasCorrect: boolean,
-): Promise<void> {
+): Promise<{ prevLastResult: 'correct' | 'wrong' | null }> {
   const now = Date.now()
   const existing = await db.questionHistory.get(record.questionId)
+  const prevLastResult = existing?.lastResult ?? null
   const prevSrs = existing
     ? { interval: existing.interval, easeFactor: existing.easeFactor, nextDueAt: existing.nextDueAt }
     : { interval: 0, easeFactor: 2.5, nextDueAt: null }
   const srs = reviewCardBinary({ correct: wasCorrect, prev: prevSrs, now })
+  // everWrong is monotonic — once true, never unset. Set on first wrong
+  // answer; preserved across subsequent correct answers.
+  const everWrong = (existing?.everWrong === true) || !wasCorrect
   if (existing) {
     await db.questionHistory.put({
       ...existing,
@@ -33,6 +37,7 @@ async function upsertHistory(
       interval: srs.interval,
       easeFactor: srs.easeFactor,
       nextDueAt: srs.nextDueAt,
+      everWrong,
     })
   } else {
     const row: QuestionHistoryRow = {
@@ -45,9 +50,11 @@ async function upsertHistory(
       interval: srs.interval,
       easeFactor: srs.easeFactor,
       nextDueAt: srs.nextDueAt,
+      everWrong,
     }
     await db.questionHistory.put(row)
   }
+  return { prevLastResult }
 }
 
 async function upsertMastery(
@@ -73,16 +80,34 @@ async function upsertMastery(
   }
 }
 
+export interface CorrectAnswerOpts {
+  /**
+   * Invoked AFTER the Dexie transaction commits, only when the previous
+   * `lastResult` value was `'wrong'` (i.e. this answer flipped the row from
+   * wrong → correct). The grace toast wires into this — every call site
+   * SHOULD pass an explicit callback (use `() => {}` to opt out intentionally).
+   * Per Decision 6 of add-bookmarks-filters-and-wrong-history-medexam2:
+   * making this required at TS level would force tests / internal helpers
+   * to pass a callback too; discipline enforced via code review + this doc.
+   */
+  onTransitionToCorrect?: (questionId: string) => void
+}
+
 /**
  * Correct answer: bumps mastery (correct + total) + questionHistory + affinity.
  * Both mastery.correct and affinity.correctCount deltas are multiplied by the
  * specialty-match multiplier when `partner.subjectId === record.subjectId`
  * (per hospital-specialty-bonus + affinity-specialty-bonus specs). SRS state
  * is unaffected by the multiplier (hospital-srs Req 6).
+ *
+ * EVERY call site (QuizModal / MockExamPage / MentorPage / ER consultation /
+ * future game modes) MUST pass `opts.onTransitionToCorrect` to wire the
+ * grace toast — see wrong-answer-list capability for the spec.
  */
 export async function recordCorrectAnswer(
   record: AnswerRecord,
   partner: PartnerInfo | null = null,
+  opts: CorrectAnswerOpts = {},
 ): Promise<void> {
   const db = getHospitalDB()
   const multiplier = getSpecialtyMultiplier(
@@ -90,19 +115,25 @@ export async function recordCorrectAnswer(
     partner?.rarity ?? null,
     record.subjectId,
   )
+  let prevLastResult: 'correct' | 'wrong' | null = null
   await db.transaction('rw', db.mastery, db.questionHistory, db.affinity, async () => {
     await upsertMastery(db, record.subjectId, true, multiplier)
-    await upsertHistory(db, record, true)
+    const r = await upsertHistory(db, record, true)
+    prevLastResult = r.prevLastResult
     const aff = await db.affinity.get(record.subjectId)
     await db.affinity.put({
       subjectId: record.subjectId,
       correctCount: (aff?.correctCount ?? 0) + multiplier,
     })
   })
+  if (prevLastResult === 'wrong') {
+    opts.onTransitionToCorrect?.(record.questionId)
+  }
 }
 
 /**
  * Wrong answer: bumps mastery.total + questionHistory.attempts only.
+ * Also sets `everWrong = true` on the row (idempotent — no-op if already true).
  * Affinity unchanged per recruitment-gacha spec (never decrement).
  */
 export async function recordWrongAnswer(record: AnswerRecord): Promise<void> {

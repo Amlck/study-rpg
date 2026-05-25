@@ -14,13 +14,16 @@ export interface PresignResult {
   expiresAt: number  // epoch ms
 }
 
-// Treat empty string as unset — GitHub Actions exposes `${{ secrets.X }}` as
-// "" when the secret is undefined, which would otherwise override the prod
-// default with a broken empty URL.
+// Treat empty / whitespace / trailing-slash as unset or normalize. GitHub
+// Actions exposes `${{ secrets.X }}` as "" when the secret is undefined,
+// which would otherwise override the prod default with a broken empty URL.
+// Cloudflare Pages dashboard env vars sometimes copy with stray whitespace,
+// and "https://api.med-study-rpg.com/" + "/presign" → double slash.
 const WORKER_URL_RAW = import.meta.env.VITE_SYNC_WORKER_URL as string | undefined
+const WORKER_URL_TRIMMED = (WORKER_URL_RAW ?? '').trim().replace(/\/+$/, '')
 const WORKER_URL =
-  WORKER_URL_RAW && WORKER_URL_RAW.length > 0
-    ? WORKER_URL_RAW
+  WORKER_URL_TRIMMED.length > 0
+    ? WORKER_URL_TRIMMED
     : 'https://study-rpg-sync-worker.tony85314.workers.dev'
 
 // Cache presigned URLs within their TTL minus a 60s safety margin so we don't

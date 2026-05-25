@@ -19,6 +19,8 @@
 //       openspec/changes/add-hospital-leaderboard/design.md §D2 (push timing) + §D5 (opt-out)
 
 import type { HospitalTier } from '@study-rpg/content-medexam2-tw'
+import { ACHIEVEMENTS } from '@study-rpg/content-medexam2-tw'
+import type { AchievementCategory, AchievementTier } from '@study-rpg/core'
 import { getHospitalDB } from '../../db/schema'
 import { upsertLeaderboard } from '../leaderboard/api'
 import { getLeaderboardProfile, markPushed } from '../../services/leaderboard-profile'
@@ -28,27 +30,111 @@ export interface LeaderboardAttributes {
   reputation: number
   doctor_count: number
   total_study_min: number
+  /** Achievement system (v15): derived from local achievements table. */
+  badges_csv: string
+  subject_mastery_count: number
+  /**
+   * 5th leaderboard filter (add-hospital-leaderboard-correct-count-filter).
+   * Sum of `mastery.correct` across all subjects (clamped ≥ 0).
+   */
+  total_correct: number
 }
 
-// Worker enforces tier ∈ [1, 3] (`TIER_MAX = 3` in cloudflare/sync-worker/
-// src/leaderboard.ts). The content pack actually defines 4 tiers including
-// 國家級教學醫院. We clamp tier 4 → 3 so end-game players keep updating their
-// row instead of getting silently dropped server-side. Phase 4 follow-up:
-// either bump Worker TIER_MAX to 4 or expose the cap in shared types.
+// Tier sort order (P4 < P3 < P2 < P1). Used for per-category max-tier picker.
+const TIER_RANK: Record<AchievementTier, number> = {
+  P4: 1,
+  P3: 2,
+  P2: 3,
+  P1: 4,
+}
+
+// Fixed display order of categories in badges_csv (mirrors LeaderboardPage
+// render order; spec hospital-leaderboard §"LeaderboardPage renders 6
+// category badges").
+const CATEGORY_ORDER: readonly AchievementCategory[] = [
+  'study',
+  'quiz',
+  'recruit',
+  'hospital',
+  'fortune',
+  'hidden',
+]
+
+/**
+ * Derive `badges_csv` + `subject_mastery_count` from Dexie achievements table.
+ * Per-category badges_csv: take the highest tier unlocked per category.
+ * subject_mastery_count: count `subject-master-*` unlocks (excludes capstone).
+ */
+async function deriveAchievementSnapshot(): Promise<{
+  badges_csv: string
+  subject_mastery_count: number
+}> {
+  const db = getHospitalDB()
+  const unlockedRows = await db.achievements.toArray()
+  if (unlockedRows.length === 0) {
+    return { badges_csv: '', subject_mastery_count: 0 }
+  }
+  const unlockedIds = new Set(unlockedRows.map((r) => r.id))
+
+  // Per-category highest tier
+  const highest: Partial<Record<AchievementCategory, AchievementTier>> = {}
+  let subjectMastery = 0
+  for (const a of ACHIEVEMENTS) {
+    if (!unlockedIds.has(a.id)) continue
+    if (a.id.startsWith('subject-master-')) {
+      // Counts toward subject_mastery_count, NOT badges_csv (subject category
+      // doesn't appear in the 6-category badges_csv per spec)
+      subjectMastery += 1
+      continue
+    }
+    if (a.category === 'subject') continue // all-subjects-mastered capstone: not counted in subjectMastery, also not in badges_csv
+    const current = highest[a.category]
+    if (!current || TIER_RANK[a.tier] > TIER_RANK[current]) {
+      highest[a.category] = a.tier
+    }
+  }
+
+  const pairs: string[] = []
+  for (const cat of CATEGORY_ORDER) {
+    const tier = highest[cat]
+    if (tier) pairs.push(`${cat}:${tier}`)
+  }
+  return { badges_csv: pairs.join(','), subject_mastery_count: subjectMastery }
+}
+
 const TIER_TO_NUMBER: Record<HospitalTier, number> = {
   診所: 1,
   區域醫院: 2,
   醫學中心: 3,
-  國家級教學醫院: 3,
+  國家級教學醫院: 4,
 }
 
 export async function buildLeaderboardAttributes(): Promise<LeaderboardAttributes> {
   const db = getHospitalDB()
-  const [counters, doctorCount, monotonic] = await Promise.all([
+  const [counters, doctorCount, monotonic, achievementSnapshot, historyRows] = await Promise.all([
     db.gameCounters.get('singleton'),
     db.doctors.count(),
     db.monotonicCounters.get('singleton'),
+    deriveAchievementSnapshot(),
+    db.questionHistory.toArray(),
   ])
+
+  // Source = questionHistory.correctCount aggregate, NOT mastery.correct.
+  // `mastery.correct` carries a partner-specialty multiplier weighting (see
+  // `recordCorrectAnswer` in lib/mastery.ts) so its sum reads ~20% lower
+  // than the player's raw correct-answer count, and historically `mastery`
+  // upserts dropped silently under outer-transaction rollback regressions
+  // (fixed by e085876 but the snapshot damage persisted). questionHistory
+  // is the canonical first-write of the answer event and unweighted, so
+  // SUM(correctCount) = the raw lifetime count the player intuitively
+  // expects on the「答對總題數」leaderboard. Re-attempts of the same
+  // question count separately (one row per question, correctCount per row
+  // increments by 1 each time the player answers it correctly). See
+  // fix-hospital-leaderboard-correct-source design.md D1.
+  const totalCorrect = Math.max(
+    0,
+    Math.floor(historyRows.reduce((acc, q) => acc + (q.correctCount ?? 0), 0)),
+  )
 
   const tierStr: HospitalTier = counters?.tier ?? '診所'
   return {
@@ -56,6 +142,9 @@ export async function buildLeaderboardAttributes(): Promise<LeaderboardAttribute
     reputation: Math.max(0, Math.floor(counters?.reputation ?? 0)),
     doctor_count: Math.max(0, doctorCount),
     total_study_min: Math.max(0, Math.floor(monotonic?.totalStudyMinutes ?? 0)),
+    badges_csv: achievementSnapshot.badges_csv,
+    subject_mastery_count: achievementSnapshot.subject_mastery_count,
+    total_correct: totalCorrect,
   }
 }
 

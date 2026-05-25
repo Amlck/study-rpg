@@ -185,6 +185,24 @@ function extractGradingNote(optionText: string): { cleaned: string; note: string
   return { cleaned: optionText.slice(0, m.index).trimEnd(), note: m[1].trim() }
 }
 
+// Stem variant of stripPdfExtractionJunk. The option/explanation cleaner anchors
+// on `**|$`, which gobbles trailing text when the page-footer leaked MID-stem
+// (observed in 108 cases: 肝穿刺..., 40歲頭痛...). Stems use closed tokens that
+// can be stripped surgically without an end-anchor.
+function stripPdfExtractionJunkInStem(text: string): string {
+  return text
+    // Closed copyright watermark — exact bracket pair
+    .replace(/\s*【版權所有[^】]*】/gu, '')
+    // Closed page-number footer — e.g. `--12--`, `-- 1 --`
+    .replace(/\s*--[ \t]*\d+[ \t]*--/g, '')
+    // Page-header bigram — `醫 護` (space-separated)
+    .replace(/\s+醫\s+護(?=\s|$)/gu, '')
+    // Collapse whitespace runs created by stripping mid-text
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([？?。，,])/gu, '$1')
+    .trim()
+}
+
 // Upstream PDF→Markdown extractor inlines image references of the form
 // `![Q<N> 圖](../../_images/<paper>/<file>.png)` inside question stems. The
 // figure is also extracted as a PNG file picked up by `imageExists` (see
@@ -310,7 +328,7 @@ function parseQuestionBlocks(body: string): ParseResult {
       }
     }
 
-    const stem = stripMarkdownImages(stemLines.join('\n'))
+    const stem = stripPdfExtractionJunkInStem(stripMarkdownImages(stemLines.join('\n')))
 
     if (!stem) { skips.push({ qNum: block.qNum, reason: 'empty stem' }); continue }
     if (Object.keys(options).length < 2) { skips.push({ qNum: block.qNum, reason: `<2 options (got ${Object.keys(options).length})` }); continue }

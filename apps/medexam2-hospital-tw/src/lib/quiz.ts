@@ -81,14 +81,25 @@ export async function loadPlayablePoolFor(subjectId: SubjectId): Promise<Questio
  * the filter before random selection. Empty / full / undefined filter is a
  * no-op.
  *
- * Returns `null` if the (possibly year-filtered) subject pool is empty.
+ * When `opts.excludeIds` is provided, the pool is HARD-narrowed by removing
+ * every question whose id is in the set BEFORE the seenIds re-roll loop.
+ * Intended for cross-session history exclusion (skipSrs path in QuizModal):
+ * pass the player's `questionHistory` ids for the subject. `seenIds` still
+ * applies on top as the soft 3-roll re-roll check, but `excludeIds` is the
+ * hard filter — questions in it CANNOT be returned.
+ *
+ * Returns `null` if the (possibly year-filtered, possibly exclude-narrowed)
+ * subject pool is empty.
  */
 export async function pickRandomQuestion(
   subjectId: SubjectId,
   seenIds: Set<string>,
-  opts?: { yearFilter?: Set<number> },
+  opts?: { yearFilter?: Set<number>; excludeIds?: Set<string> },
 ): Promise<Question | null> {
-  const pool = applyYearFilter(await loadPlayablePoolFor(subjectId), opts?.yearFilter)
+  let pool = applyYearFilter(await loadPlayablePoolFor(subjectId), opts?.yearFilter)
+  if (opts?.excludeIds && opts.excludeIds.size > 0) {
+    pool = pool.filter((q) => !opts.excludeIds!.has(q.id))
+  }
   if (pool.length === 0) return null
 
   for (let attempt = 0; attempt < 3; attempt += 1) {

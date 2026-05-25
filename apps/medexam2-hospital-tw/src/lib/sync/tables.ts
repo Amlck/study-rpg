@@ -15,12 +15,14 @@
 import type Dexie from 'dexie'
 import type { CloudRow, RowPayload } from './types'
 import type {
+  AchievementRow,
   AffinityRow,
   BookmarkRow,
   DoctorRow,
   GachaStatsRow,
   GameCountersRow,
   HospitalDB,
+  LeaderboardProfileRow,
   MasteryRow,
   MonotonicCountersRow,
   QuestionHistoryRow,
@@ -309,7 +311,7 @@ const HOSPITAL_MASTERY: TableAdapter = {
   },
 }
 
-const HOSPITAL_QUESTION_HISTORY: TableAdapter = {
+export const HOSPITAL_QUESTION_HISTORY: TableAdapter = {
   postgresTable: 'hospital_question_history',
   shape: 'collection',
   dexieTable: 'questionHistory',
@@ -347,12 +349,34 @@ const HOSPITAL_QUESTION_HISTORY: TableAdapter = {
     const data = cloudRow.data as WithUpdatedAt<Record<string, unknown>> | undefined
     if (!pk || !data) return false
     const force = opts?.force ?? false
+    const local = await (db as HospitalDB).questionHistory.get(pk)
+    // CRITICAL: `everWrong` uses monotonic-OR merge (NOT LWW) to neutralize
+    // the v1↔v2 cross-version sync race. Once any client writes everWrong=true,
+    // no subsequent write (regardless of LWW ordering or schema_version) can
+    // clear it. Per Decision 8 of add-bookmarks-filters-and-wrong-history-medexam2.
+    // DO NOT "fix" this by removing the OR — it's intentional.
+    const cloudEverWrong = (data as { everWrong?: boolean }).everWrong === true
+    const localEverWrong = (local as { everWrong?: boolean } | undefined)?.everWrong === true
     if (!force) {
-      const local = await (db as HospitalDB).questionHistory.get(pk)
       const localMs = (local as WithUpdatedAt<unknown> | undefined)?._updatedAt
-      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) {
+        // Cloud loses LWW for the row as a whole — but still promote everWrong
+        // if cloud has it true and local doesn't (monotonic-OR semantics).
+        if (cloudEverWrong && !localEverWrong && local) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (db as HospitalDB).questionHistory.put({ ...local, everWrong: true } as any)
+          return true
+        }
+        return false
+      }
     }
-    const next = { ...data, _updatedAt: Date.parse(cloudRow.updated_at) }
+    // Cloud wins LWW for standard fields; OR-merge everWrong so local true
+    // is never silently overwritten by missing/false incoming value.
+    const next = {
+      ...data,
+      _updatedAt: Date.parse(cloudRow.updated_at),
+      everWrong: cloudEverWrong || localEverWrong,
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as HospitalDB).questionHistory.put(next as any)
     return true
@@ -591,6 +615,113 @@ const HOSPITAL_MONOTONIC_COUNTERS: TableAdapter = {
   },
 }
 
+/**
+ * leaderboardProfile singleton — added 2026-05-22 to close a migration scope
+ * gap surfaced after med-study-rpg.com domain migration: opt-in state lived
+ * only in Dexie, so cross-origin sign-in landed in an empty
+ * `leaderboardProfile` table and re-prompted opt-in even when D1 already had
+ * the user's row. Including it in the m2 bundle hydrates the opt-in state
+ * cross-origin on first pull.
+ *
+ * Shape mirrors HOSPITAL_MONOTONIC_COUNTERS — singleton keyed by user_id,
+ * entire row stored as opaque payload, LWW against `_updatedAt` Dexie hook
+ * timestamp.
+ */
+const LEADERBOARD_PROFILE: TableAdapter = {
+  postgresTable: 'leaderboard_profile',
+  shape: 'singleton',
+  dexieTable: 'leaderboardProfile',
+  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
+    if (!dirtyPks.size) return []
+    const row = await (db as HospitalDB).leaderboardProfile.get(userId)
+    if (!row) return []
+    return [{ user_id: userId, updated_at: updatedAt, app_version: appVersion, data: row }]
+  },
+  async snapshotAll(db, userId, updatedAt, appVersion) {
+    const row = await (db as HospitalDB).leaderboardProfile.get(userId)
+    if (!row) return []
+    return [{ user_id: userId, updated_at: updatedAt, app_version: appVersion, data: row }]
+  },
+  async applyToLocal(db, cloudRow, opts) {
+    const data = cloudRow.data as WithUpdatedAt<LeaderboardProfileRow> | undefined
+    if (!data) return false
+    const force = opts?.force ?? false
+    const cloudMs = Date.parse(cloudRow.updated_at)
+    if (!Number.isFinite(cloudMs)) return false
+    if (!force) {
+      const local = (await (db as HospitalDB).leaderboardProfile.get(cloudRow.user_id)) as
+        | WithUpdatedAt<LeaderboardProfileRow>
+        | undefined
+      const localMs = local?._updatedAt
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+    }
+    // Preserve user_id PK + stamp `_updatedAt` matching cloud row.
+    const next = { ...data, user_id: cloudRow.user_id, _updatedAt: cloudMs }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as HospitalDB).leaderboardProfile.put(next as any)
+    return true
+  },
+}
+
+// ─── ACHIEVEMENTS adapter (v15, add-achievement-system) ─────────────────────
+// Mirror LEADERBOARD_PROFILE precedent: R2-only, lives in M2_ADAPTERS only,
+// NOT in HOSPITAL_ADAPTERS. No Supabase migration, no upsert_lww whitelist
+// entry. Per achievement-system spec §"Achievement TableAdapter registered
+// in M2_ADAPTERS only".
+const ACHIEVEMENTS: TableAdapter = {
+  postgresTable: 'achievements',
+  shape: 'collection',
+  dexieTable: 'achievements',
+  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
+    if (!dirtyPks.size) return []
+    const rows: RowPayload[] = []
+    for (const pk of dirtyPks) {
+      const row = await (db as HospitalDB).achievements.get(pk)
+      if (!row) continue
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: pk,
+        data: row,
+      })
+    }
+    return rows
+  },
+  async snapshotAll(db, userId, updatedAt, appVersion) {
+    const rows: RowPayload[] = []
+    await (db as HospitalDB).achievements.each((row) => {
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: (row as AchievementRow).id,
+        data: row,
+      })
+    })
+    return rows
+  },
+  async applyToLocal(db, cloudRow, opts) {
+    const pk = cloudRow.id
+    const data = cloudRow.data as WithUpdatedAt<AchievementRow> | undefined
+    if (!pk || !data) return false
+    const force = opts?.force ?? false
+    if (!force) {
+      const local = await (db as HospitalDB).achievements.get(pk)
+      const localMs = (local as WithUpdatedAt<AchievementRow> | undefined)?._updatedAt
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+    }
+    // Cross-device pull: write data but DO NOT trigger unlock toast.
+    // Toast is emitted only by local trigger hooks, never by sync apply.
+    // Per achievement-system spec scenario "Cross-device pull does not
+    // double-fire unlock toast".
+    const next = { ...data, _updatedAt: Date.parse(cloudRow.updated_at) }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as HospitalDB).achievements.put(next as any)
+    return true
+  },
+}
+
 export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
   HOSPITAL_DOCTORS,
@@ -600,6 +731,16 @@ export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   TARGETED_TICKETS,
   TARGETED_TICKET_HISTORY,
   HOSPITAL_MONOTONIC_COUNTERS,
+  // LEADERBOARD_PROFILE intentionally NOT here. Supabase code paths
+  // (migration.ts cloudHasAnyRows / getMaxCloudUpdatedAt + upsert_lww RPC
+  // whitelist) iterate this union and would 404 against a `leaderboard_profile`
+  // Postgres table that doesn't exist (the leaderboard backend is Cloudflare
+  // D1, not Supabase). A 404 makes the migration evaluator misread cloud as
+  // empty and fire a spurious conflict-chooser modal. LEADERBOARD_PROFILE
+  // lives only in M2_ADAPTERS (passenger of the R2 m2 bundle).
+  //
+  // ACHIEVEMENTS intentionally NOT here either — same R2-only rationale.
+  // See M2_ADAPTERS below.
 ]
 
 /**
@@ -624,6 +765,8 @@ export const M2_ADAPTERS: readonly TableAdapter[] = [
   TARGETED_TICKETS,
   TARGETED_TICKET_HISTORY,
   HOSPITAL_MONOTONIC_COUNTERS,
+  LEADERBOARD_PROFILE,
+  ACHIEVEMENTS,
 ]
 
 export const BOOKMARKS_ADAPTERS: readonly TableAdapter[] = [QUESTION_BOOKMARKS]

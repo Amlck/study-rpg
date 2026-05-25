@@ -23,6 +23,7 @@ import {
   VIP_BOOST_DURATION_MS,
 } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { computeReputationMultiplier, getOwnedEquipment } from '../lib/equipment'
 
 export type MalpracticeAction = 'settle' | 'accept-penalty'
 
@@ -147,6 +148,15 @@ export interface EmergencyShiftOutcome {
 
 export async function resolveEmergencyShift(): Promise<EmergencyShiftOutcome> {
   const db = getHospitalDB()
+  // add-hospital-equipment-medexam2 (2026-05-24): equipment reputation multiplier
+  // applies at the call site (constant is module-level). Revenue unchanged —
+  // equipment has separate throughput multiplier that affects tick.ts, not
+  // discrete reward events.
+  const ownedEquipment = await getOwnedEquipment()
+  const equipmentReputationMultiplier = computeReputationMultiplier(ownedEquipment)
+  const actualReputationDelta = Math.round(
+    EMERGENCY_SHIFT_REPUTATION_BONUS * equipmentReputationMultiplier,
+  )
   return db.transaction('rw', [db.gameCounters, db.eventLog], async () => {
     const counters = await db.gameCounters.get('singleton')
     const now = Date.now()
@@ -156,7 +166,7 @@ export async function resolveEmergencyShift(): Promise<EmergencyShiftOutcome> {
     await db.gameCounters.put({
       ...counters,
       revenue: counters.revenue + EMERGENCY_SHIFT_REVENUE_BONUS,
-      reputation: counters.reputation + EMERGENCY_SHIFT_REPUTATION_BONUS,
+      reputation: counters.reputation + actualReputationDelta,
       pendingEventId: null,
       pendingEventTriggeredAt: null,
       lastEventResolvedAt: now,
@@ -165,13 +175,13 @@ export async function resolveEmergencyShift(): Promise<EmergencyShiftOutcome> {
       triggeredAt: counters.pendingEventTriggeredAt ?? now,
       eventKey: 'emergency-shift',
       outcome: 'accepted',
-      reputationDelta: EMERGENCY_SHIFT_REPUTATION_BONUS,
+      reputationDelta: actualReputationDelta,
       revenueDelta: EMERGENCY_SHIFT_REVENUE_BONUS,
     })
     return {
       kind: 'accepted',
       revenueDelta: EMERGENCY_SHIFT_REVENUE_BONUS,
-      reputationDelta: EMERGENCY_SHIFT_REPUTATION_BONUS,
+      reputationDelta: actualReputationDelta,
     }
   })
 }

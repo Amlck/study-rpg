@@ -38,6 +38,8 @@ import {
   writeLocalAckResetAt,
 } from './reset-propagation'
 import { registerSyncMetadataGetter } from '../../services/sync-metadata'
+import { backfillAchievementsFromCurrentStats } from '../../services/achievement-backfill'
+import { backfillMonotonicCounters } from '../../services/counter-backfill'
 import type {
   EngineDiagnosticSnapshot,
   SyncEngine,
@@ -247,10 +249,39 @@ export function useSync(): UseSyncReturn {
               { bundle: 'm2', adapters: M2_ADAPTERS },
               { bundle: 'bookmarks', adapters: BOOKMARKS_ADAPTERS },
             ],
-            // Post-pull invariant repair — restores doctor↔room SOT if cloud
-            // applied stale hospital_state.rooms (e.g. legacy non-null
-            // assignedDoctorId values from pre-fix saves).
-            onPullComplete: () => checkAssignmentInvariants().then(() => undefined),
+            // Post-pull chain (runs after every successful pull cycle):
+            //   1. Invariant repair — restores doctor↔room SOT if cloud applied
+            //      stale hospital_state.rooms (legacy non-null assignedDoctorId
+            //      values from pre-fix saves).
+            //   2. Achievement backfill — silently writes any unlocked-but-
+            //      missing rows for pre-existing players who already met
+            //      thresholds before the achievement system shipped. Wrapped
+            //      in try/catch so a Dexie transient failure cannot break the
+            //      pull cycle (per spec scenario "Backfill error does not
+            //      break the pull cycle").
+            onPullComplete: async () => {
+              try {
+                await checkAssignmentInvariants()
+                // Counter backfill MUST run first — achievement-backfill's
+                // buildAchievementStats() reads from monotonicCounters, so
+                // patched values need to be in place before predicate
+                // evaluation. See backfill-monotonic-counters spec D5.
+                await backfillMonotonicCounters()
+                const unlocked = await backfillAchievementsFromCurrentStats()
+                if (unlocked > 0) {
+                  // eslint-disable-next-line no-console
+                  console.info(
+                    `[achievement-backfill] silently unlocked ${unlocked} achievements from current stats`,
+                  )
+                }
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[achievement-backfill] failed, will retry on next pull cycle:',
+                  err,
+                )
+              }
+            },
             // Post-push leaderboard chain — fires after every successful R2
             // bundle push within the same 3s debounce window. Orchestrator
             // skips silently for never-opted-in players; surface its tagged

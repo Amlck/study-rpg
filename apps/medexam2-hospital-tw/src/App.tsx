@@ -8,6 +8,7 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import { ensureSeed, getHospitalDB, refreshDailyTickets, refreshDailyEquipmentTickets, type GameCountersRow } from './db/schema'
 import { getFontMode, DEFAULT_FONT_MODE } from './services/font-mode'
+import { seedLeaderboardProfileFromServer } from './services/leaderboard-profile'
 import { HomePage } from './pages/HomePage'
 import { DoctorRoster } from './pages/DoctorRoster'
 import { Hospital } from './pages/Hospital'
@@ -17,12 +18,15 @@ import { FateCardPage } from './pages/FateCardPage'
 import { BookmarksPage } from './pages/BookmarksPage'
 import { EquipmentPage } from './pages/EquipmentPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
+import { CustomTooltipHost } from './components/CustomTooltipHost'
+import { AchievementsPage } from './pages/AchievementsPage'
 import { useStudySessionTick } from './lib/tick'
 import { checkAssignmentInvariants } from './lib/assignment'
 import { useSync } from './lib/sync/useSync'
 import { AuthButton } from './components/AuthButton'
 import { MigrationUploadPrompt } from './components/MigrationUploadPrompt'
 import { MigrationBanner } from './components/MigrationBanner'
+import { DomainMigrationBanner } from './components/DomainMigrationBanner'
 import { getSupabase } from './lib/auth/client'
 import { getBackendConfig } from './lib/sync/backend-config'
 import { ConflictChooserModal } from './components/ConflictChooserModal'
@@ -30,8 +34,12 @@ import { AccountSwitchPrompt } from './components/AccountSwitchPrompt'
 import { SyncStatusChip } from './components/SyncStatusChip'
 import { SyncErrorToast } from './components/SyncErrorToast'
 import { V6MigrationModal } from './components/V6MigrationModal'
+import { GraceToastContainer } from './components/GraceToastContainer'
 import { TutorialOnboarding } from './components/TutorialOnboarding'
 import { MilestoneTipToast } from './components/MilestoneTipToast'
+import { AchievementUnlockToast } from './components/AchievementUnlockToast'
+import { AchievementUnlockModal } from './components/AchievementUnlockModal'
+import { useAchievementToasts } from './lib/useAchievementToasts'
 import { HelpMenu } from './components/HelpMenu'
 import { EventModal } from './components/EventModal'
 import { EventToast } from './components/EventToast'
@@ -163,6 +171,21 @@ function App() {
     document.body.dataset.fontMode = fontMode
   }, [fontMode])
 
+  // Cross-origin seed-back for `leaderboardProfile` — recovers users who
+  // migrated BEFORE the m2 bundle adapter for leaderboardProfile shipped
+  // (their R2 m2 blob predates the field). One-shot check on sign-in:
+  // if Dexie row missing AND server has it, seed from GET /leaderboard/me.
+  // Silently no-ops on 404 (old Worker), empty server row, or network
+  // error — opt-in modal handles the genuine "never opted in" case.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    seedLeaderboardProfileFromServer(user.id).catch(() => {
+      // swallow — seed is best-effort, opt-in modal is the safe fallback
+    })
+    return () => { cancelled = true; void cancelled }
+  }, [user])
+
   // navigator.onLine for SyncStatusChip + AccountSwitchPrompt awareness.
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -187,6 +210,8 @@ function App() {
 
   return (
     <HashRouter>
+      <CustomTooltipHost />
+      <DomainMigrationBanner />
       <div className="header-controls">
         <AuthButton />
         {user && (
@@ -249,6 +274,7 @@ function App() {
         onDismiss={sync.dismissSyncError}
         onRetry={sync.retrySyncError}
       />
+      <GraceToastContainer />
       {v6Migration && (
         <V6MigrationModal counters={v6Migration} onDismiss={() => setV6Migration(null)} />
       )}
@@ -262,6 +288,8 @@ function App() {
           onDismiss={() => void milestoneTip.dismiss()}
         />
       )}
+      <AchievementUnlockOverlay />
+
       <EventModal />
       <ERConsultDialog />
       {eventToast && (
@@ -292,9 +320,30 @@ function App() {
         <Route path="/equipment" element={<EquipmentPage />} />
         <Route path="/bookmarks" element={<BookmarksPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
+        <Route path="/achievements" element={<AchievementsPage />} />
       </Routes>
     </HashRouter>
   )
+}
+
+/**
+ * Achievement unlock overlay — subscribes to the global queue and routes
+ * each unlocked achievement to the appropriate renderer:
+ *   - P1 → full-screen AchievementUnlockModal (dismiss-required)
+ *   - P2/P3/P4 → AchievementUnlockToast (8s auto-dismiss)
+ *
+ * Concurrent unlocks: P1 modal blocks the queue (dismiss-required); toasts
+ * stack up to 3 visible at once (overflow stays queued). For MVP we render
+ * the first item only; UI polish (stacking) deferred.
+ */
+function AchievementUnlockOverlay() {
+  const { queue, dismiss } = useAchievementToasts()
+  if (queue.length === 0) return null
+  const next = queue[0]
+  if (next.tier === 'P1') {
+    return <AchievementUnlockModal achievement={next} onDismiss={() => dismiss(next.id)} />
+  }
+  return <AchievementUnlockToast achievement={next} onDismiss={() => dismiss(next.id)} />
 }
 
 export default App

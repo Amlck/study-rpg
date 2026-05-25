@@ -17,6 +17,7 @@
  *       first-unlock SHALL grant a one-time ticket bonus".
  */
 import type { SubjectId } from '@study-rpg/core'
+import { computeReputationMultiplier, getOwnedEquipment } from '../lib/equipment'
 import {
   QUIZ_REVENUE_PER_CORRECT_BASE,
   QUIZ_REPUTATION_PER_CORRECT_BASE,
@@ -27,6 +28,8 @@ import {
   type Rarity,
 } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { buildAchievementStats, buildSyntheticPlayer } from '../lib/achievement-stats'
+import { checkAndUnlockAchievements } from './achievement-reward'
 
 export interface ApplyQuizRewardInput {
   subjectId: SubjectId
@@ -55,16 +58,66 @@ const ZERO: ApplyQuizRewardResult = {
 export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<ApplyQuizRewardResult> {
   // 送分題 grants reward regardless of option chosen (per spec).
   const earnsReward = input.isCorrect || input.isDisputed
-  if (!earnsReward) return ZERO
 
   const db = getHospitalDB()
 
-  return db.transaction(
+  // Capture pre-action stats for achievement diff (must be BEFORE transaction
+  // so we see the state pre-write). Synthetic Player — 二階 has no Player
+  // aggregate; predicates that depend on Player fields are stubs/inert per
+  // catalog notes.
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  // add-hospital-equipment-medexam2 (2026-05-24): pre-fetch owned equipment
+  // outside the transaction. Race window (user purchasing equipment between
+  // this read and the transaction commit) is bounded to a few ms and harmless.
+  const ownedEquipment = await getOwnedEquipment()
+  const equipmentReputationMultiplier = computeReputationMultiplier(ownedEquipment)
+
+  const result = await db.transaction(
     'rw',
     [db.gameCounters, db.monotonicCounters, db.tickets, db.bannerUnlockBonusLog, db.affinity],
     async () => {
       const toastTexts: string[] = []
       let ticketDelta = 0
+
+      // ─── Streak counter (runs for ALL answers, not gated on earnsReward) ──
+      // Per achievement-system spec D6 "Streak reset 規則":
+      //   - correct or disputed → currentQuizCorrectStreak += 1 (and update MAX)
+      //   - wrong → currentQuizCorrectStreak = 0 (max preserved)
+      //   - skipped → no change (not currently a code path here; skip-counter
+      //     handled by caller before applyQuizReward fires)
+      const streakCounters = await db.gameCounters.get('singleton')
+      if (streakCounters) {
+        const currentStreak = streakCounters.currentQuizCorrectStreak ?? 0
+        if (earnsReward) {
+          const nextStreak = currentStreak + 1
+          await db.gameCounters.put({
+            ...streakCounters,
+            currentQuizCorrectStreak: nextStreak,
+          })
+          const mono = await db.monotonicCounters.get('singleton')
+          if (mono && nextStreak > (mono.maxQuizCorrectStreak ?? 0)) {
+            await db.monotonicCounters.put({
+              ...mono,
+              maxQuizCorrectStreak: nextStreak,
+            })
+          }
+        } else if (currentStreak > 0) {
+          // Wrong answer — reset to 0. Re-fetch counters because the streak
+          // write above could have modified them in flight (defensive).
+          const fresh = await db.gameCounters.get('singleton')
+          if (fresh) {
+            await db.gameCounters.put({ ...fresh, currentQuizCorrectStreak: 0 })
+          }
+        }
+      }
+
+      if (!earnsReward) {
+        // Wrong answer — no reward delta to compute. Streak reset already
+        // handled above. Return ZERO-shaped result (no ticket/revenue/rep).
+        return ZERO
+      }
 
       // 1. Compute reward formula
       const specialtyMultiplier = getSpecialtyMultiplier(
@@ -79,8 +132,10 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
       const revenueDelta = Math.round(
         QUIZ_REVENUE_PER_CORRECT_BASE * specialtyMultiplier * tierMultiplier,
       )
+      // add-hospital-equipment-medexam2 (2026-05-24): wrap reputation gain
+      // with equipment multiplier (1 + Σ owned bonuses; returns 1.0 when none).
       const reputationDelta = Math.round(
-        QUIZ_REPUTATION_PER_CORRECT_BASE * specialtyMultiplier * tierMultiplier,
+        QUIZ_REPUTATION_PER_CORRECT_BASE * specialtyMultiplier * tierMultiplier * equipmentReputationMultiplier,
       )
 
       // 2. Write revenue + reputation
@@ -160,4 +215,19 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
       }
     },
   )
+
+  // ─── Achievement trigger hook (Phase 7 add-achievement-system) ────────────
+  // Outside the reward tx so checkAchievementUnlocks reads committed state.
+  // Errors here MUST NOT throw — achievement check is non-critical relative
+  // to the reward grant; surface via console + swallow to keep callers
+  // (QuizModal) ergonomically clean.
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[quiz-rewards] achievement check failed:', err)
+  }
+
+  return result
 }

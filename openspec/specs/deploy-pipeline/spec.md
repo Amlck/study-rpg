@@ -238,41 +238,363 @@ Non-hospital paths SHALL fall through to the existing 一階 SPA fallback logic 
 
 ### Requirement: Subpath co-location for multi-app deployment
 
-The repository SHALL host all production-deployed app shells under a **single GitHub Pages site** for the repository. Additional apps beyond the primary (一階) SHALL be served at subpaths of the form `https://<owner>.github.io/study-rpg/<mode>/` where `<mode>` is a lowercase, kebab-case identifier reflecting the game mode (e.g. `hospital`).
+The repository SHALL host all production-deployed app shells under a **single deploy site per deploy target**. The repository runs two parallel deploys during the migration bake period:
+
+- **GitHub Pages** (`fireman333.github.io/study-rpg/...`): legacy URL, 一階 at root + 二階 at `/hospital/` subpath; preserved unchanged during bake
+- **Cloudflare Pages** (`med-study-rpg.com/...`): new URL, 一階 at `/1st/` + 二階 at `/2nd/`; site-root serves a landing page
+
+For each deploy target, additional apps beyond the primary SHALL be served at subpaths of the deploy site (no sister repositories, no subdomain-per-app split).
 
 This architectural decision SHALL be reflected in:
 
-1. The deploying app's `vite.config.ts` `base` matching `'/study-rpg/<mode>/'`
-2. The deploy workflow merging the app's `dist/` into the primary app's `dist/<mode>/` subdirectory before upload
+1. The deploying app's `vite.config.ts` `base` defaults to its GitHub Pages path; the same app uses `VITE_DEPLOY_BASE` to switch to the Cloudflare Pages path at build time (e.g. `/1st/` for 一階, `/2nd/` for 二階)
+2. The deploy workflow / build script merging each app's `dist/` into the deploy artifact's appropriate subdirectory (`dist/<mode>/` for GitHub Pages, `dist-cf/<mode>/` for Cloudflare Pages)
 3. No sister repository being created for the additional app
-
-Apps SHALL NOT be served from sister repositories (`fireman333/study-rpg-<mode>`) or from a different GitHub Pages site within the same repo (GitHub Pages supports only one site per repo, so this is enforced architecturally regardless).
 
 #### Scenario: Adding a third app follows the subpath convention
 
 - **GIVEN** a future change introduces a third app, e.g. `apps/surgery-sim-tw/`
 - **WHEN** the change designs its deploy path
-- **THEN** the chosen URL SHALL be `https://<owner>.github.io/study-rpg/<mode>/` (where `<mode>` is e.g. `surgery`)
-- **AND** the app's `vite.config.ts` `base` SHALL be `'/study-rpg/<mode>/'`
-- **AND** the deploy workflow SHALL gain a build step + a dist merge step (`cp -r apps/surgery-sim-tw/dist/* apps/medexam-tw/dist/surgery/`)
-- **AND** the upload artifact path SHALL remain `apps/medexam-tw/dist` (primary app's dist as the artifact root)
+- **THEN** the chosen GitHub Pages URL SHALL be `https://<owner>.github.io/study-rpg/<mode>/` (where `<mode>` is e.g. `surgery`)
+- **AND** the chosen Cloudflare Pages URL SHALL be `https://med-study-rpg.com/<mode-cf>/` (where `<mode-cf>` is e.g. `3rd` or `surgery`)
+- **AND** the app's `vite.config.ts` `base` default SHALL be `'/study-rpg/<mode>/'`
+- **AND** the Cloudflare Pages build SHALL set `VITE_DEPLOY_BASE=/<mode-cf>/` for the new app
+- **AND** the deploy workflow SHALL gain a build step + a dist merge step for both targets
 
 #### Scenario: Sister repo is not used for additional apps
 
-- **WHEN** a contributor proposes hosting a new game mode at `fireman333.github.io/study-rpg-<mode>/` via a sister repo
+- **WHEN** a contributor proposes hosting a new game mode at a sister repo's GitHub Pages site, or at a sibling subdomain on `med-study-rpg.com`
 - **THEN** the proposal SHALL be rejected per this requirement
-- **AND** the proposal SHALL be redirected to subpath co-location under the existing repo
+- **AND** the proposal SHALL be redirected to subpath co-location under the existing deploy targets
 
-#### Scenario: Deploy.yml `cp` source path stays aligned with sub-app vite base
+#### Scenario: GitHub Pages deploy.yml `cp` source path stays aligned with sub-app vite base default
 
-- **GIVEN** a sub-app's `vite.config.ts` declares `base: '/study-rpg/<mode>/'`
-- **WHEN** the deploy workflow merges its dist
-- **THEN** the `cp -r` destination SHALL be `apps/medexam-tw/dist/<mode>/` (matching the `<mode>` segment in vite base)
-- **AND** mismatched paths (e.g. vite base `/study-rpg/hospital/` but cp into `apps/medexam-tw/dist/medexam2/`) SHALL be flagged as a deploy contract violation
+- **GIVEN** a sub-app's `vite.config.ts` declares default `base: '/study-rpg/<mode>/'`
+- **WHEN** the GitHub Pages deploy workflow merges its dist
+- **THEN** the `cp -r` destination SHALL be `apps/medexam-tw/dist/<mode>/` (matching the `<mode>` segment in vite base default)
+- **AND** mismatched paths SHALL be flagged as a deploy contract violation
 
-#### Scenario: 一階 URL stability across deploys
+#### Scenario: Cloudflare Pages assembly stays aligned with `VITE_DEPLOY_BASE`
+
+- **GIVEN** the Cloudflare Pages build sets `VITE_DEPLOY_BASE=/<mode-cf>/` for a sub-app
+- **WHEN** `scripts/build-cf-pages-dist.mjs` assembles the merged output
+- **THEN** the script SHALL copy that app's dist into `dist-cf/<mode-cf>/`
+- **AND** the `_redirects` file SHALL include a `/<mode-cf>/*` rewrite rule
+- **AND** mismatched paths SHALL be flagged as a deploy contract violation
+
+#### Scenario: 一階 URL stability on GitHub Pages
 
 - **WHEN** any new app is added under subpath co-location
 - **THEN** the 一階 `https://<owner>.github.io/study-rpg/` URL SHALL remain unchanged
-- **AND** the 一階 app's `vite.config.ts` `base: '/study-rpg/'` SHALL remain unchanged
-- **AND** existing bookmarks / external links to 一階 routes SHALL continue to resolve
+- **AND** the 一階 app's `vite.config.ts` `base` default `'/study-rpg/'` SHALL remain unchanged
+- **AND** existing bookmarks / external links to 一階 routes on GitHub Pages SHALL continue to resolve
+
+#### Scenario: 一階 URL on Cloudflare Pages is stable at /1st/
+
+- **WHEN** any new app is added under subpath co-location on Cloudflare Pages
+- **THEN** the 一階 `https://med-study-rpg.com/1st/` URL SHALL remain unchanged
+- **AND** the `VITE_DEPLOY_BASE=/1st/` build invocation for 一階 SHALL remain unchanged
+
+### Requirement: Cloudflare Pages deploy target alongside GitHub Pages
+
+The repository SHALL produce a Cloudflare Pages deployment of both apps in addition to the existing GitHub Pages deploy. Cloudflare Pages SHALL serve from the custom domain `med-study-rpg.com` with the following layout:
+
+- `https://med-study-rpg.com/` — minimal HTML landing page linking to both apps
+- `https://med-study-rpg.com/1st/` — 一階 (`apps/medexam-tw`) entry
+- `https://med-study-rpg.com/2nd/` — 二階 (`apps/medexam2-hospital-tw`) entry
+
+The Cloudflare Pages site SHALL be deployed via a GitHub Actions workflow at `.github/workflows/deploy-cf-pages.yml`. The CF Pages project itself remains in **Direct Upload** mode (`Git Provider: No` in `wrangler pages project list`); the dashboard GitHub integration is intentionally NOT used, so that the workflow is the single deploy trigger.
+
+The workflow SHALL run on:
+
+1. Every `push` to the `main` branch
+2. Manual `workflow_dispatch` from the GitHub UI
+
+The workflow build sequence SHALL:
+
+1. Install dependencies with `pnpm install --frozen-lockfile`
+2. Build 一階 with `VITE_DEPLOY_BASE=/1st/`
+3. Build 二階 with `VITE_DEPLOY_BASE=/2nd/` and `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com`
+4. Assemble the merged `dist-cf/` output via `node scripts/build-cf-pages-dist.mjs`
+5. Deploy via `cloudflare/wrangler-action@v3` running `pages deploy ../../dist-cf --project-name med-study-rpg --branch main` from `workingDirectory: cloudflare/sync-worker`
+
+The `workingDirectory: cloudflare/sync-worker` requirement is load-bearing: it allows the action's `pnpm exec wrangler` discovery to find the wrangler devDependency already pinned in `cloudflare/sync-worker/package.json`, avoiding the `ERR_PNPM_ADDING_TO_ROOT` failure that fires when the action falls back to `pnpm add wrangler` against the monorepo root.
+
+The Pages output directory SHALL be `dist-cf/` at the repo root (referenced from the workflow's working directory via the relative path `../../dist-cf`).
+
+During the bake period, GitHub Pages deploy SHALL continue to function unchanged — both deploys serve identical app code under different base paths and origins.
+
+#### Scenario: Push to main triggers both deploys
+
+- **WHEN** any commit lands on `main`
+- **THEN** GitHub Pages workflow (`deploy.yml`) SHALL build and publish to `fireman333.github.io/study-rpg/` and `/study-rpg/hospital/` (unchanged)
+- **AND** the Cloudflare Pages workflow (`deploy-cf-pages.yml`) SHALL build and publish to `med-study-rpg.com/1st/` and `/2nd/`
+- **AND** both deploys SHALL produce successful builds independently — a failure on one SHALL NOT block the other
+
+#### Scenario: Manual dispatch of CF Pages deploy is available
+
+- **WHEN** the user opens the `Actions` tab on GitHub and selects the `Deploy Cloudflare Pages` workflow
+- **THEN** a `Run workflow` button SHALL be available (because `workflow_dispatch` is configured)
+- **AND** clicking it SHALL trigger a deploy without needing a new commit
+
+#### Scenario: Cloudflare Pages build assembles dist-cf from two app dists
+
+- **WHEN** the Cloudflare Pages workflow runs
+- **THEN** both apps SHALL build with their respective `VITE_DEPLOY_BASE` values
+- **AND** 二階 SHALL build with `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com` so client sync requests target the Worker's Custom Domain
+- **AND** `scripts/build-cf-pages-dist.mjs` SHALL copy `apps/medexam-tw/dist/*` into `dist-cf/1st/`
+- **AND** `scripts/build-cf-pages-dist.mjs` SHALL copy `apps/medexam2-hospital-tw/dist/*` into `dist-cf/2nd/`
+- **AND** the assembly script SHALL write `dist-cf/_redirects` and `dist-cf/index.html` (landing page)
+
+#### Scenario: Wrangler step runs from cloudflare/sync-worker subdirectory
+
+- **WHEN** the deploy step in `deploy-cf-pages.yml` invokes `cloudflare/wrangler-action@v3`
+- **THEN** the action SHALL use `workingDirectory: cloudflare/sync-worker`
+- **AND** the deploy command SHALL reference `dist-cf` via the relative path `../../dist-cf` from that working directory
+- **AND** the action SHALL succeed without falling back to `pnpm add wrangler@<version>` at the monorepo root (which would fail with `ERR_PNPM_ADDING_TO_ROOT`)
+
+#### Scenario: New domain serves 一階 at /1st/ and 二階 at /2nd/
+
+- **GIVEN** the Cloudflare Pages workflow has succeeded for the latest `main`
+- **WHEN** a user opens `https://med-study-rpg.com/1st/` in a browser
+- **THEN** the 一階 app SHALL load and function identically to its GitHub Pages deploy
+- **AND** the same applies for `/2nd/` and the 二階 app
+
+#### Scenario: Dashboard GitHub integration is NOT used
+
+- **WHEN** `wrangler pages project list` is run against the production account
+- **THEN** the `med-study-rpg` project row SHALL show `Git Provider: No`
+- **AND** the CF dashboard SHALL NOT have a GitHub source connected to this project
+- **AND** the only mechanism that produces production deployments SHALL be either the GH Actions workflow OR an owner-triggered local `pnpm run deploy:cf` invocation
+
+### Requirement: Cloudflare Pages workflow uses minimum-required permissions and scoped CF API token
+
+The `deploy-cf-pages.yml` workflow SHALL declare the same `permissions:` and `concurrency:` blocks as `deploy-worker.yml`:
+
+- `permissions: { contents: read }` (for checkout only)
+- `concurrency: { group: deploy-cf-pages, cancel-in-progress: false }` (serializes deploys, doesn't kill mid-upload)
+
+The `CF_API_TOKEN` repo secret SHALL carry exactly the following Cloudflare API token permissions, shared with `deploy-worker.yml`:
+
+| Resource type | Resource | Permission | Used by |
+|---|---|---|---|
+| Account | Cloudflare Pages | Edit | `deploy-cf-pages.yml` (pages deploy) |
+| Account | Workers Scripts | Edit | `deploy-worker.yml` |
+| Account | Workers R2 Storage | Edit | `deploy-worker.yml` (R2 bucket bindings) |
+| User | User Details | Read | wrangler auth check (suppresses warnings) |
+| User | Memberships | Read | wrangler auth check (suppresses warnings) |
+
+The `CF_ACCOUNT_ID` repo secret SHALL be the same Cloudflare account ID used by `deploy-worker.yml` (a single Cloudflare account owns the Worker + the Pages project).
+
+If `CF_API_TOKEN` is regenerated, the maintainer SHALL re-create the token with the full permission set above. A token missing `Cloudflare Pages:Edit` SHALL fail the workflow with `Authentication error [code: 10000]` at the wrangler deploy step.
+
+#### Scenario: Token missing Pages:Edit fails the deploy step
+
+- **GIVEN** `CF_API_TOKEN` is set to a token without `Cloudflare Pages:Edit` permission
+- **WHEN** the `Deploy via Wrangler` step runs
+- **THEN** the wrangler API call to `/accounts/<id>/pages/projects/med-study-rpg` SHALL respond with HTTP error code 10000 (Authentication error)
+- **AND** the workflow run SHALL fail with `Action failed`
+- **AND** earlier steps in the same job (build 一階, build 二階, assemble dist-cf) SHALL be unaffected — they do not call the CF API
+
+#### Scenario: Successful run after token rotation with correct scope
+
+- **GIVEN** the maintainer has regenerated `CF_API_TOKEN` with the full permission set above
+- **WHEN** the workflow is re-run (via `Re-run all jobs` or a fresh push)
+- **THEN** all build steps SHALL pass
+- **AND** the wrangler deploy step SHALL succeed
+- **AND** the new deployment SHALL appear in `wrangler pages deployment list --project-name med-study-rpg` with the latest commit SHA in the `Source` column
+
+### Requirement: Local Cloudflare Pages deploy fallback via npm scripts
+
+The repository root `package.json` SHALL expose two npm scripts that allow the maintainer to deploy CF Pages from their local machine without going through GH Actions:
+
+- `pnpm run build:cf` — builds 一階 with `VITE_DEPLOY_BASE=/1st/`, builds 二階 with `VITE_DEPLOY_BASE=/2nd/` + `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com`, then runs `node scripts/build-cf-pages-dist.mjs` to assemble `dist-cf/`
+- `pnpm run deploy:cf` — runs `build:cf` then `wrangler pages deploy dist-cf --project-name med-study-rpg --branch main --commit-dirty=true`
+
+These scripts are the documented manual fallback for the following situations:
+
+1. GH Actions queue is backed up and a deploy is time-sensitive
+2. The maintainer wants to verify a build artifact locally before pushing
+3. The workflow itself is broken (e.g., during workflow refactor)
+
+The scripts SHALL use the maintainer's locally installed `wrangler` (typically via Homebrew). Drift between local wrangler version and the CI version (`cloudflare/sync-worker/package.json` devDep) is accepted because the deploy is a static-asset upload, not a runtime contract.
+
+#### Scenario: `pnpm run deploy:cf` produces a new CF Pages deployment
+
+- **GIVEN** the maintainer has authenticated `wrangler` locally (`wrangler whoami` returns the production account)
+- **WHEN** they run `pnpm run deploy:cf` from the repo root
+- **THEN** both apps SHALL build with the same env vars as the CI workflow
+- **AND** `dist-cf/` SHALL be assembled at the repo root
+- **AND** `wrangler pages deploy` SHALL upload the assembled output to the production CF Pages project
+- **AND** the new deployment SHALL appear in `wrangler pages deployment list` and `med-study-rpg.com/1st/` SHALL serve the freshly-built bundles
+
+#### Scenario: `pnpm run build:cf` runs without authentication
+
+- **WHEN** the maintainer runs `pnpm run build:cf` (without `deploy:`) on a machine where wrangler is not authenticated
+- **THEN** both app builds SHALL succeed
+- **AND** `dist-cf/` SHALL be assembled at the repo root
+- **AND** no CF API call SHALL be made
+
+### Requirement: SPA fallback via `_redirects` for Cloudflare Pages
+
+The merged `dist-cf/` output SHALL contain a `_redirects` file at its root with rules that route any sub-path of `/1st/` and `/2nd/` to the corresponding `index.html` with HTTP 200, enabling react-router BrowserRouter to handle client-side navigation.
+
+The minimum required rules:
+
+```
+/1st/*    /1st/index.html   200
+/2nd/*    /2nd/index.html   200
+```
+
+The root `/` SHALL serve the landing HTML directly (no rewrite needed; CF Pages serves `dist-cf/index.html` as the default root document).
+
+#### Scenario: Direct URL to nested route resolves on new domain
+
+- **WHEN** a user opens `https://med-study-rpg.com/1st/skills` directly in a new tab
+- **THEN** Cloudflare Pages SHALL serve `dist-cf/1st/index.html` with HTTP 200
+- **AND** react-router SHALL render the `Skills` route
+- **AND** the browser console SHALL NOT show any 404 errors for the page itself
+
+#### Scenario: F5 reload on nested route does not 404
+
+- **WHEN** a user navigates in-app to `https://med-study-rpg.com/2nd/dorm` and presses F5
+- **THEN** the same `index.html` SHALL be served and the `Dorm` route SHALL re-render
+- **AND** the user SHALL NOT see Cloudflare Pages' default 404 page
+
+#### Scenario: Unknown top-level path returns Cloudflare 404
+
+- **WHEN** a user opens `https://med-study-rpg.com/admin` (no match in `_redirects`)
+- **THEN** Cloudflare Pages SHALL return its default 404 response
+- **AND** the SPA fallback SHALL NOT inadvertently catch the request
+
+### Requirement: Vite `base` switches per deploy target via `VITE_DEPLOY_BASE`
+
+Each app's `vite.config.ts` SHALL read `process.env.VITE_DEPLOY_BASE` and fall back to its GitHub Pages default if the env var is unset:
+
+- `apps/medexam-tw/vite.config.ts`: `base: process.env.VITE_DEPLOY_BASE || '/study-rpg/'`
+- `apps/medexam2-hospital-tw/vite.config.ts`: `base: process.env.VITE_DEPLOY_BASE || '/study-rpg/hospital/'`
+
+This SHALL allow the same source tree to produce GitHub Pages and Cloudflare Pages builds without git-branch divergence.
+
+#### Scenario: GitHub Pages build keeps existing base
+
+- **WHEN** GitHub Pages workflow (`deploy.yml`) builds without setting `VITE_DEPLOY_BASE`
+- **THEN** 一階 SHALL build with `base: '/study-rpg/'`
+- **AND** 二階 SHALL build with `base: '/study-rpg/hospital/'`
+- **AND** the resulting dist SHALL deploy unchanged to GitHub Pages
+
+#### Scenario: Cloudflare Pages build switches to /1st/ and /2nd/
+
+- **WHEN** the Cloudflare Pages build command sets `VITE_DEPLOY_BASE=/1st/` for the 一階 build and `VITE_DEPLOY_BASE=/2nd/` for the 二階 build
+- **THEN** 一階 dist SHALL reference assets under `/1st/`
+- **AND** 二階 dist SHALL reference assets under `/2nd/`
+- **AND** the resulting dist SHALL serve correctly when assembled into `dist-cf/`
+
+#### Scenario: Hard-coded /study-rpg/ asset references replaced
+
+- **WHEN** the source tree contains any `<img src="/study-rpg/...">` or hard-coded `/study-rpg/` asset path used at runtime
+- **THEN** that reference SHALL be replaced with a Vite-base-aware pattern (`import.meta.env.BASE_URL + 'sprites/x.png'` or a `?url` import) OR paired with a base-aware runtime override (e.g. a runtime-injected `@font-face` block that ships alongside a kept-for-fallback static `@font-face` so browsers try both URLs and use whichever loads)
+- **AND** running `grep -r '"/study-rpg/' apps/*/src/` SHALL return only: (a) doc comments / strings used in comments, and (b) intentional fallback URLs that are paired with a base-aware override at runtime AND documented as such in code comments
+
+#### Scenario: Runtime base-aware override covers new deploy targets
+
+- **GIVEN** the source tree retains a hard-coded `/study-rpg/...` static asset URL paired with a runtime base-aware override
+- **WHEN** the app is built and served under a non-default base (e.g. `/1st/` or `/2nd/`)
+- **THEN** the runtime override SHALL inject the correct base-prefixed URL (e.g. via `import.meta.env.BASE_URL`)
+- **AND** the browser SHALL successfully load the asset from the new base path
+- **AND** the static fallback URL MAY 404 silently on the new domain; the runtime path is the source of truth
+
+### Requirement: `VITE_SYNC_WORKER_URL` switches per deploy target
+
+The Cloudflare Pages build SHALL set `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com` so clients on the new domain reach the Worker via its Custom Domain binding.
+
+The GitHub Pages workflow SHALL continue to set (or default to) `VITE_SYNC_WORKER_URL=https://study-rpg-sync-worker.tony85314.workers.dev` during the bake period. Both URLs resolve to the same Worker; this is purely a client-side origin/branding choice.
+
+#### Scenario: Clients on new domain talk to api.med-study-rpg.com
+
+- **GIVEN** a user is on `https://med-study-rpg.com/1st/` and authenticated
+- **WHEN** the sync engine pushes a bundle to R2
+- **THEN** the network request URL SHALL begin with `https://api.med-study-rpg.com/`
+- **AND** the Worker SHALL respond with HTTP 200 (or appropriate sync status)
+
+#### Scenario: Clients on GitHub Pages keep talking to workers.dev
+
+- **GIVEN** a user is on `https://fireman333.github.io/study-rpg/` and authenticated
+- **WHEN** the sync engine pushes a bundle to R2
+- **THEN** the network request URL SHALL begin with `https://study-rpg-sync-worker.tony85314.workers.dev/`
+- **AND** the Worker SHALL respond identically (same backend)
+
+### Requirement: Migration banner on GitHub Pages during bake
+
+Both apps SHALL render a migration banner only on GitHub Pages deploys, gated by `import.meta.env.VITE_DEPLOY_TARGET === 'gh-pages'`. The banner SHALL display:
+
+- A one-line announcement that the site is moving to `med-study-rpg.com`
+- A primary CTA linking to the corresponding new-domain URL (`https://med-study-rpg.com/1st/` for 一階, `/2nd/` for 二階)
+- A secondary CTA to export the user's data as JSON. Because the existing cloud Export hook from the `cloud-sync` capability's Export Account Data requirement requires sign-in and the migration banner must serve anonymous local-only users too, the banner SHALL ship a self-contained local Dexie snapshot exporter that works regardless of sign-in state. Authed users retain access to the cleaner cloud Export inside `SettingsPanel`; the banner CTA does not replace that path
+- A dismiss button persisting a versioned key in localStorage (e.g. `domain-migration-banner-dismissed-v1`; the key SHALL be distinct from other banner dismissal keys in the app — notably the R2 backend `migration-banner-dismiss-log` — to avoid collision)
+
+The GitHub Pages workflow (`.github/workflows/deploy.yml`) SHALL set `VITE_DEPLOY_TARGET=gh-pages` as a build-time env var. The Cloudflare Pages build SHALL NOT set this env var, so the banner SHALL be hidden on `med-study-rpg.com`.
+
+The banner component SHALL be named to avoid collision with the existing R2 backend `MigrationBanner` component (e.g. `DomainMigrationBanner`). Two banners SHALL coexist gracefully — both render top-of-viewport, both dismissible independently.
+
+#### Scenario: Banner appears on GitHub Pages 一階
+
+- **GIVEN** the GitHub Pages workflow built with `VITE_DEPLOY_TARGET=gh-pages`
+- **WHEN** a user opens `https://fireman333.github.io/study-rpg/`
+- **THEN** the migration banner SHALL render at the top of the layout
+- **AND** the primary CTA SHALL link to `https://med-study-rpg.com/1st/`
+- **AND** the secondary CTA SHALL trigger a JSON export of the user's local Dexie snapshot (works regardless of sign-in state)
+
+#### Scenario: Banner export CTA works for anonymous user
+
+- **GIVEN** a user opens GitHub Pages 一階 without signing in (anonymous play with only local Dexie data)
+- **WHEN** the user clicks the banner's "匯出本機 JSON" / Export CTA
+- **THEN** the app SHALL produce a downloadable JSON file containing the local Dexie snapshot (cloud-synced tables) tagged with `app: 'medexam-tw'` and the current `origin`
+- **AND** the export SHALL succeed without requiring sign-in
+- **AND** the user SHALL be able to import this JSON on the new domain (manual step; future bake-end change may add an in-app importer)
+
+#### Scenario: Banner hidden on Cloudflare Pages
+
+- **GIVEN** the Cloudflare Pages build did not set `VITE_DEPLOY_TARGET`
+- **WHEN** a user opens `https://med-study-rpg.com/1st/`
+- **THEN** no migration banner SHALL render
+- **AND** the app SHALL render its normal layout
+
+#### Scenario: Dismissed banner stays dismissed across reloads
+
+- **GIVEN** a user on GitHub Pages has clicked dismiss
+- **WHEN** the same user reloads the GitHub Pages URL within the same browser profile
+- **THEN** the banner SHALL NOT re-render
+- **AND** a localStorage flag SHALL be present at a versioned, banner-scoped key (e.g. `domain-migration-banner-dismissed-v1=true`); the exact key SHALL be distinct from other banner keys in the app to avoid collision
+
+### Requirement: Root landing page at `med-study-rpg.com/`
+
+The Cloudflare Pages site SHALL serve a minimal HTML landing page at the root (`dist-cf/index.html`). The page SHALL contain:
+
+- The project name (`med-study-rpg` or equivalent display name)
+- A one-sentence description of the project
+- Two prominent links/buttons: "一階國考" → `/1st/` and "二階國考經營" → `/2nd/`
+- A footer link to the project's source repository
+
+The landing page SHALL be plain HTML/CSS only — no React, no JavaScript framework, no build-time bundling beyond a file copy.
+
+The landing template SHALL live at `scripts/cf-landing-template.html` in the repository so its copy can be edited without rebuilding the apps.
+
+#### Scenario: Root URL serves the landing page
+
+- **WHEN** a user opens `https://med-study-rpg.com/` directly
+- **THEN** the Cloudflare Pages site SHALL respond with the static landing HTML
+- **AND** the browser SHALL NOT issue any failed asset requests (no missing CSS/images)
+
+#### Scenario: Landing page links go to /1st/ and /2nd/
+
+- **WHEN** a user clicks "一階國考" on the landing page
+- **THEN** the browser SHALL navigate to `https://med-study-rpg.com/1st/`
+- **AND** the 一階 app SHALL load normally
+
+#### Scenario: Landing edit does not require app rebuild
+
+- **WHEN** an owner edits `scripts/cf-landing-template.html` to update copy
+- **THEN** the next Cloudflare Pages build SHALL pick up the new copy via `scripts/build-cf-pages-dist.mjs`
+- **AND** no change to either `apps/medexam-tw/` or `apps/medexam2-hospital-tw/` SHALL be required
+

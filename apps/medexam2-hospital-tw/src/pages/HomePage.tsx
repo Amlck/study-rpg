@@ -21,6 +21,7 @@ import {
   incrementAffinity,
   type DoctorRow,
 } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
 import { attemptRoll, type RollOutcome } from '../services/recruitment'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
@@ -73,6 +74,8 @@ export function HomePage() {
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const allDoctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
+  // add-hospital-equipment-medexam2 (2026-05-24): T3 → T4 equipment gate display
+  const ownedEquipment = useLiveQuery(() => db.hospitalEquipment.toArray(), []) ?? []
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
@@ -171,6 +174,9 @@ export function HomePage() {
           <Link to="/leaderboard" className="nav-link">
             排名 →
           </Link>
+          <Link to="/achievements" className="nav-link">
+            成就 →
+          </Link>
         </div>
       </header>
 
@@ -203,7 +209,7 @@ export function HomePage() {
         return (
           <>
             <p className="home-tier-line">
-              醫院：<strong>{tier}</strong>
+              醫院：<strong>{tierLabel(tier)}</strong>
               {threshold !== null && next ? (
                 <>
                   {'　'}
@@ -211,7 +217,7 @@ export function HomePage() {
                   {' / '}
                   {threshold.toLocaleString('zh-TW')}
                   {' → '}
-                  {next})
+                  {tierLabel(next)})
                 </>
               ) : (
                 <> <EmojiIcon char="⭐" size={16} /> 已達頂峰</>
@@ -228,6 +234,15 @@ export function HomePage() {
                     {' 至少 1 位 P1'}
                   </>
                 )}
+              </p>
+            )}
+            {tier === '醫學中心' && (
+              <p className="home-tier-line home-tier-line--equipment">
+                T4 設備門檻：
+                <strong>
+                  {ownedEquipment.filter((e) => e.level >= 1).length} / 3
+                </strong>
+                {' 種設備已安裝'}
               </p>
             )}
           </>

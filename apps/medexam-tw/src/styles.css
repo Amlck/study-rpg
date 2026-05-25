@@ -2833,3 +2833,70 @@
   .sync-error-toast { max-width: calc(100vw - 16px); }
 }
 
+
+/* Domain migration banner (bake-period only — gated by VITE_DEPLOY_TARGET=gh-pages).
+   Distinct from .migration-banner (R2 backend migration). */
+.domain-migration-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Reserve 280px right padding so banner CTAs don't slide under the
+     position: fixed `.header-controls` chip (AuthButton + SyncStatusChip,
+     ~250px wide, anchored top-right with z-index 100). Without this the
+     dismiss button + Export CTA are hidden behind the auth chip on
+     desktop widths. */
+  padding: 10px 280px 10px 14px;
+  background: linear-gradient(90deg, #f3d35a 0%, #f6c84d 100%);
+  color: #2a1f00;
+  border-bottom: 1px solid #c89b1c;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.domain-migration-banner__msg {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.domain-migration-banner__msg strong {
+  font-weight: 700;
+}
+.domain-migration-banner__cta,
+.domain-migration-banner__export,
+.domain-migration-banner__dismiss {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #2a1f00;
+  background: rgba(255, 255, 255, 0.6);
+  color: #2a1f00;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.domain-migration-banner__cta:hover,
+.domain-migration-banner__export:hover,
+.domain-migration-banner__dismiss:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+.domain-migration-banner__cta {
+  font-weight: 600;
+}
+.domain-migration-banner__export:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.domain-migration-banner__dismiss {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.domain-migration-banner__error {
+  flex-basis: 100%;
+  color: #7a1a1a;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .domain-migration-banner { font-size: 13px; padding: 8px 12px; gap: 8px; }
+  .domain-migration-banner__msg { flex-basis: 100%; }
+}

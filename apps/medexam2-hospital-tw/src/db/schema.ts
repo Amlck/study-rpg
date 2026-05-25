@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { initialGachaStats, type GachaStats } from '@study-rpg/core'
+import { initialGachaStats, type GachaStats, type OwnedEquipmentRow } from '@study-rpg/core'
 import {
   RECRUITMENT_PITY_RULES,
   RECRUITMENT_WEIGHTS,
@@ -141,6 +141,15 @@ export interface GameCountersRow {
   erConsultActive?: ERConsultActiveState | null
   /** Per-tick countdown to next ER consult roll. Decrements each tick; rolls when ≤ 0. */
   erConsultTicksUntilRoll?: number
+  /**
+   * Current consecutive correct-quiz streak (resets to 0 on wrong answer).
+   * LWW sync (can decrease). MAX-tracked separately in
+   * `MonotonicCountersRow.maxQuizCorrectStreak`. Added v15 by
+   * `add-achievement-system`.
+   *
+   * Optional — pre-v15 saves omit; treat undefined as 0.
+   */
+  currentQuizCorrectStreak?: number
 }
 
 /**
@@ -185,6 +194,17 @@ export interface MonotonicCountersRow {
    * Optional: absent on rows created pre-v14; treated as 0 by tick loop.
    */
   lastEquipmentTicketStudyMinutes?: number
+  // ─── v15: add-achievement-system fields (all MAX-merge LWW) ─────────────
+  /** Cumulative doctors ever recruited via gacha (monotonic, MAX-merge). */
+  totalDoctorsRecruited?: number
+  /** Cumulative P1-tier doctors ever recruited (monotonic, MAX-merge). */
+  totalP1DoctorsRecruited?: number
+  /** Highest consecutive daily check-in streak ever observed (monotonic, MAX-merge). */
+  maxDailyStreak?: number
+  /** Total hospital tier upgrades performed (monotonic, MAX-merge). */
+  tierUpgradeCount?: number
+  /** Highest consecutive correct-quiz streak ever observed (monotonic, MAX-merge). */
+  maxQuizCorrectStreak?: number
 }
 
 /**
@@ -297,6 +317,11 @@ export interface QuestionHistoryRow {
   nextDueAt: number | null
   interval: number
   easeFactor: number
+  // Persistent "has this question ever been answered wrong" flag.
+  // Set true on first wrong answer in recordWrongAnswer; never unset.
+  // Merge semantics: monotonic-OR (NOT LWW) — see r2/tables.ts applyToLocal.
+  // Added in Dexie v17 (add-bookmarks-filters-and-wrong-history-medexam2).
+  everWrong?: boolean
 }
 
 export interface BookmarkRow {
@@ -339,6 +364,27 @@ export interface LeaderboardProfileRow {
   dismissed_at: number | null
   /** ms timestamp of last successful upsert; null = never pushed. */
   last_pushed_at: number | null
+  /**
+   * Achievement title chosen for display next to nickname on leaderboard.
+   * `null` = no title shown. Set via SettingsPanel selector after the player
+   * unlocks at least one title-granting achievement. Added v15 by
+   * `add-achievement-system`. Pre-v15 rows: undefined → treat as null.
+   */
+  selectedTitle?: string | null
+}
+
+/**
+ * Achievement unlock row — one per unlocked achievement (PK = catalog id).
+ * Synced via R2 m2 bundle only (NOT Supabase), mirror `LEADERBOARD_PROFILE`
+ * precedent (commit cfaaa32). Added v15 by `add-achievement-system`.
+ */
+export interface AchievementRow {
+  /** Catalog id (kebab-case, e.g. 'quiz-correct-500', 'subject-master-內科'). */
+  id: string
+  /** Epoch ms of when the player first crossed the predicate threshold. */
+  unlockedAt: number
+  /** True once the unlock toast / modal has been dismissed; drives unseen-badge dot. */
+  notificationShown: boolean
 }
 
 // v5 cloud-sync support tables — meta (migration choice/paused flags) +
@@ -410,6 +456,9 @@ export class HospitalDB extends Dexie {
   equipmentGachaStats!: EntityTable<GachaStatsRow, 'id'>
   equipmentMaterials!: EntityTable<EquipmentMaterialsRow, 'id'>
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
+  achievements!: EntityTable<AchievementRow, 'id'>
+  hospitalEquipment!: EntityTable<OwnedEquipmentRow, 'equipmentId'>
+
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -831,6 +880,99 @@ export class HospitalDB extends Dexie {
     // exactly one definition per version number.
     this.version(17).stores({
       leaderboardProfile: '&user_id',
+    })
+
+    // v15: add-achievement-system — local-only achievements table for
+    // unlock tracking. R2 m2 bundle passenger (per LEADERBOARD_PROFILE
+    // precedent, commit cfaaa32). NOT synced to Supabase. Schema-only
+    // upgrade — no row data to backfill; existing tables untouched.
+    this.version(15).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+      leaderboardProfile: '&user_id',
+      achievements: '&id, unlockedAt',
+    })
+
+    // v16: add-hospital-equipment-medexam2 — new hospitalEquipment table for
+    // 10 named equipment items with 3-level upgrade ladder. Schema-only
+    // upgrade — table starts empty for everyone, no migration step needed.
+    // Passenger of R2 m2 bundle (per achievements precedent in v15).
+    this.version(16).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt]',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+      leaderboardProfile: '&user_id',
+      achievements: '&id, unlockedAt',
+      hospitalEquipment: '&equipmentId, updatedAt',
+    })
+
+    // v17: add-bookmarks-filters-and-wrong-history-medexam2 — adds
+    // `everWrong` boolean to questionHistory + single-column index for the
+    // 「歷史曾錯」 sub-view query. No backfill — existing rows default to
+    // undefined/false; they migrate forward naturally on next answer write.
+    // R2 m2 bundle schema_version bumps 1 → 2 in lockstep (bundles.ts).
+    this.version(17).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt], everWrong',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+      leaderboardProfile: '&user_id',
+      achievements: '&id, unlockedAt',
+      hospitalEquipment: '&equipmentId, updatedAt',
     })
   }
 }

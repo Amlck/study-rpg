@@ -1,7 +1,8 @@
-// Hospital leaderboard page — Top 100 list + 4 filter tabs + my-rank chip.
+// Hospital leaderboard page — Top 100 list + 5 filter tabs + my-rank chip.
 //
 // Spec: openspec/changes/add-hospital-leaderboard/specs/hospital-leaderboard/spec.md
 //        §Requirement: Four filter tabs for ranking criteria
+//          (5th tab "correct" added by add-hospital-leaderboard-correct-count-filter)
 //        §Requirement: Top 100 list plus my-rank chip
 //        §Requirement: Hourly KV cache refresh (last-updated-at timestamp)
 //        §Requirement: Privacy and integrity disclosures (footer)
@@ -28,14 +29,18 @@ import {
 } from '@study-rpg/core'
 import { useAuth } from '../lib/auth/AuthContext'
 import { fetchLeaderboardSnapshot, upsertLeaderboard } from '../lib/leaderboard/api'
+import { BadgeSprite } from '../components/BadgeSprite'
+import type { AchievementCategory, AchievementTier } from '@study-rpg/core'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { LeaderboardOptInModal } from '../components/LeaderboardOptInModal'
+import { SurfaceHint } from '../components/SurfaceHint'
 import {
   getLeaderboardProfile,
   markDismissedForever,
   markOptedIn,
 } from '../services/leaderboard-profile'
 import { buildLeaderboardAttributes } from '../lib/sync/leaderboard'
+import { tierLabelFromNumber } from '../lib/tier-labels'
 
 type SnapshotState =
   | { kind: 'loading' }
@@ -151,6 +156,8 @@ export function LeaderboardPage() {
           </Link>
         </div>
       </header>
+
+      <SurfaceHint surfaceId="leaderboard" />
 
       <section className="filter-bar" aria-label="排名類別篩選">
         <div className="filter-bar__group">
@@ -292,7 +299,7 @@ interface ListProps {
   currentUserId: string | undefined
 }
 
-type CellKey = 'rank' | 'nickname' | 'tier' | 'reputation' | 'doctors' | 'study'
+type CellKey = 'rank' | 'nickname' | 'tier' | 'reputation' | 'doctors' | 'study' | 'correct'
 
 function isPrimaryFor(filter: LeaderboardFilter, cell: CellKey): boolean {
   switch (filter) {
@@ -304,6 +311,8 @@ function isPrimaryFor(filter: LeaderboardFilter, cell: CellKey): boolean {
       return cell === 'doctors'
     case 'study':
       return cell === 'study'
+    case 'correct':
+      return cell === 'correct'
   }
 }
 
@@ -321,7 +330,7 @@ const MEDAL_BY_RANK: Record<1 | 2 | 3, { char: string; title: string }> = {
 
 function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
   return (
-    <ol className="leaderboard-list" role="list">
+    <ol className="leaderboard-list" role="list" data-active-filter={activeFilter}>
       <li className="leaderboard-row leaderboard-row--header" role="row" aria-hidden="true">
         <span className={cellClass('rank', activeFilter)}>排名</span>
         <span className={cellClass('nickname', activeFilter)}>玩家</span>
@@ -329,6 +338,7 @@ function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
         <span className={cellClass('reputation', activeFilter)}>聲望</span>
         <span className={cellClass('doctors', activeFilter)}>醫師</span>
         <span className={cellClass('study', activeFilter)}>唸書</span>
+        <span className={cellClass('correct', activeFilter)}>答對</span>
       </li>
       {rows.map((row, idx) => {
         const rank = idx + 1
@@ -352,15 +362,92 @@ function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
                 <span className="leaderboard-rank-number">#{rank}</span>
               )}
             </span>
-            <span className={cellClass('nickname', activeFilter)}>{row.nickname}</span>
-            <span className={cellClass('tier', activeFilter)}>T{row.hospital_tier}</span>
+            <span className={cellClass('nickname', activeFilter)}>
+              <NicknameWithBadges
+                nickname={row.nickname}
+                badgesCsv={row.badges_csv}
+                subjectMasteryCount={row.subject_mastery_count}
+              />
+            </span>
+            <span className={cellClass('tier', activeFilter)}>{tierLabelFromNumber(row.hospital_tier)}</span>
             <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
             <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
             <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
+            <span className={cellClass('correct', activeFilter)}>{row.total_correct ?? 0}</span>
           </li>
         )
       })}
     </ol>
+  )
+}
+
+// ─── Badge inline renderer (per add-achievement-system, hospital-leaderboard spec) ──
+
+const CATEGORY_ORDER: readonly AchievementCategory[] = [
+  'study',
+  'quiz',
+  'recruit',
+  'hospital',
+  'fortune',
+  'hidden',
+]
+
+function parseBadgesCsv(
+  csv: string | undefined,
+): Array<{ category: AchievementCategory; tier: AchievementTier }> {
+  if (!csv) return []
+  const result: Array<{ category: AchievementCategory; tier: AchievementTier }> = []
+  for (const pair of csv.split(',')) {
+    const [cat, tier] = pair.split(':')
+    if (!cat || !tier) continue
+    if (!CATEGORY_ORDER.includes(cat as AchievementCategory)) continue
+    if (!['P1', 'P2', 'P3', 'P4'].includes(tier)) continue
+    result.push({ category: cat as AchievementCategory, tier: tier as AchievementTier })
+  }
+  // Sort to match CATEGORY_ORDER for stable visual layout
+  result.sort(
+    (a, b) =>
+      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category),
+  )
+  return result
+}
+
+function NicknameWithBadges({
+  nickname,
+  badgesCsv,
+  subjectMasteryCount,
+}: {
+  nickname: string
+  badgesCsv?: string
+  subjectMasteryCount?: number
+}) {
+  const badges = parseBadgesCsv(badgesCsv)
+  const subjectCount = subjectMasteryCount ?? 0
+  return (
+    <span className="nickname-with-badges">
+      <span className="nickname-with-badges__name">{nickname}</span>
+      {badges.length > 0 && (
+        <span className="nickname-with-badges__badges" aria-hidden={false}>
+          {badges.map((b) => (
+            <BadgeSprite
+              key={`${b.category}:${b.tier}`}
+              category={b.category}
+              tier={b.tier}
+              size={20}
+            />
+          ))}
+        </span>
+      )}
+      {subjectCount > 0 && (
+        <span
+          className="nickname-with-badges__subject-chip"
+          data-tooltip={`已寫完 ${subjectCount} 科`}
+          aria-label={`科別精通 ${subjectCount} / 14`}
+        >
+          🩺 {subjectCount}/14
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -398,6 +485,7 @@ function MyRowSticky({ rows, activeFilter, currentUserId }: ListProps) {
       className="leaderboard-row leaderboard-row--me leaderboard-row--me-sticky"
       role="presentation"
       aria-hidden="true"
+      data-active-filter={activeFilter}
     >
       <span className={cellClass('rank', activeFilter)}>
         {medal ? (
@@ -406,11 +494,18 @@ function MyRowSticky({ rows, activeFilter, currentUserId }: ListProps) {
           <span className="leaderboard-rank-number">#{rank}</span>
         )}
       </span>
-      <span className={cellClass('nickname', activeFilter)}>{row.nickname}</span>
-      <span className={cellClass('tier', activeFilter)}>T{row.hospital_tier}</span>
+      <span className={cellClass('nickname', activeFilter)}>
+        <NicknameWithBadges
+          nickname={row.nickname}
+          badgesCsv={row.badges_csv}
+          subjectMasteryCount={row.subject_mastery_count}
+        />
+      </span>
+      <span className={cellClass('tier', activeFilter)}>{tierLabelFromNumber(row.hospital_tier)}</span>
       <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
       <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
       <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
+      <span className={cellClass('correct', activeFilter)}>{row.total_correct ?? 0}</span>
     </div>
   )
 }

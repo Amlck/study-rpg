@@ -1,0 +1,150 @@
+## ADDED Requirements
+
+### Requirement: Per-rarity reveal modal SHALL dispatch animation sequences keyed off the `rarity` prop
+
+The library SHALL export a `<RarityRevealModal>` component that consumes a `rarity: 'P1' | 'P2' | 'P3' | 'P4' | 'P5'` prop and dispatches into one of five animation sequences whose total wall time matches `RARITY_TIMINGS[rarity].total` ms. P5 / P4 are snappy (≤ 400ms) for high-frequency reveals; P3 sits at ~600ms; P2 adds a rim shimmer at ~1.2s; P1 is a 2.8s cinematic with envelope → flip → glow → particle → centered hold stages.
+
+The component SHALL render a skip button whenever the rarity's total wall time exceeds `SKIP_THRESHOLD_MS` (1000ms by default), and SHALL fire its `onComplete` callback when the sequence naturally finishes OR when the user clicks skip. This dual behavior lets gacha consumers run batch 10-pulls with predictable timing while letting individual reveals stay cinematic.
+
+#### Scenario: P5 rarity triggers snappy reveal within 300ms
+
+- **GIVEN** a consumer needs to reveal a P5-rarity item
+- **WHEN** the consumer mounts `<RarityRevealModal rarity="P5" onComplete={...} />`
+- **THEN** the component SHALL complete its reveal sequence within 300ms total wall time
+- **AND** the component SHALL NOT render a skip button (because total < `SKIP_THRESHOLD_MS`)
+- **AND** `onComplete` SHALL fire after the sequence finishes
+
+#### Scenario: P1 rarity triggers cinematic 2.8s reveal with skip button
+
+- **GIVEN** a consumer needs to reveal a P1-rarity item
+- **WHEN** the consumer mounts `<RarityRevealModal rarity="P1" onComplete={...} />`
+- **THEN** the component SHALL run an envelope → flip → glow → particle → centered sequence per `RARITY_TIMINGS.P1` ms breakdown
+- **AND** the component SHALL render a skip button at 1000ms (because total > `SKIP_THRESHOLD_MS`)
+- **AND** clicking skip SHALL immediately advance to the centered hold state and fire `onComplete`
+
+#### Scenario: Reduced-motion preference falls back to fade-only reveal
+
+- **GIVEN** the user has set OS preference `prefers-reduced-motion: reduce`
+- **WHEN** the consumer mounts `<RarityRevealModal rarity="P1" onComplete={...} />`
+- **THEN** the component SHALL skip the particle burst and shake / parallax variants
+- **AND** the component SHALL still perform a fade + scale transition so the state change remains visible
+- **AND** `onComplete` SHALL fire no later than the original `RARITY_TIMINGS.P1.total` ms
+
+### Requirement: P1 achievement unlock modal SHALL render full-screen with staggered children and dismiss-required interaction
+
+The library SHALL export an `<AchievementUnlockModal>` component specifically for P1 鑽石-tier achievement reveals. The modal SHALL render a full-screen backdrop, stagger its children (tier chip → badge → title → description → reward → CTA) by ≥ 80ms per sibling using Framer Motion variants, and require explicit dismiss via the CTA button (no auto-timeout).
+
+P2 / P3 / P4 achievements are intentionally NOT covered by this modal — they SHOULD use the generic `<Toast>` primitive wrapped with achievement-specific content. This separation keeps the modal a P1-only "wow moment" specialist while letting lower tiers stream by without blocking the UI.
+
+#### Scenario: P1 achievement modal renders full-screen with staggered children
+
+- **GIVEN** a P1 achievement has just unlocked
+- **WHEN** the consumer mounts `<AchievementUnlockModal achievement={...} onDismiss={...} />`
+- **THEN** the modal SHALL render a full-screen backdrop overlay
+- **AND** children (tier chip → badge → title → description → reward → CTA) SHALL enter with stagger ≥ 80ms between siblings
+- **AND** the modal SHALL require explicit dismiss (no auto-timeout)
+- **AND** clicking the CTA SHALL fire `onDismiss`
+
+#### Scenario: Reduced-motion drops stagger but keeps fade
+
+- **GIVEN** the user has set OS preference `prefers-reduced-motion: reduce`
+- **WHEN** the consumer mounts `<AchievementUnlockModal achievement={...} onDismiss={...} />`
+- **THEN** all children SHALL enter simultaneously with a single 200ms opacity fade
+- **AND** the visual hierarchy (badge centered, title beneath, CTA at bottom) SHALL be preserved
+- **AND** dismiss-required behavior SHALL be unchanged
+
+### Requirement: Generic Toast primitive SHALL support multiple variants, auto-dismiss, and arbitrary children for capability composition
+
+The library SHALL export a `<Toast>` primitive that fixed-positions itself at top-center, accepts a `variant: 'celebratory' | 'info' | 'warning'` prop for visual styling, slides in from above on mount, and auto-dismisses after `TOAST_AUTO_DISMISS_MS` (8000ms) by firing its `onDismiss` callback.
+
+The primitive SHALL accept arbitrary `children` so that future capability changes can compose their own domain-specific copy without forking the component — connectome's existing `SynapseFormationToast` (currently inline) can later refactor to wrap this primitive; achievement P2-P4 unlocks can wrap with badge + name; leaderboard rank-up can wrap with rank delta; etc.
+
+#### Scenario: Celebratory toast slides in from top and auto-dismisses
+
+- **GIVEN** a consumer wants to surface a positive event (e.g., synapse formation, achievement unlock)
+- **WHEN** the consumer mounts `<Toast variant="celebratory" onDismiss={...}>...</Toast>`
+- **THEN** the toast SHALL slide from y=-100 to y=0 over 300ms
+- **AND** the toast SHALL auto-dismiss after `TOAST_AUTO_DISMISS_MS` (8000ms) by firing `onDismiss`
+- **AND** clicking the close button SHALL immediately fire `onDismiss`
+
+#### Scenario: Reduced-motion uses fade-in instead of slide
+
+- **GIVEN** the user has set OS preference `prefers-reduced-motion: reduce`
+- **WHEN** the consumer mounts `<Toast variant="celebratory" onDismiss={...}>...</Toast>`
+- **THEN** the toast SHALL enter with a 200ms opacity fade
+- **AND** no transform animation SHALL run
+- **AND** auto-dismiss behavior SHALL be unchanged
+
+#### Scenario: Toast accepts arbitrary children for consumer composition
+
+- **GIVEN** a future capability change (connectome refactor / achievement P2-P4 / leaderboard rank-up) needs a domain-specific toast
+- **WHEN** the consumer passes `<Toast>{customContent}</Toast>`
+- **THEN** the toast SHALL render the custom content in its body slot
+- **AND** the consumer SHALL be free to wrap with capability-specific copy without forking the primitive
+
+### Requirement: `useRespectsReducedMotion` hook SHALL surface system a11y preference and drive soft-mode degradation across all primitives
+
+The library SHALL export a `useRespectsReducedMotion()` React hook that returns the current `prefers-reduced-motion` state via `window.matchMedia('(prefers-reduced-motion: reduce)')`. The hook SHALL be SSR-safe (returns `false` when `window` is undefined) and SHALL update live when the user toggles their OS preference mid-session (via `matchMedia.addEventListener('change')`).
+
+All motion primitives in this library SHALL consult this hook and degrade to "soft mode" when it returns `true`: particle bursts, shake, parallax, and large transforms SHALL be removed, but fade and small scale transitions SHALL be retained so that state changes remain visible. This follows WCAG 2.1 guidance to preserve visual cues for users who otherwise might miss silent state transitions.
+
+#### Scenario: Hook returns false when user has no preference
+
+- **GIVEN** the OS has no `prefers-reduced-motion` preference set
+- **WHEN** a component calls `useRespectsReducedMotion()`
+- **THEN** the hook SHALL return `false`
+- **AND** motion primitives SHALL run their full animation variant
+
+#### Scenario: Hook updates live on system setting change
+
+- **GIVEN** a component is currently rendered and consuming `useRespectsReducedMotion()`
+- **WHEN** the user toggles their OS `prefers-reduced-motion` preference mid-session
+- **THEN** the hook SHALL re-render its consumers with the new value
+- **AND** subsequently-mounted motion primitives SHALL use the appropriate variant
+
+#### Scenario: Reduced-motion preserves visual state-change cues
+
+- **GIVEN** `useRespectsReducedMotion()` returns `true`
+- **WHEN** any motion primitive renders
+- **THEN** modals SHALL still fade-in (not jump-cut to visible)
+- **AND** toasts SHALL still appear (not silent)
+- **AND** `<NumberTickUp>` SHALL display the final value within 1 frame (no animated count, but value still updates)
+
+### Requirement: Per-rarity timing tokens SHALL be exported as public constants for downstream batch UX prediction
+
+The library SHALL export `RARITY_TIMINGS` (per-rarity ms breakdown), `SKIP_THRESHOLD_MS` (skip button threshold, default 1000ms), and `TOAST_AUTO_DISMISS_MS` (toast auto-dismiss timeout, default 8000ms) as named TypeScript `const` exports.
+
+These constants exist so that future capability consumers (gacha batch UX, achievement queue rate-limiter, leaderboard rank-up cooldown) can predict animation duration without re-implementing the timing logic — e.g., a gacha 10-pull worst-case (all P1) is computable as `RARITY_TIMINGS.P1.total * 10`, letting the consumer decide whether to expose a "skip all" affordance.
+
+#### Scenario: Consumer reads P1 total to budget batch wall time
+
+- **GIVEN** a future gacha consumer is rendering a 10-pull with worst-case all-P1 results
+- **WHEN** the consumer needs to estimate batch duration
+- **THEN** the consumer SHALL compute `RARITY_TIMINGS.P1.total * 10` = 28000ms
+- **AND** the consumer SHALL decide whether to expose a "skip all" button accordingly
+
+#### Scenario: Consumer aligns dismiss UX with skip threshold
+
+- **GIVEN** a consumer renders a custom rarity-aware modal where total > `SKIP_THRESHOLD_MS`
+- **WHEN** the consumer designs its skip-button placement
+- **THEN** the consumer SHALL match the convention used by built-in `<RarityRevealModal>` for visual consistency
+
+### Requirement: Self-verify `/motion-demo` route SHALL trigger each exported primitive in isolation for apply-time verification
+
+The library SHALL provide a `/motion-demo` route registered in `apps/neurons-tw/src/App.tsx` `<Routes>` (which `add-connectome-collection` already established as a `<BrowserRouter>` + `<Routes>` wrapper). The route SHALL render trigger buttons covering every exported primitive: Toast (one button), NumberTickUp (one button, demonstrating 0→100 count-up), RarityRevealModal (five buttons, one per rarity P1–P5), and AchievementUnlockModal (one button with mock P1 achievement).
+
+This demo enables the change to be verified end-to-end during `/opsx:apply` without requiring any future capability (gacha / achievement / leaderboard) to ship first. The route SHALL survive F5 reload as a SPA route both in dev (Vite SPA fallback) and production (Cloudflare Pages SPA fallback, post `add-neurons-deploy`).
+
+#### Scenario: Demo route lists all exported components
+
+- **GIVEN** a developer wants to verify motion primitives in isolation
+- **WHEN** the developer navigates to `/motion-demo`
+- **THEN** the page SHALL render trigger buttons for Toast / NumberTickUp / RarityRevealModal × 5 rarities / AchievementUnlockModal
+- **AND** clicking each button SHALL trigger the corresponding primitive in isolation
+
+#### Scenario: Demo route survives F5 reload as a SPA route
+
+- **GIVEN** the developer is viewing `/motion-demo`
+- **WHEN** the developer reloads the browser
+- **THEN** the page SHALL re-render without a 404 in dev mode (Vite dev server SPA fallback)
+- **AND** the page SHALL re-render without a 404 in production deploy (post `add-neurons-deploy`, Cloudflare Pages SPA fallback)

@@ -9,9 +9,11 @@
  * fallback for emergent confusion. Modal can be opened from any route.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { TIER_UPGRADE_THRESHOLDS } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
+import { snapshotLocalToBackup } from '../lib/sync/migration'
 import { BugReportModal } from './BugReportModal'
 import { EmojiIcon } from './EmojiIcon'
 import {
@@ -32,13 +34,16 @@ interface AccordionSection {
 
 // Sourced from TIER_UPGRADE_THRESHOLDS so future recalibrations propagate
 // automatically — see `fix-helpmenu-copy-stale` (2026-05-19).
-const tierUpgradeBody = `升級不只看聲望，還要科別多樣性。診所→區域醫院：${(
+// add-hospital-equipment-medexam2 (2026-05-24): T3 → T4 third condition added
+// (≥ 3 unique equipment). T3 threshold auto-displays new 300k value since this
+// pulls from TIER_UPGRADE_THRESHOLDS.醫學中心 (bumped 150_000 → 300_000).
+const tierUpgradeBody = `升級不只看聲望，還要科別多樣性。${tierLabel('診所')}（診所）→ ${tierLabel('區域醫院')}（區域醫院）：${(
   TIER_UPGRADE_THRESHOLDS.診所! / 1000
-).toFixed(0)}k 聲望 + 5 不同科別；區域→醫學中心：${(
+).toFixed(0)}k 聲望 + 5 不同科別；${tierLabel('區域醫院')} → ${tierLabel('醫學中心')}（醫學中心）：${(
   TIER_UPGRADE_THRESHOLDS.區域醫院! / 1000
-).toFixed(0)}k + 8 P3+ 不同科別；醫學中心→國家級：${(
+).toFixed(0)}k + 8 P3+ 不同科別；${tierLabel('醫學中心')} → ${tierLabel('國家級教學醫院')}（國家級教學醫院）：${(
   TIER_UPGRADE_THRESHOLDS.醫學中心! / 1000
-).toFixed(0)}k + 10 P2+ + 至少 1 位 P1。`
+).toFixed(0)}k + 10 P2+ + 至少 1 位 P1 + 安裝 3 種以上設備。`
 
 const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
   {
@@ -48,6 +53,16 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     body: [
       '兩個進帳管道：寫題答對直接賺營收/聲望（依 tier 與夥伴醫師同科加成，session 開不開都一樣）；開「📖 唸書」session 期間，醫師看患者的 idle 收入（throughput）會有 1.5× 加成（薪水照舊全額）。不開 session 沒 idle 進帳（tick 不跑），但寫題照常賺錢。',
       '離開分頁會自動暫停、回到分頁自動繼續；手動暫停則需主動點「繼續唸書」。累積唸書時間（min）會雲端同步並跨裝置累加；按「重置此帳號進度」或「使用雲端覆蓋本機」會一併清空。',
+    ],
+  },
+  {
+    id: 'bookmarks',
+    icon: '📚',
+    title: '我的題目（⭐ 收藏 + ❌ 錯題）',
+    body: [
+      '答題畫面右上的「⭐」可以把題目加入手動收藏；首頁「📚 我的題目」進去可以看「⭐ 手動收藏」跟「❌ 錯題」兩個 tab。',
+      '錯題 tab 會自動列出所有答錯的題目（不需手動操作）；手動收藏 tab 適合標記想再看的題目（例：詳解很精彩、考點冷門）。',
+      '兩個 tab 都可以匯出 Markdown 給 RemNote / Anki 等外部工具加工複習。⭐ 收藏會雲端同步、跨裝置一致。',
     ],
   },
   {
@@ -93,7 +108,18 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     title: '設施升級 + 房間擴建',
     body: [
       '在「醫院」頁面點任一房間 → modal 內有「升級設施」按鈕。Lv.1 → Lv.5 共 4 階，每階產能乘數 1.0→3.0。Cost ladder：10K / 50K / 200K / 1M。',
-      '房間擴建：區域醫院 tier 開始解鎖，每種房型可加 2-3 間 extra（門診 +3 / 手術房 +2 / 病房 +2）。',
+      `房間擴建：${tierLabel('區域醫院')} tier 開始解鎖，每種房型可加 2-3 間 extra（門診 +3 / 手術房 +2 / 病房 +2）。`,
+    ],
+  },
+  {
+    id: 'equipment',
+    icon: '🩻',
+    title: '醫院設備 — 10 件設備 × 3 級',
+    body: [
+      '在「醫院」頁面下方點任一設備（CT / MRI / 內視鏡 / 達文西 / 心導管室 / PET-CT / LINAC / ECMO / 複合式手術房 / NGS）→ 花營收購買 L1，再各花一筆升到 L2、L3。L1 全買約 24M、全 L3 約 244M。',
+      '每級加成有兩條：「**聲望**」加成全院聲望進帳（含答題、急診照會、特殊事件 emergency shift 獎勵），「**看診效率**」加成 idle 看診的營收 + 被動聲望（throughput multiplier — 每分鐘看的病患變多，所以錢跟聲望都同步多）。',
+      '兩條都是 additive — 例：擁 5 件 L3 + 5 件 L1 → +40% 聲望 / +70% 看診效率。L1/L2/L3 加成數值：聲望 +1% / +3% / +7%；看診效率 +2% / +5% / +12%。',
+      '設備也是升上「國家級教學醫院」的第 3 個條件 — 必須安裝 ≥ 3 件不同設備（任何 level）。',
     ],
   },
   {
@@ -106,12 +132,34 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'events',
+    icon: '⚡',
+    title: '特殊事件（區域醫院+ 解鎖）',
+    body: [
+      '升上區域醫院後，session 期間每分鐘有機率隨機觸發事件。正向：VIP 病人（接待 → 看診效率 ×2 持續 10 分鐘）/ 急診加開（+5K 營收 +500 聲望）/ 學會獎項（直接 +rep toast）。',
+      '負向：醫療糾紛（modal，可選「私下和解」付營收或「接受懲處」扣 5K 聲望；24 小時內沒處理會自動扣聲望）/ 負面新聞 / 學會質疑（toast，直接扣 1K-10K 聲望）。',
+      '混合：醫療評鑑（醫學中心+ 才會出現，70% 通過 → 大量加 rep；30% 失敗 → 扣 rep）。事件之間有 5 分鐘冷卻，不會連環跳。',
+    ],
+  },
+  {
     id: 'fate-cards',
     icon: '🎴',
     title: '命運卡',
     body: [
-      '消耗 reputation 抽 4 階卡包（普通 / 稀有 / 史詩 / 傳奇）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
-      '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward。',
+      '消耗 reputation 抽 4 階卡包（普通 1k / 稀有 10k / 史詩 50k / 傳奇 300k）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
+      '傳奇 300k = 醫學中心 → 國家級教學醫院升級門檻：跨過 T3→T4 那一刻通常已經湊夠一張傳奇，可直接抽指定 P2 醫師回頭補滿剛剛達成的 10 distinct P2+ diversification gate。',
+      '純獎勵 tier：史詩 + 傳奇皆 0% 衰運（pure positive）；普通 + 稀有 仍保留 5% 衰運機率，給低成本「樂透感」。',
+      '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward（史詩 / 傳奇 因為 0% 衰運，自然不會觸發保底）。',
+    ],
+  },
+  {
+    id: 'targeted-ticket',
+    icon: '🎯',
+    title: '指定抽券（命運卡掉落 → 指派科別）',
+    body: [
+      '從史詩 / 傳奇命運卡有機率抽到「指定 PN 抽券」（P3 / P2 / P1 三種）— 可選一個已解鎖的科別 banner，下次招募保證該科指定 rarity 以上的醫師。',
+      '抽到時跑流程：先選科別 → 券變 assigned 狀態 → 到「招募」頁面對應科別 banner 點「使用指定券」消耗。FateCardPage 上方有「N 張待指派」chip 可隨時點開重啟流程。',
+      '未指派的指定券會一直存在等你決定；指派後不能改科別，但消耗前還沒抽就可丟著。',
     ],
   },
   {
@@ -162,12 +210,32 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     ],
   },
   {
+    id: 'data-import',
+    icon: '📥',
+    title: '跨網域搬遷 — 匯入本機 JSON',
+    body: [
+      '從舊網址（fireman333.github.io/study-rpg/hospital/）的搬遷公告匯出的本機 JSON 可以在這裡匯入到新網址。本機 IndexedDB 是 per-origin 的、不會自動跟著搬遷，需要這個手動匯入步驟。',
+      '匯入會覆寫本機所有醫院 sync 資料（19 個表 — tier / 收益 / 聲望 / 醫師 / 答題記錄 / 命運卡 / SRS / 收藏 / 排行榜 profile 等）。匯入前會先快照到 localBackup 安全網（但這個安全網只包含 11 個核心表，非完整覆蓋）。',
+    ],
+  },
+  {
     id: 'account-reset',
     icon: '♻',
     title: '重置此帳號進度',
     body: [
       '想重新開始一份乾淨的存檔但不想登出 Google 帳號？這個動作會清掉這個帳號的雲端與本地遊戲資料（醫院經營 tier / 收益 / 聲望、醫師名冊、答題紀錄、命運卡、SRS 排程、收藏題目），但保留你的 Google 登入。',
       '本機會先快照到 localBackup 安全網（保險），但雲端 delete 後無法恢復。下方按鈕會先彈確認，再要你輸入 RESET 二次確認才執行。',
+    ],
+  },
+  {
+    id: 'achievements',
+    icon: '🏆',
+    title: '成就系統 — 4 tier 像素勳章',
+    body: [
+      '7 大類別（學習 / 答題 / 招募 / 經營 / 時運 / 隱藏 / 科別精通） × 4 tier（P1 💎 鑽石 / P2 🥇 金 / P3 🥈 銀 / P4 🥉 銅）。共 ~42 條成就。',
+      'P1 鑽石需「composite 條件」（量 × 質 / 量 × 持續 / 量 × 廣度，e.g.「答對 3000 題 + 整體 accuracy ≥ 80%」），不是每個人都拿得到。P4 銅 一週內就能拿到。',
+      '14 科精通需該科 100% 全寫完（內科 1306 題 / 外科 1154 題 ... 麻醉科 192 題）— 速通玩家（1 個月破關）拿不到任何科別勳章；慢通玩家（6 個月）才能 14 科都解。',
+      '解鎖會跳通知（P4-P2 為角落 toast、P1 為全屏揭示）。「成就」分頁可看完整列表 + 篩選；解鎖的稱號可在排行榜設定區挑選顯示。',
     ],
   },
 ])
@@ -191,6 +259,143 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
   const [fontMode, setFontModeState] = useState<FontMode | null>(null)
   const [accountResetMsg, setAccountResetMsg] = useState<string | null>(null)
   const [accountResetting, setAccountResetting] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+
+  function triggerImport(): void {
+    const input = importInputRef.current
+    if (!input) return
+    input.value = ''
+    input.click()
+  }
+
+  async function handleImportFile(file: File): Promise<void> {
+    setImportMsg(null)
+    setImporting(true)
+    try {
+      const text = await file.text()
+      let payload: Record<string, unknown>
+      try {
+        payload = JSON.parse(text) as Record<string, unknown>
+      } catch {
+        throw new Error('檔案不是合法 JSON')
+      }
+      if (payload.schema_version !== 'local-bake-export-v1') {
+        throw new Error(`不支援的 schema 版本：${String(payload.schema_version ?? '未知')}`)
+      }
+      if (payload.app !== 'medexam2-hospital-tw') {
+        throw new Error(`此 JSON 是給 ${String(payload.app ?? '未知 app')} 用的，無法匯入二階`)
+      }
+      const ok = window.confirm(
+        '⚠ 匯入會覆寫本機所有 19 個醫院 sync 表（聲望 / 醫師 / 答題 / 命運卡 / SRS / 收藏 等）。\n\n' +
+          '匯入前會先快照 localBackup 安全網（但只覆蓋 11 個核心表）。\n' +
+          '建議在乾淨裝置或先匯出當前資料後再匯入。\n\n' +
+          '確定要匯入嗎？',
+      )
+      if (!ok) {
+        setImportMsg('已取消')
+        return
+      }
+      const db = getHospitalDB()
+      await snapshotLocalToBackup(db, 'anonymous-import', 'before-domain-migration-import')
+      await db.transaction(
+        'rw',
+        [
+          db.affinity,
+          db.doctors,
+          db.gachaStats,
+          db.tickets,
+          db.rooms,
+          db.gameCounters,
+          db.mastery,
+          db.questionHistory,
+          db.bookmarks,
+          db.monotonicCounters,
+          db.trainingHistory,
+          db.eventLog,
+          db.fateCardHistory,
+          db.retirementLog,
+          db.targetedTickets,
+          db.targetedTicketHistory,
+          db.erConsultLog,
+          db.leaderboardProfile,
+          db.bannerUnlockBonusLog,
+        ],
+        async () => {
+          await Promise.all([
+            db.affinity.clear(),
+            db.doctors.clear(),
+            db.gachaStats.clear(),
+            db.tickets.clear(),
+            db.rooms.clear(),
+            db.gameCounters.clear(),
+            db.mastery.clear(),
+            db.questionHistory.clear(),
+            db.bookmarks.clear(),
+            db.monotonicCounters.clear(),
+            db.trainingHistory.clear(),
+            db.eventLog.clear(),
+            db.fateCardHistory.clear(),
+            db.retirementLog.clear(),
+            db.targetedTickets.clear(),
+            db.targetedTicketHistory.clear(),
+            db.erConsultLog.clear(),
+            db.leaderboardProfile.clear(),
+            db.bannerUnlockBonusLog.clear(),
+          ])
+          const rows = (key: string): unknown[] | null => {
+            const v = payload[key]
+            return Array.isArray(v) && v.length > 0 ? v : null
+          }
+          const affinityRows = rows('affinity')
+          if (affinityRows) await db.affinity.bulkPut(affinityRows as Parameters<typeof db.affinity.bulkPut>[0])
+          const doctorsRows = rows('doctors')
+          if (doctorsRows) await db.doctors.bulkPut(doctorsRows as Parameters<typeof db.doctors.bulkPut>[0])
+          const gachaStatsRows = rows('gachaStats')
+          if (gachaStatsRows) await db.gachaStats.bulkPut(gachaStatsRows as Parameters<typeof db.gachaStats.bulkPut>[0])
+          const ticketsRows = rows('tickets')
+          if (ticketsRows) await db.tickets.bulkPut(ticketsRows as Parameters<typeof db.tickets.bulkPut>[0])
+          const roomsRows = rows('rooms')
+          if (roomsRows) await db.rooms.bulkPut(roomsRows as Parameters<typeof db.rooms.bulkPut>[0])
+          const gameCountersRows = rows('gameCounters')
+          if (gameCountersRows) await db.gameCounters.bulkPut(gameCountersRows as Parameters<typeof db.gameCounters.bulkPut>[0])
+          const masteryRows = rows('mastery')
+          if (masteryRows) await db.mastery.bulkPut(masteryRows as Parameters<typeof db.mastery.bulkPut>[0])
+          const questionHistoryRows = rows('questionHistory')
+          if (questionHistoryRows) await db.questionHistory.bulkPut(questionHistoryRows as Parameters<typeof db.questionHistory.bulkPut>[0])
+          const bookmarksRows = rows('bookmarks')
+          if (bookmarksRows) await db.bookmarks.bulkPut(bookmarksRows as Parameters<typeof db.bookmarks.bulkPut>[0])
+          const monotonicCountersRows = rows('monotonicCounters')
+          if (monotonicCountersRows) await db.monotonicCounters.bulkPut(monotonicCountersRows as Parameters<typeof db.monotonicCounters.bulkPut>[0])
+          const trainingHistoryRows = rows('trainingHistory')
+          if (trainingHistoryRows) await db.trainingHistory.bulkPut(trainingHistoryRows as Parameters<typeof db.trainingHistory.bulkPut>[0])
+          const eventLogRows = rows('eventLog')
+          if (eventLogRows) await db.eventLog.bulkPut(eventLogRows as Parameters<typeof db.eventLog.bulkPut>[0])
+          const fateCardHistoryRows = rows('fateCardHistory')
+          if (fateCardHistoryRows) await db.fateCardHistory.bulkPut(fateCardHistoryRows as Parameters<typeof db.fateCardHistory.bulkPut>[0])
+          const retirementLogRows = rows('retirementLog')
+          if (retirementLogRows) await db.retirementLog.bulkPut(retirementLogRows as Parameters<typeof db.retirementLog.bulkPut>[0])
+          const targetedTicketsRows = rows('targetedTickets')
+          if (targetedTicketsRows) await db.targetedTickets.bulkPut(targetedTicketsRows as Parameters<typeof db.targetedTickets.bulkPut>[0])
+          const targetedTicketHistoryRows = rows('targetedTicketHistory')
+          if (targetedTicketHistoryRows) await db.targetedTicketHistory.bulkPut(targetedTicketHistoryRows as Parameters<typeof db.targetedTicketHistory.bulkPut>[0])
+          const erConsultLogRows = rows('erConsultLog')
+          if (erConsultLogRows) await db.erConsultLog.bulkPut(erConsultLogRows as Parameters<typeof db.erConsultLog.bulkPut>[0])
+          const leaderboardProfileRows = rows('leaderboardProfile')
+          if (leaderboardProfileRows) await db.leaderboardProfile.bulkPut(leaderboardProfileRows as Parameters<typeof db.leaderboardProfile.bulkPut>[0])
+          const bannerUnlockBonusLogRows = rows('bannerUnlockBonusLog')
+          if (bannerUnlockBonusLogRows) await db.bannerUnlockBonusLog.bulkPut(bannerUnlockBonusLogRows as Parameters<typeof db.bannerUnlockBonusLog.bulkPut>[0])
+        },
+      )
+      setImportMsg('✓ 匯入完成，重新載入中…')
+      window.location.reload()
+    } catch (err) {
+      setImportMsg(`✗ 匯入失敗：${err instanceof Error ? err.message : '未知錯誤'}`)
+    } finally {
+      setImporting(false)
+    }
+  }
 
   async function handleAccountReset(): Promise<void> {
     if (!onResetProgress) return
@@ -377,6 +582,37 @@ export function HelpMenu({ className, onResetProgress, signedIn = false }: HelpM
                               <span>像素（Cubic 11，GBA 風）</span>
                             </label>
                           </div>
+                        )}
+                        {section.id === 'data-import' && (
+                          <>
+                            <button
+                              type="button"
+                              className="settings-modal__reset-btn"
+                              onClick={triggerImport}
+                              disabled={importing}
+                            >
+                              {importing ? (
+                                '匯入中…'
+                              ) : (
+                                <>
+                                  <EmojiIcon char="📥" size={18} /> 選擇本機 JSON 匯入
+                                </>
+                              )}
+                            </button>
+                            <input
+                              ref={importInputRef}
+                              type="file"
+                              accept="application/json,.json"
+                              style={{ display: 'none' }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) void handleImportFile(file)
+                              }}
+                            />
+                            {importMsg && (
+                              <p className="settings-modal__reset-msg">{importMsg}</p>
+                            )}
+                          </>
                         )}
                         {section.id === 'account-reset' && (
                           <>

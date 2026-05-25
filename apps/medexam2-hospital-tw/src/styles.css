@@ -70,6 +70,9 @@ body .quiz-modal__image-missing,
 body .quiz-modal__explanation,
 body .explanation-markdown,
 body .bookmarks-page__entry-stem,
+body .bookmarks-page__entry-options,
+body .bookmarks-page__entry-option-key,
+body .bookmarks-page__entry-answer,
 body .bookmarks-page__entry-explanation,
 body .er-consult__stem,
 body .er-consult__explanation {
@@ -97,6 +100,9 @@ body[data-font-mode='pixel'] .quiz-modal__image-missing,
 body[data-font-mode='pixel'] .quiz-modal__explanation,
 body[data-font-mode='pixel'] .explanation-markdown,
 body[data-font-mode='pixel'] .bookmarks-page__entry-stem,
+body[data-font-mode='pixel'] .bookmarks-page__entry-options,
+body[data-font-mode='pixel'] .bookmarks-page__entry-option-key,
+body[data-font-mode='pixel'] .bookmarks-page__entry-answer,
 body[data-font-mode='pixel'] .bookmarks-page__entry-explanation,
 body[data-font-mode='pixel'] .er-consult__stem,
 body[data-font-mode='pixel'] .er-consult__explanation {
@@ -1202,6 +1208,14 @@ body:has(.modal-backdrop) {
   gap: 8px;
   flex-wrap: wrap;
   font-size: 18px;
+}
+
+/* Bookmarks-page filter bar variant — force each group to its own row so the
+   tail subject page (e.g. 3/3 with only 4 chips) doesn't squeeze up beside the
+   year row. Scoped to .filter-bar--stacked so YearFilterBar / DoctorRoster
+   layouts (single group + sibling count) stay unchanged. */
+.filter-bar--stacked .filter-bar__group {
+  flex: 1 0 100%;
 }
 
 .filter-bar__label {
@@ -3640,6 +3654,21 @@ body:has(.modal-backdrop) {
   font-size: 13px;
 }
 
+/* add-hospital-equipment-medexam2 (2026-05-24): equipment grid mirrors the
+   room-extension-grid look (flat cards, simple border, white background).
+   2 columns at desktop (10 items in 5 rows) per owner preference; collapses
+   to single column on narrow viewports.
+ */
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+@media (max-width: 720px) {
+  .equipment-grid { grid-template-columns: 1fr; }
+}
+
 /* Milestone tip toast (redesign-hospital-economy §9.5.4) */
 .milestone-tip-toast {
   position: fixed;
@@ -4444,6 +4473,72 @@ body:has(.modal-backdrop) {
 
 .bookmarks-tab {
   margin-top: 16px;
+}
+
+/* Sub-tabs inside 「錯題」 tab (目前未答對 / 歷史曾錯) */
+.bookmarks-subtabs {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 8px;
+  border-bottom: 1px solid var(--border-muted, #444);
+}
+.bookmarks-subtabs__tab {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted, #999);
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 5px 5px 0 0;
+  margin-bottom: -1px;
+}
+.bookmarks-subtabs__tab:hover:not(.bookmarks-subtabs__tab--active) {
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  color: inherit;
+}
+.bookmarks-subtabs__tab--active {
+  background: var(--surface-1, rgba(255, 255, 255, 0.06));
+  border-color: var(--border-muted, #444);
+  border-bottom-color: var(--surface-1, rgba(255, 255, 255, 0.06));
+  color: inherit;
+  font-weight: 600;
+}
+
+/* State chip on 歷史曾錯 entries */
+.bookmarks-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.bookmarks-state-chip--wrong {
+  background: rgba(220, 60, 60, 0.12);
+  color: #c44d4d;
+}
+.bookmarks-state-chip--correct {
+  background: rgba(80, 160, 80, 0.14);
+  color: #4a8a4a;
+}
+.bookmarks-page__entry-row-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Pager spacing — appears below list */
+.bookmarks-pager {
+  display: inline-flex;
+  margin: 16px auto 4px;
+  justify-content: center;
+}
+.bookmarks-tab .bookmarks-pager {
+  display: flex;
+  justify-content: center;
 }
 
 .bookmarks-tab__toolbar {
@@ -6252,6 +6347,75 @@ body:has(.modal-backdrop) {
   font-weight: 700;
 }
 
+/* ── Grace toast (add-bookmarks-filters-and-wrong-history-medexam2) ─────── */
+.grace-toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 210; /* above sync-error-toast which sits at 200 */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  max-width: calc(100vw - 32px);
+}
+.grace-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 280px;
+  max-width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-paper, #fffaf2);
+  color: var(--text-strong, #2e2515);
+  border: 1px solid var(--border-soft, #d6c8b0);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  animation: grace-toast-in 180ms ease-out;
+}
+@keyframes grace-toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.grace-toast__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.grace-toast__qid {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grace-toast__msg {
+  font-size: 12px;
+}
+.grace-toast__actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.grace-toast__star,
+.grace-toast__close {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+  border: 1px solid var(--border-soft, #d6c8b0);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.grace-toast__star:hover { background: rgba(255, 220, 100, 0.45); }
+.grace-toast__close:hover { background: rgba(0, 0, 0, 0.08); }
+
 /* ── Mobile reflow (≤ 639px) ────────────────────────────── */
 @media (max-width: 639px) {
   .auth-button__email { display: none; }
@@ -6262,6 +6426,22 @@ body:has(.modal-backdrop) {
     padding: 6px 10px;
   }
   .sync-error-toast { max-width: calc(100vw - 16px); }
+  .grace-toast-stack {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+    align-items: stretch;
+  }
+  .grace-toast { min-width: 0; }
+  /* Tighten filter-bar layout on mobile so chip-group + pager stay one line.
+     bookmarks filter (add-bookmarks-filters-and-wrong-history-medexam2) uses
+     subjectChipsPerPage=3 on < 768 px viewports; year row also benefits from
+     the tighter chip gap. */
+  .filter-bar__group { gap: 6px; }
+  .filter-chip-group { gap: 4px; }
+  .filter-chip { padding: 4px 7px; }
+  .filter-bar__pager { gap: 2px; }
+  .filter-bar__pager-btn { min-width: 26px; min-height: 26px; font-size: 16px; }
 }
 
 /* ─── Migration banner (R2 cloud-sync migration, Phase 2) ──────────────── */
@@ -6390,10 +6570,12 @@ body:has(.modal-backdrop) {
 }
 
 /* Tabular grid — shared column template between inline <ol> and sticky <div>
-   so cells align vertically across both. */
+   so cells align vertically across both. 7 columns:
+   rank / nickname / tier / reputation / doctors / study / correct
+   (add-hospital-leaderboard-correct-count-filter added the 7th). */
 .leaderboard-list,
 .leaderboard-row--me-sticky {
-  --leaderboard-cols: 60px minmax(120px, 1fr) 50px 80px 60px 80px;
+  --leaderboard-cols: 60px minmax(120px, 1fr) 50px 80px 60px 80px 80px;
 }
 
 .leaderboard-list {
@@ -6462,7 +6644,8 @@ body:has(.modal-backdrop) {
 .leaderboard-cell--tier,
 .leaderboard-cell--reputation,
 .leaderboard-cell--doctors,
-.leaderboard-cell--study {
+.leaderboard-cell--study,
+.leaderboard-cell--correct {
   font-family: var(--font-pixel-num);
   font-variant-numeric: tabular-nums;
   justify-content: flex-end;
@@ -6535,7 +6718,10 @@ body:has(.modal-backdrop) {
   margin-top: 4px;
 }
 
-/* Mobile (< 768 px) — drop tier + doctors columns, give nickname room. */
+/* Mobile (< 768 px) — drop tier + doctors columns, give nickname room.
+   For the 答對 filter, swap the visible secondary column from 唸書 → 答對
+   (the active filter's primary stat always wins per spec §"Mobile-
+   prioritized columns hide secondary stats"). */
 @media (max-width: 767px) {
   .leaderboard-list,
   .leaderboard-row--me-sticky {
@@ -6543,7 +6729,22 @@ body:has(.modal-backdrop) {
   }
 
   .leaderboard-cell--tier,
-  .leaderboard-cell--doctors {
+  .leaderboard-cell--doctors,
+  .leaderboard-cell--correct {
+    display: none;
+  }
+
+  /* When correct is the active filter, surface the 答對 column on mobile and
+     hide 唸書 to keep the 4-column budget. The data-active-filter attribute
+     is set on both .leaderboard-list and .leaderboard-row--me-sticky from
+     LeaderboardPage. */
+  .leaderboard-list[data-active-filter="correct"] .leaderboard-cell--correct,
+  .leaderboard-row--me-sticky[data-active-filter="correct"] .leaderboard-cell--correct {
+    display: flex;
+  }
+
+  .leaderboard-list[data-active-filter="correct"] .leaderboard-cell--study,
+  .leaderboard-row--me-sticky[data-active-filter="correct"] .leaderboard-cell--study {
     display: none;
   }
 
@@ -6657,4 +6858,378 @@ body:has(.modal-backdrop) {
   .leaderboard-promo-banner__cta { font-size: 12px; padding: 5px 10px; flex-basis: 100%; text-align: center; order: 3; }
   .leaderboard-promo-banner__dismiss { order: 2; }
   .leaderboard-promo-banner__text { order: 1; flex-basis: calc(100% - 80px); }
+}
+
+/* Domain migration banner (bake-period only — gated by VITE_DEPLOY_TARGET=gh-pages).
+   Distinct from .migration-banner (R2 backend migration). */
+.domain-migration-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Reserve 280px right padding so banner CTAs don't slide under the
+     position: fixed `.header-controls` chip (AuthButton + SyncStatusChip,
+     ~250px wide, anchored top-right with z-index 100). Without this the
+     dismiss button + Export CTA are hidden behind the auth chip on
+     desktop widths. */
+  padding: 10px 280px 10px 14px;
+  background: linear-gradient(90deg, #f3d35a 0%, #f6c84d 100%);
+  color: #2a1f00;
+  border-bottom: 1px solid #c89b1c;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.domain-migration-banner__msg {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.domain-migration-banner__msg strong {
+  font-weight: 700;
+}
+.domain-migration-banner__cta,
+.domain-migration-banner__export,
+.domain-migration-banner__dismiss {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #2a1f00;
+  background: rgba(255, 255, 255, 0.6);
+  color: #2a1f00;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.domain-migration-banner__cta:hover,
+.domain-migration-banner__export:hover,
+.domain-migration-banner__dismiss:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+.domain-migration-banner__cta {
+  font-weight: 600;
+}
+.domain-migration-banner__export:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.domain-migration-banner__dismiss {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.domain-migration-banner__error {
+  flex-basis: 100%;
+  color: #7a1a1a;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .domain-migration-banner { font-size: 13px; padding: 8px 12px; gap: 8px; }
+  .domain-migration-banner__msg { flex-basis: 100%; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   add-achievement-system (2026-05-24)
+   ───────────────────────────────────────────────────────────────────────── */
+
+.achievements-page {
+  padding: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+  color: #e4e4e4;
+}
+.achievements-page__summary { margin: 0; color: #aaa; }
+
+.achievements-page__tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid #333;
+}
+.achievements-tab {
+  padding: 8px 16px;
+  background: transparent;
+  color: #888;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font: inherit;
+}
+.achievements-tab:hover { color: #ccc; }
+.achievements-tab--active {
+  color: #fff;
+  border-bottom-color: #FFD700;
+}
+
+.achievements-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.achievements-filter {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85em;
+  color: #aaa;
+  gap: 2px;
+}
+.achievements-filter select {
+  background: #2a2a2a;
+  color: #e4e4e4;
+  border: 1px solid #444;
+  padding: 4px 8px;
+  font: inherit;
+}
+.achievements-page__empty {
+  text-align: center;
+  color: #777;
+  padding: 40px;
+}
+
+/* ─── Ladder row layout (each category × 4-tier ladder = one row) ────── */
+.achievement-ladder {
+  margin-bottom: 24px;
+}
+.achievement-ladder__title {
+  margin: 0 0 10px;
+  font-size: 1.05em;
+  color: #ccc;
+  font-weight: 600;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.achievement-ladder__row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.achievement-ladder__subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.achievement-ladder__capstone-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  max-width: 320px;
+  margin: 0 auto;
+}
+@media (max-width: 720px) {
+  .achievement-ladder__row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 420px) {
+  .achievement-ladder__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Card visual: tier-color border + locked silhouette ─────────────── */
+.achievement-card {
+  border: 2px solid var(--card-border, #555);
+  background: #1a1a1a;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border-radius: 4px;
+  transition: transform 0.15s;
+  min-height: 180px;
+}
+.achievement-card:hover { transform: translateY(-2px); }
+.achievement-card--P1 { --card-border: #B9F2FF; box-shadow: 0 0 8px rgba(185, 242, 255, 0.15); }
+.achievement-card--P2 { --card-border: #FFD700; }
+.achievement-card--P3 { --card-border: #C0C0C0; }
+.achievement-card--P4 { --card-border: #CD7F32; }
+.achievement-card--locked {
+  filter: grayscale(0.85) brightness(0.55);
+  opacity: 0.55;
+  border-style: dashed;
+}
+.achievement-card--unlocked.achievement-card--P1 {
+  box-shadow: 0 0 16px rgba(185, 242, 255, 0.4);
+}
+.achievement-card__badge {
+  margin: 4px 0 10px;
+}
+.achievement-card__name {
+  font-size: 1em;
+  margin: 0 0 6px;
+  color: #fff;
+}
+.achievement-card__description {
+  font-size: 0.82em;
+  color: #aaa;
+  margin: 0 0 10px;
+  flex: 1;
+  line-height: 1.4;
+}
+.achievement-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.78em;
+  color: #888;
+}
+.achievement-card__date { color: #777; }
+.achievement-card__reward { color: #d4a04d; font-weight: 500; }
+
+/* ─── Unlock toast (P2-P4) ───────────────────────────────────────────── */
+.achievement-unlock-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #1a1a1a;
+  color: #e4e4e4;
+  border: 2px solid var(--toast-border, #FFD700);
+  padding: 12px;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  max-width: 360px;
+  animation: achievement-toast-slide-in 0.3s ease-out;
+}
+.achievement-unlock-toast--P1 { --toast-border: #B9F2FF; box-shadow: 0 4px 20px rgba(185,242,255,0.3); }
+.achievement-unlock-toast--P2 { --toast-border: #FFD700; }
+.achievement-unlock-toast--P3 { --toast-border: #C0C0C0; }
+.achievement-unlock-toast--P4 { --toast-border: #CD7F32; }
+@keyframes achievement-toast-slide-in {
+  from { transform: translateX(120%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.achievement-unlock-toast__body { flex: 1; min-width: 0; }
+.achievement-unlock-toast__title {
+  display: block;
+  font-size: 0.95em;
+  margin-bottom: 2px;
+}
+.achievement-unlock-toast__detail {
+  display: block;
+  font-size: 0.82em;
+  color: #aaa;
+  line-height: 1.3;
+}
+.achievement-unlock-toast__close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.achievement-unlock-toast__close:hover { color: #fff; }
+
+/* ─── Unlock modal (P1 鑽石 full-screen) ─────────────────────────────── */
+.achievement-unlock-modal-backdrop {
+  background: rgba(0,0,0,0.88);
+}
+.achievement-unlock-modal {
+  max-width: 420px;
+  padding: 28px 24px;
+  text-align: center;
+  background: linear-gradient(180deg, #1a1a1a 0%, #0d1421 100%);
+  border: 2px solid #B9F2FF;
+  box-shadow: 0 0 32px rgba(185, 242, 255, 0.35);
+  color: #e4e4e4;
+}
+.achievement-unlock-modal__head {
+  margin-bottom: 16px;
+}
+.achievement-unlock-modal__tier-chip {
+  background: #B9F2FF;
+  color: #0d1421;
+  padding: 4px 14px;
+  border-radius: 14px;
+  display: inline-block;
+  margin-bottom: 16px;
+  font-weight: 700;
+  font-size: 0.9em;
+  letter-spacing: 1px;
+}
+.achievement-unlock-modal__badge {
+  margin: 12px auto;
+  display: flex;
+  justify-content: center;
+}
+.achievement-unlock-modal__title {
+  font-size: 1.4em;
+  margin: 12px 0 8px;
+  color: #fff;
+}
+.achievement-unlock-modal__description {
+  color: #aaa;
+  font-size: 0.95em;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+.achievement-unlock-modal__reward {
+  background: rgba(185, 242, 255, 0.08);
+  border: 1px solid rgba(185, 242, 255, 0.3);
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 16px 0;
+}
+.achievement-unlock-modal__reward-label {
+  display: block;
+  font-size: 0.75em;
+  color: #888;
+  margin-bottom: 4px;
+}
+.achievement-unlock-modal__reward-value {
+  display: block;
+  color: #B9F2FF;
+  font-weight: 600;
+}
+.achievement-unlock-modal__close {
+  margin-top: 16px;
+  min-width: 120px;
+}
+
+/* ─── Leaderboard NicknameWithBadges inline ──────────────────────────── */
+.nickname-with-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+.nickname-with-badges__name { margin-right: 2px; }
+.nickname-with-badges__badges {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.nickname-with-badges__subject-chip {
+  font-size: 0.78em;
+  color: #d4a04d;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* ─── Title selector (LeaderboardSettings) ───────────────────────────── */
+.title-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  font-size: 0.9em;
+}
+.title-selector__label { color: #aaa; font-size: 0.85em; }
+.title-selector__select {
+  background: #2a2a2a;
+  color: #e4e4e4;
+  border: 1px solid #444;
+  padding: 4px 8px;
+  font: inherit;
+}
+.title-selector--empty .title-selector__hint {
+  color: #777;
+  font-size: 0.85em;
+  font-style: italic;
 }

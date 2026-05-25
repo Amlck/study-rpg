@@ -53,6 +53,22 @@ M2（一階）+ M_2nd（二階 hospital mode）並行用 git worktree 隔離。�
 - `packages/core/` stays content-agnostic — medical terms belong in theme / content packs, never in core
 <!-- END: spec skill -->
 
+## Deploy targets (in-flight migration)
+
+Two parallel deploys during the 2–4 week migration bake (started 2026-05-22, change `add-med-study-rpg-domain-migration`):
+
+| Target | URL — 一階 | URL — 二階 | URL — 神經元 (M_3rd) | Pipeline |
+|---|---|---|---|---|
+| **GitHub Pages** (legacy) | `https://fireman333.github.io/study-rpg/` | `https://fireman333.github.io/study-rpg/hospital/` | — (neurons-tw NOT published to GH Pages; spec `neurons-deploy` Req 1) | `.github/workflows/deploy.yml`; sets `VITE_DEPLOY_TARGET=gh-pages` so `DomainMigrationBanner` surfaces |
+| **Cloudflare Pages** (new home) | `https://med-study-rpg.com/1st/` | `https://med-study-rpg.com/2nd/` | `https://med-study-rpg.com/neurons/` | CF Pages **direct-upload** mode (project name `med-study-rpg`, no GitHub integration). Owner runs `pnpm deploy:cf` from local — wraps the three app builds (each with its own `VITE_DEPLOY_BASE`) + `node scripts/build-cf-pages-dist.mjs` (assembles `dist-cf/`) + `wrangler pages deploy dist-cf --project-name med-study-rpg --branch main`. Vite env vars (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_SYNC_WORKER_URL`) come from local shell env at deploy time — NOT from repo secrets. |
+
+Both deploys hit the same Cloudflare Worker `study-rpg-sync-worker` via two URLs (same backend, no traffic split):
+
+- Legacy: `https://study-rpg-sync-worker.tony85314.workers.dev` (GH Pages clients)
+- New: `https://api.med-study-rpg.com` (CF Pages clients; Custom Domain binding)
+
+OAuth redirect URI allowlist + Supabase Site URL inventory is in [docs/AUTH_REDIRECT_URIS.md](docs/AUTH_REDIRECT_URIS.md). Bake-end follow-up change will flip GH Pages to redirect-only and remove the legacy entries.
+
 ## Repo-specific build / dev quick reference
 
 ```bash
@@ -218,6 +234,117 @@ wrangler d1 migrations apply study-rpg-leaderboard --remote  # prod
 
 Full reference: `docs/LEADERBOARD.md`.
 
+## Achievement system (M_2nd ext, 2026-05-24)
+
+`apps/medexam2-hospital-tw` ships a milestone-recognition system: 7 categories × 4 tiers (P1 鑽石 / P2 金 / P3 銀 / P4 銅, aligned with PSN Trophy convention) = ~42 catalog entries. New achievement = one entry in `packages/content-medexam2-tw/src/achievements.ts`; zero engine code change. P1 entries MUST set `composite: true` — build-time validator (`validateAchievementCatalog`) rejects pure-grind P1 (single-dimension threshold). 14 科精通 entries use 100% fresh-attempts coverage (per-subject totals from `subjects.json` snapshot, hardcoded for now). Speedrun (1 月) 玩家拿不到任何 subject mastery — intentional differentiation from longplay (6 月).
+
+Engine (`packages/core/src/lib/achievement.ts`) mirrors cosmetic milestone pattern:
+- `checkAchievementUnlocks(prev, prevStats, next, nextStats, catalog)` → diff-based unlock detection
+- `listUnlockedAchievements` / `listLockedAchievements` / `visibleAchievements` helpers
+
+Types in `@study-rpg/core`:
+- `Achievement` interface, `AchievementTier = 'P1' | 'P2' | 'P3' | 'P4'`, `AchievementCategory` (7 options)
+- `AchievementReward` discriminated union: `cosmetic` | `title` | `badge` (equipment/ticket/pity intentionally absent — TypeScript rejects)
+- `AchievementStats` permissive shape — assembled per-call from Dexie state
+
+Persistence (Dexie v15): new `achievements` table (PK `id`, indexed `unlockedAt`). Extended `MonotonicCountersRow` (5 new MAX-merge counters: `totalDoctorsRecruited` / `totalP1DoctorsRecruited` / `maxDailyStreak` / `tierUpgradeCount` / `maxQuizCorrectStreak`). Extended `GameCountersRow.currentQuizCorrectStreak` (LWW, resets on wrong answer). Extended `LeaderboardProfileRow.selectedTitle`.
+
+Sync: `ACHIEVEMENTS` TableAdapter in `M2_ADAPTERS` only (mirror `LEADERBOARD_PROFILE` precedent commit `cfaaa32`). R2-only path — no Supabase migration, no `upsert_lww` whitelist entry. Cross-device pull does NOT trigger unlock toast (apply path skips queue).
+
+Trigger hooks (5 sites): `services/quiz-rewards.ts` (also handles streak counter), `lib/tick.ts` (tier upgrade + study minutes), `services/recruitment.ts` (totalDoctorsRecruited / P1 counter), `services/fate-card.ts`, `services/training.ts` + `services/retire.ts`. All use dynamic import + post-tx try/catch so achievement check never breaks game action.
+
+Reward dispatcher (`services/achievement-reward.ts`): `dispatchReward` branches on reward.kind (cosmetic intent log / title persists to Dexie meta key `achievement-titles-unlocked` / badge no-op). `checkAndUnlockAchievements` orchestrator: idempotent persist + dispatch + queue toast.
+
+UI: `/achievements` route (AchievementsPage with 2 sub-tabs + 3 filters + strict hidden filter), `BadgeSprite` / `SubjectBadgeSprite` CSS atlas sprites, `AchievementUnlockToast` (P2-P4, 8s auto-dismiss), `AchievementUnlockModal` (P1 full-screen, dismiss-required), `AchievementTitleSelector` embedded in `LeaderboardSettingsControls`. Toast queue: `lib/achievement-toast-queue.ts` singleton + `useAchievementToasts` hook.
+
+Atlases: `apps/medexam2-hospital-tw/src/assets/achievements/badge-atlas.png` (512×768, 6×4 cells, category × tier) + `subject-atlas.png` (896×256, 7×2 cells, 14 科 unique icons). Generated via codex CLI: `cd /tmp && codex exec --sandbox workspace-write --skip-git-repo-check "..." < /dev/null` (note: `--skip-git-repo-check` required by codex 1.x; the 0.128.0 recipe in `~/.claude/imports/codex_image_gen.md` is outdated).
+
+Leaderboard integration: D1 migration `cloudflare/sync-worker/migrations/0002_add_badges.sql` adds `badges_csv TEXT DEFAULT ''` + `subject_mastery_count INTEGER DEFAULT 0` to `leaderboard_m2`. Worker `POST /leaderboard/upsert` validates against regex `^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$` (≤ 6 entries, ≤ 60 chars) + integer 0-14. `SNAPSHOT_COLUMNS` extended so cron + KV snapshots auto-include. Client derives per-category max-tier in `lib/sync/leaderboard.ts` `deriveAchievementSnapshot()`; `LeaderboardPage` renders inline 20px badges + `🩺 X/14` subject chip via `NicknameWithBadges` helper.
+
+Apply migration 0002 manually (sustain 0001 discipline):
+
+```bash
+cd cloudflare/sync-worker
+wrangler d1 migrations apply study-rpg-leaderboard --remote
+```
+
+Full change reference: `openspec/changes/add-achievement-system/` (proposal / design / specs / tasks).
+
+## Hospital equipment (M_2nd ext, 2026-05-24)
+
+`apps/medexam2-hospital-tw` ships a capital-investment revenue sink: 10 named equipment items (CT / MRI / 內視鏡 / 達文西 / 心導管室 / PET-CT / LINAC / ECMO / 複合式手術房 / NGS) × 3-level upgrade ladder. Total L1 buy-all ~24M; full L3 buy-all ~244M (~6 weeks dedicated grind at 國家級 default revenue). Costs in `packages/content-medexam2-tw/src/equipment-catalog.ts`, types in `@study-rpg/core` (`EquipmentId` / `EquipmentDef` / `OwnedEquipmentRow`). UI = `EquipmentPanel` mounted on Hospital page below room-extension section (responsive grid, collapsible header).
+
+Each equipment level grants additive bonuses (formula `1 + Σ`, level value REPLACES lower):
+- Reputation gain: L1 +1% / L2 +3% / L3 +7% (uniform across all 10 items)
+- Patient throughput: L1 +2% / L2 +5% / L3 +12% (same)
+
+Owning 5 L3 + 5 L1 → 1.40 reputation multiplier (+40%) + 1.70 throughput multiplier (+70%). Additive on purpose (not multiplicative) to keep math predictable.
+
+Multiplier wiring (4 sites):
+- `lib/tick.ts` — equipment throughput multiplier applied to `idleAdjustedThroughput` (affects revenue + tick-time reputation accrual via throughput→reputation coupling)
+- `services/quiz-rewards.ts` — equipment reputation multiplier wraps `reputationDelta` for correct-answer reward
+- `services/er-consultation.ts` — same wrap on ER quiz correct-answer reputation
+- `services/event.ts` `resolveEmergencyShift` — wraps `EMERGENCY_SHIFT_REPUTATION_BONUS` constant at call site
+
+Equipment does NOT generate idle/AFK reputation — multiplier amplifies *active-play* reputation only (per design D3, preserves the fate-card cost-gate strategic tension).
+
+T4 upgrade gate triple condition (new third gate from this change):
+1. Reputation ≥ 300,000 (bumped from 150,000 same change — see `clinic-tiers.ts` `TIER_UPGRADE_THRESHOLDS.醫學中心`)
+2. 10 distinct P2+ subjects + ≥ 1 P1 doctor (unchanged)
+3. **≥ 3 unique equipment installed at level ≥ 1** (new — `lib/tick.ts` T3→T4 evaluation calls `computeUniqueEquipmentCount`)
+
+Pre-existing T4 saves (`gameCounters.tier === '國家級教學醫院'` before this change ships) are **grandfathered** — tier monotonicity per `clinic-level-up` Req 1 means no regression even with 0 equipment + reputation < 300k. T3 players in flight face both new conditions simultaneously.
+
+Persistence (Dexie v16): new `hospitalEquipment` table (PK `equipmentId`, indexed `updatedAt`). Row shape `{ equipmentId, level: 1|2|3, purchasedAt, upgradedAt, updatedAt }`. Schema-only upgrade — no row backfill, starts empty for everyone. v15 was claimed by `add-achievement-system` for `achievements` table.
+
+Sprites: `packages/theme-pixel-hospital/sprites/equipment/<id>.png` (10 files, ~200 KB total, 384×384 16-color quantize PNG). Sprite registry in `packages/theme-pixel-hospital/src/sprites.ts` glob extended to register equipment subfolder with `equipment-` prefix in `SPRITES_MAP`. Generated via codex CLI per `~/.claude/imports/codex_image_gen.md` recipe (Gemini was unavailable at apply time; codex became primary path).
+
+Sync (R2 m2 bundle passenger pattern): bundle schema_version bump 1 → 2 + new `hospitalEquipment` array key. **NOT yet wired** — `add-r2-cloud-sync-migration` §9 R2 cutover (estimated 2026-05-29) gates this. Equipment §1–§8 + §10–§11 are R2-independent and shipped now; §9 sync wiring blocks until R2 reads flip.
+
+Known follow-ups (deferred):
+- V6MigrationModal intro modal explaining 150k→300k recalibration (UX polish per tasks.md §8.5)
+- audit-event pass branch could also use equipment multiplier (currently event.ts only wires emergency-shift; see equipment design D3 logic for why audit was excluded — penalty-and-reward dual-path) — revisit if telemetry shows uneven application
+
+Full change reference: `openspec/changes/add-hospital-equipment-medexam2/` (proposal / design / specs / tasks).
+
+## Neurons achievement system (M_3rd, 2026-05-25)
+
+`apps/neurons-tw` ships a milestone-recognition system borrowed from 二階 `achievement-system` pattern: 7 categories × 4 tiers = 30 catalog entries. Borrowed per `neurons-mode` Req 5 (independent capability spec; no modification of 二階 source).
+
+**Category set** (string union locally declared, NOT imported from `@study-rpg/core`'s 二階-shaped `AchievementCategory`): `study | quiz | variant | synapse | mastery | fortune | hidden`. Semantic mappings: 二階 recruit → variant; hospital → synapse; subject → mastery.
+
+**Catalog** = `packages/content-neurons-tw/src/achievements.ts` (30 entries: 4 study + 5 quiz + 5 variant + 4 synapse + 4 mastery + 4 fortune + 4 hidden). Tiers `P1 鑽石 / P2 金 / P3 銀 / P4 銅` (mirror PSN Trophy convention). Build-time validator at `packages/content-neurons-tw/src/achievement-validator.ts` enforces: (a) every P1 entry MUST declare `composite: true`, (b) non-P1 entries MUST NOT declare composite, (c) all required fields populated, (d) ids unique, (e) every category has ≥ 1 entry. Smoke covered by `scripts/verify-validator.ts` (6 fixtures pass).
+
+**Types declared LOCALLY** at `packages/content-neurons-tw/src/achievement-types.ts` — not in `@study-rpg/core`. Reasoning: core's `AchievementCategory` is a strict 7-literal union containing 二階 字面值 (`'recruit'|'hospital'|'subject'`); `AchievementStats` references `SubjectId` + `totalDoctorsRecruited` + `currentHospitalTier`; `AchievementReward` includes `'cosmetic'`. Widening core to fit both 二階 + neurons would invasively break published `@study-rpg/core@0.4.x` API contract. Neurons uses `NeuronsAchievement` / `NeuronsAchievementStats` / `NeuronsAchievementReward` / `NeuronsAchievementCategory` and re-implements the 5-line `checkAchievementUnlocks` diff function locally at `apps/neurons-tw/src/lib/services/achievement.ts`. Apply-phase decision in `add-neurons-achievements/tasks.md` §1.2.
+
+**Reward channels = 2** (TS union locked): `{kind:'leaderboard'}` (implicit — every unlock contributes to `badges_csv`) + `{kind:'title';title:string}` (appends to `leaderboardProfile.unlockedTitles`, selectable via `TitleSelector` in `LeaderboardSettingsControls`). `cosmetic` / `equipment` / `ticket` / `currency` are TypeScript-rejected at catalog declaration site.
+
+**Persistence** (Dexie v5): new `achievements` table (PK `id`, indexed `unlockedAt`). v4 → v5 is additive. Extended `LeaderboardProfileRow` with `unlockedTitles?: string[]` + `selectedTitle?: string | null` (no schema migration; Dexie tolerates undefined for existing rows).
+
+**Streak counter** persisted in `meta` table: `meta['currentQuizCorrectStreak']` (LWW, +1 correct / reset 0 wrong) + `meta['maxQuizCorrectStreak']` (MAX-merge). Co-commits with `recordCorrectAnswer` / `recordIncorrectAnswer` Dexie transaction.
+
+**Trigger hooks** (3 sites — `apps/neurons-tw/src/lib/services/`):
+- `connectome.ts` `recordCorrectAnswer` collapse-point — captures `prevStats` pre-tx, calls `triggerAchievementCheck` post-commit
+- `connectome.ts` `recordIncorrectAnswer` — streak reset + post-commit check
+- `variant-gacha.ts` `handleSlotUnlock` — capture pre-state if non-silent; trigger check after persist
+
+Each hook wrapped in try/catch (`[achievement]` channel) so failure doesn't break originating game action. `study` category predicates evaluate against `totalStudyMinutes: 0` placeholder (reading-timer not yet wired in neurons-tw); catalog ships ready for when timer ships.
+
+**Backfill** at app boot via `backfillAchievementsFromCurrentStats()` in `App.tsx` `useEffect`: builds stats from Dexie, finds predicates already true, `bulkPut` missing rows with `notificationShown: true`, dispatches NO rewards / NO toasts / NO modals. Idempotent. Same function shape ready for future `onPullComplete` sync hook (post `add-neurons-deploy`).
+
+**UI** components: `BadgeSprite` (placeholder SVG + emoji glyph + tier-color ring — atlas swap deferred to follow-up `generate-neurons-achievement-atlases`), `AchievementCard`, `AchievementsPage` at `/achievements` (sub-tabs 「全部 / 已解鎖」 + category/tier filter dropdowns + strict hidden filtering), `AchievementToastHost` (wraps motion library `<Toast>` + `TOAST_AUTO_DISMISS_MS`), `AchievementUnlockModal` (wraps motion library `<AchievementUnlockModal>` primitive). Toast/modal queue singleton at `lib/achievement-toast-queue.ts`.
+
+**Leaderboard integration**: `deriveAchievementSnapshot(unlocked)` + `deriveBadgesCsvFromDexie()` in `lib/services/neurons-leaderboard.ts` produce max-tier-per-category CSV with hidden category excluded (fits Worker regex `^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$` since 7 categories − 1 hidden = 6 max entries). `LeaderboardPage` renders inline 20px badges via `NicknameWithBadges` helper. `D1 leaderboard_neurons.badges_csv` column was reserved by `add-neurons-leaderboard` Req 11 — **no D1 migration** needed. Title display on leaderboard rows deferred to a separate follow-up (would need Worker schema addition for `selected_title`).
+
+**Smoke results** (2026-05-25 Chrome MCP end-to-end): boot backfill populated `mastery-first-novice` row silently; 10× +5 答對 on 藥理學 fired `variant-first-pull` toast + `quiz-streak-10` queued + `hidden-first-day-blitz` queued; `/achievements` page rendered 4 unlocked + 26 locked silhouettes + 3 hidden-locked invisible. Console clean (only pre-existing React Router future warnings).
+
+**Deferred follow-ups**:
+- Atlas asset generation (60–90 min codex CLI batch × 2 atlases) → separate `generate-neurons-achievement-atlases` change
+- Title display on leaderboard rows (needs Worker `selected_title` D1 column + KV)
+- `study` category active triggers (needs reading-timer follow-up)
+
+Full change reference: `openspec/changes/archive/2026-05-25-add-neurons-achievements/`.
+
 ## Source data path
 
 題庫原始 .md 在使用者本機（**不在 repo 內**）：
@@ -229,8 +356,48 @@ $HOME/Desktop/國考/一階國考/陽明國考考古/_extracted/
 
 Build script 預設讀此路徑；其他環境設 `MEDEXAM_SOURCE_ROOT` env var 覆寫。
 
+## Bookmarks filters + 歷史曾錯 + grace toast (M_2nd ext, 2026-05-25)
+
+`apps/medexam2-hospital-tw` `/bookmarks` route gains: (1) year × subject multi-select chip filter shared across all sub-tabs (visually mirrors `YearFilterBar` + `DoctorRoster` rarity filter — `.filter-bar` / `.filter-chip[aria-pressed]` / `.filter-bar__pager*` / `.filter-bar__count` reused as-is), (2) persistent `everWrong` flag on `questionHistory` (Dexie v17) — 「錯題」 tab splits into 「目前未答對」 (existing `lastResult='wrong'`) + 「歷史曾錯」 (`everWrong=true`, never auto-leaves), (3) 10-second grace toast on local wrong→correct transition with ⭐ promote action.
+
+Key handles:
+- Filter component: `src/components/BookmarkFilterBar.tsx` (local React state, NO interaction with `services/year-filter.ts` gameplay filter)
+- Filter helper: `src/lib/bookmarks-filter.ts` — pure `matchesFilter()` function, unit-tested
+- Grace toast: `src/lib/grace-toast.ts` (pub-sub queue + 10s auto-dismiss + `useSyncExternalStore` hook) + `src/components/GraceToastContainer.tsx` (fixed bottom-right, max 3 visible)
+- Wrong-answer query: `src/services/wrong-answers.ts` — `useWrongAnswers()` (current) + `useEverWrongAnswers()` (history)
+- 50-row pagination unified across all 3 list surfaces (手動收藏 / 目前未答對 / 歷史曾錯) — pager reuses `.filter-bar__pager*` CSS
+
+**Critical sync semantics — `everWrong` uses monotonic-OR merge, NOT LWW.** `apps/medexam2-hospital-tw/src/lib/sync/r2/tables.ts` `HOSPITAL_QUESTION_HISTORY.applyToLocal` carries the carve-out: after LWW resolves all other fields, `finalRow.everWrong = local.everWrong || incoming.everWrong`. This neutralizes the v1↔v2 cross-version race (v1 client drops `everWrong` field → reads then writes back v1 bundle → would silently overwrite local `true` to `false` under naive LWW). The R2 m2 bundle `SCHEMA_VERSION` bumps 1 → 2 in lockstep. v1 clients tolerate v2 bundles (drop unknown field), v2 clients tolerate v1 bundles (default to false). **DO NOT 'fix' the monotonic-OR by removing it** — it's intentional, called out in inline doc, and locked by Vitest test `question-history-merge.test.ts`.
+
+`recordCorrectAnswer` in `src/lib/mastery.ts` takes a `CorrectAnswerOpts` 3rd arg with `onTransitionToCorrect?: (questionId) => void` — every call site (currently `QuizModal` + `er-consultation.ts`; future game modes too) MUST wire this to `emitGraceToast`. Code review enforces; TS doesn't force it (optional opts keep tests / helpers ergonomic).
+
+Migration discipline: v17 schema upgrade does NOT backfill `everWrong` on existing wrong-answer rows. Helper banner on 錯題 tab explicitly notes 「歷史紀錄從升級當下開始累積」 to manage user expectations. Pre-existing rows naturally migrate forward on next answer.
+
+Dexie versions claimed in flight: v15 = `add-achievement-system`, v16 = `add-hospital-equipment-medexam2`, v17 = `add-bookmarks-filters-and-wrong-history-medexam2`.
+
+Test coverage: `apps/medexam2-hospital-tw/src/__tests__/{mastery,bookmarks-filter,question-history-merge}.test.ts` — 13 Vitest unit tests (mastery writes + filter logic + bundle round-trip + monotonic-OR). Run via `pnpm --filter @study-rpg/medexam2-hospital-tw test`.
+
+Full change reference: `openspec/changes/add-bookmarks-filters-and-wrong-history-medexam2/` (proposal / design / specs / tasks).
+
+## Neuroscience design verification (M_3rd track / neurons-tw)
+
+設計 / 編寫 neurons-tw 相關內容（content pack 對映、design.md 的科學 anchor、spec 描述機制的文字、UI 文案中的神經學 metaphor）時，**任何對神經解剖學 / 神經生理學的疑問都應先走 OpenEvidence 查實證，不要憑記憶或泛用 LLM 知識 lock 決定**。
+
+具體流程：
+- 直接 `/oe <臨床問題>` 或 `/oe-triangulate` 查文獻；需要正反面證據時走 triangulate
+- 設計級的「這個 family 屬於哪 NT branch / 解剖位置 / 功能機制」由 PubMed-anchored 證據支持；persona 視覺 / 故事 hook 可以較自由，但**神經學 fact 必須嚴謹**（per `wire-neurons-content-and-theme` design.md Decision 1 「neuron 本身的 NT 識別 / 解剖位置 / 功能必須科學嚴謹」原則）
+- 把找到的 PubMed citation 附進 design.md 對應 decision 的 anchor 表格（mirror `wire-neurons-content-and-theme` 11-subject mapping 的 PMID anchor cadence）
+- 不適用：純 UI / 程式架構決策、game-loop 數值平衡（如 N=5 / 7 天 decay / AP threshold ladder — 這些是 game design 直覺 + dogfood telemetry，非神經科學 fact）
+
+為什麼這條規則重要：
+- Owner 是醫學生 + 即將 RA，產品定位是「教科書級臨床戲劇」，使用者群是同儕醫學生，神經學細節錯了立刻被看穿
+- 2026-05-25 `wire-neurons-content-and-theme` persona design 過程已示範：4 個 persona（寄生蟲 Toxoplasma / 免疫 anti-NMDAR / 倫理 DRN / 微生物 olfactory）就是透過 OpenEvidence 從「生物背景」升級為「臨床戲劇」，每個附 2-3 篇 PMID anchor
+- LLM generic 神經知識常見錯誤模式：把 receptor 跟 ion channel 搞混、解剖位置半對半錯、機制方向反掉 — OE 查證能擋掉這些
+
 ## Known sharp edges
 
 - TypeScript `tsconfig.base.json` 不要再加 `paths` — leaf packages 透過 pnpm workspace symlink 解析 `@study-rpg/core`，加 paths 反而觸發 rootDir 衝突（2026-05-14 踩過）
 - esbuild 解析 TS comment 時對 `**/` 敏感 — 任何 block comment 不要寫 `/**/*.md` 之類 glob，會提前終止註解（content build script 踩過）
 - `font-family: 'Cubic 11'` 必須來自 host app `public/fonts/`（透過 `@font-face`），theme package 不能直接 ship webfont 給 npm consumer，因 npm 不會自動 publish 字型檔
+- **Hospital tier display / canonical separation**（2026-05-23 via `add-abbreviated-tier-labels-medexam2`）— UI 顯示走 `apps/medexam2-hospital-tw/src/lib/tier-labels.ts` 的 `tierLabel()` 短稱（診所 / 區域 / 醫中 / 大廟）；canonical type strings 仍為 `'診所' | '區域醫院' | '醫學中心' | '國家級教學醫院'`（HospitalTier union），這些 canonical 值散落於 Dexie、R2 bundle、D1 leaderboard、`HOSPITAL_TIER_TO_NUM` mapping、scene key mapping、所有 spec scenarios。**規則**：任何**用戶可見**的 tier 字串渲染都應該走 `tierLabel()`；任何**程式邏輯**比較或儲存值都用 canonical。HelpMenu 是例外，第一次提到每個 tier 時用「短稱（canonical）」雙寫格式以幫舊玩家對應。Tutorial / 簡短提示用短稱即可（無 disambiguation）。aria-label / accessibility 文字可用 canonical 給 screen readers
+- **Vite `.env.local` 是 per-app 不是 monorepo root**（2026-05-25 踩過，付出代價：兩次 prod 部署 regression 把 一階+二階 cloud sync 整個關掉 40 分鐘）— Vite build 時讀的是 **CWD 的 `.env.local`**。`pnpm --filter @study-rpg/<app> build` 切換到 `apps/<app>/`，所以 Vite 讀的是 `apps/<app>/.env.local`，**不是 repo root 的 `.env.local`**。**規則**：每個 app（`apps/medexam-tw/`、`apps/medexam2-hospital-tw/`、`apps/neurons-tw/`）各放一份 `.env.local`（已都 gitignored），即使內容一模一樣。Root `.env.local` 可以留給 backend admin scripts（`scripts/bulk-migrate.ts` / `reconcile.ts` 等用 dotenv 從 cwd 讀）。**症狀**：build 完的 JS bundle 沒含 `jakdyjxojokyqxeiuukx` 字串、`getSupabase()` 回 `null`、console 噴 `[auth] Supabase env vars missing → cloud sync disabled`、UI 不顯示 sign-in CTA / 已同步 chip。**驗證指令**：`curl -s https://med-study-rpg.com/<subpath>/assets/index-<hash>.js | grep -c jakdyjxojokyqxeiuukx`，0 = env 沒 baked、>=1 = OK。

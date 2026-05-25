@@ -164,8 +164,13 @@ export function FateCardPage() {
           const insufficient = counters.reputation < cost
           const badLuckRate = FATE_CARD_BAD_LUCK_RATES[tier]
           const pool = FATE_CARD_POOLS[tier]
+          const isPure = badLuckRate === 0
+          // Pity counter schema only includes tiers with bad luck (common / rare / epic).
+          // Now both epic + legendary are 0% bad luck (isPure), so this lookup only fires for common / rare.
           const pityCount =
-            tier === 'legendary' ? 0 : mono?.fateCardBadLuckPity[tier] ?? 0
+            !isPure && (tier === 'common' || tier === 'rare')
+              ? mono?.fateCardBadLuckPity[tier] ?? 0
+              : 0
           return (
             <article
               key={tier}
@@ -185,11 +190,15 @@ export function FateCardPage() {
               </h3>
               <p className="fate-card__cost">消耗：{fmt(cost)} 聲望</p>
               <p className="fate-card__badluck">
-                衰運率：{(badLuckRate * 100).toFixed(0)}%
-                {tier !== 'legendary' && (
-                  <span className="fate-card__pity">
-                    （保底 {pityCount}/{FATE_CARD_PITY_THRESHOLD}）
-                  </span>
+                {isPure ? (
+                  <>純獎勵（無衰運）</>
+                ) : (
+                  <>
+                    衰運率：{(badLuckRate * 100).toFixed(0)}%
+                    <span className="fate-card__pity">
+                      （保底 {pityCount}/{FATE_CARD_PITY_THRESHOLD}）
+                    </span>
+                  </>
                 )}
               </p>
               <ul className="fate-card__pool">
