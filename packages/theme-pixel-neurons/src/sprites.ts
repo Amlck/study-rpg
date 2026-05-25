@@ -1,8 +1,15 @@
 /**
- * Sprite registry — placeholders covering all artKeys referenced by
- * ITEM_CATALOG + COSMETIC_CATALOG + skill tree fallback keys + contract-required
- * character / slot-placeholder keys + per-subject icon keys. All point to a 1×1
- * transparent PNG until generate-neurons-sprites populates real assets.
+ * Sprite registry — maps theme sprite keys to runtime URLs.
+ *
+ * Subject icons (11 neuron families): REAL sprites generated via codex CLI per
+ * `generate-neurons-sprites` change (2026-05-25). See `../SPRITE_GENERATION.md`
+ * for prompts + regen procedure. Bundled via Vite `import.meta.glob` with
+ * `?url` for cache-busting hash URLs in production.
+ *
+ * Other categories (core scaffold / items / cosmetics / skill placeholders)
+ * still map to a 1×1 transparent PNG until their respective consumer
+ * capabilities (variant gacha / achievements / dorm view / skill tree, etc.)
+ * ship real assets in separate future changes.
  *
  * theme-pack-contract MUST-cover keys: character-base, slot-placeholder-{head,
  * body,weapon,charm}, plus every Item.artKey in itemCatalog. Engine boots cleanly
@@ -11,6 +18,21 @@
 
 const TRANSPARENT_PIXEL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+
+// Real subject sprites — Vite glob handles UTF-8 Chinese filenames cleanly
+// per `theme-pixel-hospital/sprites/doctor-內科-P3.png` proven precedent.
+const subjectSpriteModules = import.meta.glob('../sprites/subjects/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const subjectSprites: Record<string, string> = Object.fromEntries(
+  Object.entries(subjectSpriteModules).map(([path, url]) => {
+    const id = path.replace(/.*\/(.+)\.png$/, '$1')
+    return [`subject:${id}`, url]
+  }),
+)
 
 // 11 subject icon keys (matched to FAMILY_BY_SUBJECT in content-neurons-tw build.ts)
 const SUBJECT_IDS = [
@@ -100,7 +122,11 @@ const CORE_KEYS = [
 
 export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
   ...CORE_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
-  ...SUBJECT_IDS.map((id) => [`subject:${id}`, TRANSPARENT_PIXEL]),
+  // Subject icons: real sprite if file present, else defensive fallback to placeholder
+  ...SUBJECT_IDS.map((id) => [
+    `subject:${id}`,
+    subjectSprites[`subject:${id}`] ?? TRANSPARENT_PIXEL,
+  ]),
   ...ITEM_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...COSMETIC_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...SKILL_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
