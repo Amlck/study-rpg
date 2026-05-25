@@ -26,6 +26,12 @@ import { getHospitalDB } from '../db/schema'
 export async function buildAchievementStats(): Promise<AchievementStats> {
   const db = getHospitalDB()
 
+  // Scope MUST cover every table read inside the callback. `db.rooms` is read
+  // by the P1-specialty-match branch (~L100); omitting it throws `Table rooms
+  // not part of transaction` the moment a player has ≥1 P1 with all P1
+  // assigned to rooms — silently breaking retire / recruit / fate-card /
+  // training / tick / quiz-reward in one go. Spec: achievement-system
+  // "buildAchievementStats transaction scope covers every read".
   return db.transaction(
     'r',
     [
@@ -36,6 +42,7 @@ export async function buildAchievementStats(): Promise<AchievementStats> {
       db.fateCardHistory,
       db.retirementLog,
       db.doctors,
+      db.rooms,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')

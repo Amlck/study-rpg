@@ -224,9 +224,11 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     //   (1) write targets — mastery / questionHistory / affinity / gameCounters /
     //       monotonicCounters / tickets / bannerUnlockBonusLog / achievements / meta
     //   (2) sub-tx scope-superset for `applyQuizReward` reads —
-    //       - eventLog / fateCardHistory / retirementLog / doctors: read by
-    //         `buildAchievementStats` (opens a sub-tx and Dexie rejects sub-tx
-    //         scope that isn't a subset of the parent)
+    //       - eventLog / fateCardHistory / retirementLog / doctors / rooms:
+    //         read by `buildAchievementStats` (opens a sub-tx and Dexie
+    //         rejects sub-tx scope that isn't a subset of the parent); rooms
+    //         is the P1-specialty-match branch added in
+    //         fix-medexam2-achievement-stats-rooms-scope
     //       - hospitalEquipment: read by `getOwnedEquipment` for the reputation
     //         multiplier
     //       These tables are read-only here; without them every quiz answer
@@ -248,6 +250,7 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
         db.fateCardHistory,
         db.retirementLog,
         db.doctors,
+        db.rooms,
         db.achievements,
         db.meta,
         db.hospitalEquipment,
