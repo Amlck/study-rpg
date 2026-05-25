@@ -93,6 +93,11 @@ jobs:
         env:
           VITE_DEPLOY_BASE: /neurons/
           VITE_COMMIT_SHA: ${{ github.sha }}
+          # Scaffold has 免疫學 subject with zero questions assigned —
+          # content-neurons-tw build script normally errors on orphan subjects
+          # but supports the same MEDEXAM_ALLOW_SKIPS=1 escape as
+          # content-medexam-tw. Remove this once neurons content fully wired.
+          MEDEXAM_ALLOW_SKIPS: '1'
         run: pnpm --filter @study-rpg/neurons-tw build
 
       - name: Assemble dist-cf
