@@ -13,6 +13,13 @@ import {
   type ConnectomeEventName,
   type ConnectomeListener,
 } from '../connectome'
+import {
+  recordAttemptInTx,
+  emitMasteryUpdated,
+  initFamilyMasteryIfEmpty,
+  type MasteryUpdate,
+} from './mastery'
+import type { ContentPack } from '@study-rpg/core'
 
 export const events = new ConnectomeEventEmitter()
 
@@ -83,9 +90,11 @@ export async function runDailyResetIfNeeded(): Promise<void> {
 export async function recordCorrectAnswer(familyId: string): Promise<void> {
   const today = todayISO()
   let pending: PendingEvent[] = []
+  let masteryUpdate: MasteryUpdate | null = null
 
-  await db.transaction('rw', db.synapses, db.familyAccrual, db.meta, async () => {
+  await db.transaction('rw', db.synapses, db.familyAccrual, db.meta, db.familyMastery, async (tx) => {
     pending.push(...(await runDailyResetIfNeededInTx(today)))
+    masteryUpdate = await recordAttemptInTx(tx, familyId, true)
 
     const accrual = await db.familyAccrual.get(familyId)
     if (!accrual) {
@@ -162,12 +171,21 @@ export async function recordCorrectAnswer(familyId: string): Promise<void> {
   })
 
   emitAll(pending)
+  if (masteryUpdate) emitMasteryUpdated(masteryUpdate)
 }
 
-export async function recordIncorrectAnswer(_familyId: string): Promise<void> {
-  // Intentional no-op per spec: incorrect answers SHALL NOT change AP / firedToday / synapse state.
-  // Hook retained for future-proofing (e.g. future change may want incorrect telemetry).
-  return Promise.resolve()
+export async function recordIncorrectAnswer(familyId: string): Promise<void> {
+  // Per connectome-collection spec: AP / firedToday / synapse state unchanged.
+  // Per neuron-family-mastery spec: total counter increments (correct does not).
+  let masteryUpdate: MasteryUpdate | null = null
+  await db.transaction('rw', db.familyMastery, async (tx) => {
+    masteryUpdate = await recordAttemptInTx(tx, familyId, false)
+  })
+  if (masteryUpdate) emitMasteryUpdated(masteryUpdate)
+}
+
+export async function initMasteryForPack(pack: ContentPack): Promise<void> {
+  await initFamilyMasteryIfEmpty(pack)
 }
 
 export interface ConnectomeSnapshot {

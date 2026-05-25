@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
 import type { ContentPack } from '@study-rpg/core'
 import { THEME_PIXEL_NEURONS, COSMETIC_CATALOG_SIZE } from '@study-rpg/theme-pixel-neurons'
+import { initMasteryForPack } from '../lib/services/connectome'
+import MasteryChip from '../components/MasteryChip'
 
 interface Props {
   pack: ContentPack
@@ -7,6 +10,21 @@ interface Props {
 
 export default function OverviewPage({ pack }: Props): JSX.Element {
   const ntCount = (br: string): number => pack.subjects.filter((s) => s.group === br).length
+  const [masteryReady, setMasteryReady] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    initMasteryForPack(pack)
+      .then(() => {
+        if (!cancelled) setMasteryReady(true)
+      })
+      .catch(() => {
+        // Non-fatal: chips just won't render until next load
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pack])
 
   return (
     <>
@@ -34,6 +52,22 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
             主題：{THEME_PIXEL_NEURONS.meta.displayName}（道具 {THEME_PIXEL_NEURONS.itemCatalog.length} 項、外觀 {COSMETIC_CATALOG_SIZE} 項）
           </li>
         </ul>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={h2Style}>🎓 家族熟練度</h2>
+        {!masteryReady ? (
+          <p style={{ margin: 0, color: '#5a3f29' }}>初始化熟練度資料中…</p>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {pack.subjects.map((s) => (
+              <MasteryChip key={s.id} familyId={s.id} displayName={s.displayName} />
+            ))}
+          </div>
+        )}
+        <p style={{ margin: '0.5rem 0 0', fontSize: '0.78em', color: '#8c6d4a' }}>
+          每答對 1 題 correct +1 + total +1；答錯 total +1。tier 在 5 題後評估，需同時通過題數與正確率雙閘門。
+        </p>
       </section>
 
       <section style={sectionStyle}>

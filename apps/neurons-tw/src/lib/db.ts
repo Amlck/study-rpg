@@ -24,10 +24,17 @@ export interface MetaRow {
   value: string
 }
 
+export interface FamilyMasteryRow {
+  familyId: string
+  correct: number
+  total: number
+}
+
 export class NeuronsDB extends Dexie {
   synapses!: EntityTable<SynapseRow, 'pairKey'>
   familyAccrual!: EntityTable<FamilyAccrualRow, 'familyId'>
   meta!: EntityTable<MetaRow, 'key'>
+  familyMastery!: EntityTable<FamilyMasteryRow, 'familyId'>
 
   constructor() {
     super('neurons-rpg')
@@ -35,6 +42,12 @@ export class NeuronsDB extends Dexie {
       synapses: 'pairKey, lastCoFireDate, state',
       familyAccrual: 'familyId, lastFireDate, firedToday',
       meta: 'key',
+    })
+    this.version(2).stores({
+      synapses: 'pairKey, lastCoFireDate, state',
+      familyAccrual: 'familyId, lastFireDate, firedToday',
+      meta: 'key',
+      familyMastery: 'familyId',
     })
   }
 }

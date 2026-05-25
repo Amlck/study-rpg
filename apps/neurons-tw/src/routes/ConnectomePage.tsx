@@ -3,12 +3,14 @@ import type { ContentPack, Subject } from '@study-rpg/core'
 import { initFamilyAccrualIfEmpty } from '../lib/db'
 import {
   decodePairKey,
+  initMasteryForPack,
   loadConnectome,
   subscribeConnectomeEvents,
   type ConnectomeSnapshot,
 } from '../lib/services/connectome'
 import { AP_THRESHOLDS, nextSlotThreshold } from '../lib/connectome'
 import ConnectomeDebugPanel from '../components/ConnectomeDebugPanel'
+import MasteryChip from '../components/MasteryChip'
 
 interface Props {
   pack: ContentPack
@@ -28,7 +30,7 @@ export default function ConnectomePage({ pack }: Props): JSX.Element {
 
   useEffect(() => {
     let disposed = false
-    initFamilyAccrualIfEmpty(pack)
+    Promise.all([initFamilyAccrualIfEmpty(pack), initMasteryForPack(pack)])
       .then(() => {
         if (disposed) return
         refresh()
@@ -180,6 +182,9 @@ function FamilyCard({
         {next == null
           ? `／MAX（${AP_THRESHOLDS.length}/${AP_THRESHOLDS.length}）`
           : `／next @ ${next}（${unlockedSlots.length}/${AP_THRESHOLDS.length}）`}
+      </div>
+      <div style={{ marginTop: '0.3rem' }}>
+        <MasteryChip familyId={family.id} displayName={family.displayName} />
       </div>
     </div>
   )

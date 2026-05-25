@@ -7,6 +7,7 @@ import {
   recordIncorrectAnswer,
   resetConnectomeForDebug,
 } from '../lib/services/connectome'
+import MasteryChip from './MasteryChip'
 
 interface Props {
   pack: ContentPack
@@ -108,6 +109,16 @@ export default function ConnectomeDebugPanel({ pack, onMutation }: Props): JSX.E
 
       <div style={{ ...rowStyle, fontSize: '0.85em', color: '#5a3f29' }}>
         最後動作：<code>{lastAction}</code>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={{ fontSize: '0.85em', color: '#5a3f29' }}>選定家族熟練度：</span>
+        {selectedFamily && (
+          <MasteryChip
+            familyId={selectedFamily}
+            displayName={pack.subjects.find((s) => s.id === selectedFamily)?.displayName}
+          />
+        )}
       </div>
     </section>
   )
