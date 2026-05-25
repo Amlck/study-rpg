@@ -146,8 +146,10 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     icon: '🎴',
     title: '命運卡',
     body: [
-      '消耗 reputation 抽 4 階卡包（普通 / 稀有 / 史詩 / 傳奇）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
-      '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward。',
+      '消耗 reputation 抽 4 階卡包（普通 1k / 稀有 10k / 史詩 50k / 傳奇 300k）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
+      '傳奇 300k = 醫學中心 → 國家級教學醫院升級門檻：跨過 T3→T4 那一刻通常已經湊夠一張傳奇，可直接抽指定 P2 醫師回頭補滿剛剛達成的 10 distinct P2+ diversification gate。',
+      '純獎勵 tier：史詩 + 傳奇皆 0% 衰運（pure positive）；普通 + 稀有 仍保留 5% 衰運機率，給低成本「樂透感」。',
+      '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward（史詩 / 傳奇 因為 0% 衰運，自然不會觸發保底）。',
     ],
   },
   {

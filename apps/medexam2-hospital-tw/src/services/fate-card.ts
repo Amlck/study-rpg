@@ -19,7 +19,10 @@
  *   - targeted-p3-ticket / p2-ticket     → create pending targetedTickets row
  *                                          (subject pick + rarity-floor reroll
  *                                          handled by RecruitmentPage consume UX)
- *   - others (training-guarantee, event-immunity, salary-waiver,
+ *   - targeted-p3-ticket-x2              → create TWO pending targetedTickets rows
+ *                                          (first routes to picker; second waits
+ *                                          in inbox)
+ *   - others (training-guarantee, event-immunity,
  *     throughput-x2-week)                → log only; effect TBD when inventory ships
  */
 
@@ -203,6 +206,18 @@ async function applyRewardEffect(key: string, label: string): Promise<RewardEffe
         targetedTicketId: ticket.id,
       }
     }
+    case 'targeted-p3-ticket-x2': {
+      // 2× single-ticket grant: first routes to picker immediately, second
+      // sits in the targeted-ticket inbox until the player consumes the first.
+      // Each ticket gets its own TARGETED_REROLL_CAP budget on consume.
+      const first = await createPendingTargetedTicket('epic')
+      await createPendingTargetedTicket('epic')
+      return {
+        description: `${label} — 已建立 2 張，請先指派第 1 張`,
+        revenueDelta: 0,
+        targetedTicketId: first.id,
+      }
+    }
     case 'facility-plus-0.5': {
       const bumped = await bumpRandomRoomFacility()
       return {
@@ -223,7 +238,6 @@ async function applyRewardEffect(key: string, label: string): Promise<RewardEffe
     case 'training-guarantee-x1':
     case 'event-immunity-1':
     case 'event-positive-trigger':
-    case 'salary-waiver-1-week':
     case 'throughput-x2-1-week':
       return { description: `${label}（已紀錄；庫存系統實裝後生效）`, revenueDelta: 0 }
     default:
