@@ -83,6 +83,18 @@ jobs:
           VITE_SYNC_WORKER_URL: https://api.med-study-rpg.com
         run: pnpm --filter @study-rpg/medexam2-hospital-tw build
 
+      # neurons-tw scaffold (M_3rd). Currently auth-less / sync-less, so only
+      # VITE_DEPLOY_BASE + VITE_COMMIT_SHA are needed. Added 2026-05-25 to
+      # unbreak CF Pages deploy after `add-neurons-deploy` registered the app
+      # in scripts/build-cf-pages-dist.mjs ROUTES but forgot to add the build
+      # step here — every CF Pages deploy since then failed at the
+      # `Assemble dist-cf` step with "Required input missing: apps/neurons-tw/dist".
+      - name: Build neurons-tw for /neurons/
+        env:
+          VITE_DEPLOY_BASE: /neurons/
+          VITE_COMMIT_SHA: ${{ github.sha }}
+        run: pnpm --filter @study-rpg/neurons-tw build
+
       - name: Assemble dist-cf
         run: node scripts/build-cf-pages-dist.mjs
 
