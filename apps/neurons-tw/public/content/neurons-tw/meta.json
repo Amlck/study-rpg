@@ -1,0 +1,38 @@
+{
+  "id": "neurons-tw",
+  "displayName": "神經元 RPG — Long-term Potentiation Edition",
+  "locale": "zh-TW",
+  "builtAt": "2026-05-25T00:46:34.397Z",
+  "sourceCredit": "陽明國考考古題小組 + 中華民國考選部歷屆考題 + neurons reskin",
+  "sourceUrl": "https://sites.google.com/view/ymmedexam/ans",
+  "license": "CC-BY-NC-4.0 (詳解) + public domain (試題) + AGPL-3.0-or-later (neurons reskin)",
+  "stats": {
+    "totalQuestions": 3291,
+    "parsedFiles": 180,
+    "totalFiles": 181,
+    "subjects": 11,
+    "splitMicro": 263,
+    "splitImmune": 198,
+    "untaggedFallback": 101
+  },
+  "statSchema": {
+    "order": [
+      "knowledge",
+      "reflex",
+      "memory",
+      "stamina"
+    ],
+    "labels": {
+      "knowledge": "Glutamate 麩胺酸 (學習)",
+      "reflex": "Dopamine 多巴胺 (動機)",
+      "memory": "GABA γ-胺基丁酸 (專注)",
+      "stamina": "Serotonin 血清素 (耐力)"
+    },
+    "colors": {
+      "knowledge": "var(--nt-glu)",
+      "reflex": "var(--nt-da)",
+      "memory": "var(--nt-gaba)",
+      "stamina": "var(--nt-5ht)"
+    }
+  }
+}

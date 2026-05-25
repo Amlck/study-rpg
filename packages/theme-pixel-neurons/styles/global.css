@@ -1,22 +1,48 @@
 /*
- * Neutral fallback CSS for the neurons-themed scaffold.
+ * theme-pixel-neurons global styles.
  *
- * Real palette (4 NT branch colors: DA yellow / 5-HT red / GABA blue /
- * Glu green) + pixel font @font-face + Linnean tree layout vars land in
- * `wire-neurons-content-and-theme`.
+ * Loads Cubic 11 pixel font (self-hosted by host app), sets base layout
+ * variables, and tunes pixel rendering for sprite-heavy components.
+ *
+ * 4 NT branch palette + synapse states + rarity frames are declared in
+ * THEME_PIXEL_NEURONS.cssVars (src/index.ts) and injected at boot.
  */
 
+@font-face {
+  font-family: 'Cubic 11';
+  src:
+    url('/fonts/Cubic_11.woff2') format('woff2'),
+    url('/fonts/Cubic_11.woff') format('woff');
+  font-display: swap;
+}
+
 :root {
-  --bg-default: #faf7f0;
-  --ink-default: #1a1410;
-  --frame-default: #8c6d4a;
+  /* fallback base layout (overridden by THEME_PIXEL_NEURONS.cssVars injection at boot) */
+  --bg-cream: #f4ecd8;
+  --bg-dark: #2d1f1a;
+  --ink: #1a1410;
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--bg-default);
-  color: var(--ink-default);
-  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  background: var(--bg-cream);
+  color: var(--ink);
+  font-family: 'Cubic 11', 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Pixel-art friendly image rendering for any <img> with class .pixel */
+img.pixel,
+.pixel-sprite {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+}
+
+/* Basic layout helpers shared by neurons-tw views */
+.connectome-stage {
+  background: var(--bg-cream);
+  border: 2px solid var(--frame-cell-light, #8c6d4a);
 }

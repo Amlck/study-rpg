@@ -1,33 +1,71 @@
 /**
- * Content pack scaffold: neurons-themed reskin (M_3rd track).
+ * Content pack: neurons-themed reskin of Taiwan Stage-1 medical board exam
+ * (M_3rd track). Question corpus is 100% shared with `@study-rpg/content-medexam-tw`
+ * (~3291 questions across 11 neuron-family subjects). Subject `displayName`s
+ * replaced with Linnean phylogenetic taxonomy on 4 neurotransmitter branches
+ * (DA / 5-HT / GABA / Glu); see design.md Decision 1 of
+ * wire-neurons-content-and-theme for the full mapping.
  *
- * Scaffold stage only — `getContentPack()` returns an empty placeholder
- * satisfying `content-pack-contract` minimums (id / displayName / locale /
- * credits + empty subjects + empty questions).
- *
- * Deferred to follow-up change `wire-neurons-content-and-theme`:
- * - Question corpus reuse (link to medexam-tw built JSON or symlink path)
- * - Subject rename to neuron families (Linnean taxonomy: 4 NT branches × N families)
- * - `ContentPackMeta.statSchema` override (DA / 5-HT / GABA / Glu)
- * - Source credit attribution wiring (陽明國考考古題小組 CC-BY-NC-4.0)
+ * Data is loaded lazily from `./dist/{meta,subjects,questions}.json` produced
+ * by `pnpm --filter @study-rpg/content-neurons-tw build`. The build script
+ * reads medexam-tw artifacts + re-splits the 微生物暨免疫學 subject into
+ * 微生物學 + 免疫學 via source markdown per-Q `**科目**：` tag lookup.
  */
 
-import type { ContentPack } from '@study-rpg/core'
+import type { ContentPack, Question, StatSchema, Subject } from '@study-rpg/core'
 
-export async function getContentPack(): Promise<ContentPack> {
+interface BuiltMeta {
+  id: string
+  displayName: string
+  locale: string
+  builtAt: string
+  sourceCredit: string
+  sourceUrl: string
+  license: string
+  stats: {
+    totalQuestions: number
+    parsedFiles: number
+    totalFiles: number
+    subjects: number
+    splitMicro: number
+    splitImmune: number
+    untaggedFallback: number
+  }
+  statSchema: StatSchema
+}
+
+export async function getContentPack(baseUrl = '/content/neurons-tw'): Promise<ContentPack> {
+  const [meta, subjects, questions] = await Promise.all([
+    fetch(`${baseUrl}/meta.json`).then((r) => r.json() as Promise<BuiltMeta>),
+    fetch(`${baseUrl}/subjects.json`).then((r) => r.json() as Promise<Subject[]>),
+    fetch(`${baseUrl}/questions.json`).then((r) => r.json() as Promise<Question[]>),
+  ])
+
   return {
     meta: {
-      id: 'neurons-tw',
-      displayName: '神經元 RPG（scaffold）',
-      locale: 'zh-TW',
+      id: meta.id,
+      displayName: meta.displayName,
+      locale: meta.locale,
+      examMeta: { builtAt: meta.builtAt, stats: meta.stats, supportsMockExam: true },
       credits: [
         {
-          name: 'TBD — Yang-Ming 國考考古題小組 (reused from medexam-tw, scaffold placeholder)',
+          name: '中華民國考選部 (歷屆考題)',
+          url: 'https://www.moex.gov.tw/',
+          license: 'public domain (試題)',
+        },
+        {
+          name: '陽明國考考古題小組 (詳解)',
+          url: 'https://sites.google.com/view/ymmedexam/ans',
           license: 'CC-BY-NC-4.0',
         },
+        {
+          name: 'neurons reskin (M_3rd track)',
+          license: 'AGPL-3.0-or-later',
+        },
       ],
+      statSchema: meta.statSchema,
     },
-    subjects: [],
-    questions: [],
+    subjects,
+    questions,
   }
 }
