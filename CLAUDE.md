@@ -60,7 +60,7 @@ Two parallel deploys during the 2–4 week migration bake (started 2026-05-22, c
 | Target | URL — 一階 | URL — 二階 | URL — 神經元 (M_3rd) | Pipeline |
 |---|---|---|---|---|
 | **GitHub Pages** (legacy) | `https://fireman333.github.io/study-rpg/` | `https://fireman333.github.io/study-rpg/hospital/` | — (neurons-tw NOT published to GH Pages; spec `neurons-deploy` Req 1) | `.github/workflows/deploy.yml`; sets `VITE_DEPLOY_TARGET=gh-pages` so `DomainMigrationBanner` surfaces |
-| **Cloudflare Pages** (new home) | `https://med-study-rpg.com/1st/` | `https://med-study-rpg.com/2nd/` | `https://med-study-rpg.com/neurons/` | CF Pages dashboard GitHub integration; build = `pnpm install && VITE_DEPLOY_BASE=/1st/ pnpm --filter @study-rpg/medexam-tw build && VITE_DEPLOY_BASE=/2nd/ pnpm --filter @study-rpg/medexam2-hospital-tw build && VITE_DEPLOY_BASE=/neurons/ pnpm --filter @study-rpg/neurons-tw build && node scripts/build-cf-pages-dist.mjs`; output = `dist-cf/` |
+| **Cloudflare Pages** (new home) | `https://med-study-rpg.com/1st/` | `https://med-study-rpg.com/2nd/` | `https://med-study-rpg.com/neurons/` | CF Pages **direct-upload** mode (project name `med-study-rpg`, no GitHub integration). Owner runs `pnpm deploy:cf` from local — wraps the three app builds (each with its own `VITE_DEPLOY_BASE`) + `node scripts/build-cf-pages-dist.mjs` (assembles `dist-cf/`) + `wrangler pages deploy dist-cf --project-name med-study-rpg --branch main`. Vite env vars (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_SYNC_WORKER_URL`) come from local shell env at deploy time — NOT from repo secrets. |
 
 Both deploys hit the same Cloudflare Worker `study-rpg-sync-worker` via two URLs (same backend, no traffic split):
 
