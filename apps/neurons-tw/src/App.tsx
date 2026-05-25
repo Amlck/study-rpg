@@ -35,7 +35,7 @@ export default function App(): JSX.Element {
     for (const [k, v] of Object.entries(THEME_PIXEL_NEURONS.cssVars)) {
       root.style.setProperty(k, v)
     }
-    getContentPack()
+    getContentPack(`${import.meta.env.BASE_URL}content/neurons-tw`)
       .then(async (pack) => {
         const familyById = new Map(pack.subjects.map((s) => [s.id, s]))
         const resolveFamilyDisplayName = (familyId: string): string =>
@@ -69,7 +69,7 @@ export default function App(): JSX.Element {
   return (
     <AuthProvider>
       <SyncMount />
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
         <ConnectomeToastHost pack={pack} />
         <VariantUnlockModal />
         <AchievementToastHost />
