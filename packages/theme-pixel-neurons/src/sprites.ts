@@ -110,6 +110,15 @@ for (const nt of ['da', '5ht', 'gaba', 'glu'] as const) {
   }
 }
 
+// neuron-variant-gacha placeholder keys (11 families × 5 slots = 55)
+// Real sprites deferred to a follow-up generate-neuron-variant-sprites change.
+const VARIANT_ART_KEYS: string[] = []
+for (const subjectId of SUBJECT_IDS) {
+  for (let slot = 1; slot <= 5; slot += 1) {
+    VARIANT_ART_KEYS.push(`variant:${subjectId}:${slot}`)
+  }
+}
+
 // Contract-required keys
 const CORE_KEYS = [
   'character-base',
@@ -118,6 +127,7 @@ const CORE_KEYS = [
   'slot-placeholder-weapon',
   'slot-placeholder-charm',
   'dorm-default',
+  'variant:default',
 ] as const
 
 export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
@@ -130,4 +140,5 @@ export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
   ...ITEM_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...COSMETIC_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...SKILL_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
+  ...VARIANT_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
 ])

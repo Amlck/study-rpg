@@ -112,3 +112,59 @@ export function initialGachaStats(config: GachaConfig): GachaStats {
   }
   return { totalRolls: 0, rollsSinceLast }
 }
+
+/**
+ * Roll with a hard rarity floor: deterministic reroll up to `rerollCap` times;
+ * if every attempt is below `floor`, force-sample at exactly `floor`. Used by
+ * `recruitment-gacha` targeted-ticket consume and `neuron-variant-gacha` slot-4/5
+ * floors. Degenerates to `rollGacha` when `floor === null`.
+ *
+ * Note: each reroll calls `rollGacha`, so `totalRolls` increments per attempt.
+ * Callers that want single-roll accounting should pre-snapshot stats.
+ */
+export function rollGachaWithFloor(
+  config: GachaConfig,
+  stats: GachaStats,
+  floor: string | null,
+  rerollCap: number,
+  rng: () => number = Math.random,
+): GachaRollResult {
+  if (floor === null) {
+    return rollGacha(config, stats, rng)
+  }
+  let attemptStats = stats
+  let attemptResult = rollGacha(config, attemptStats, rng)
+  for (let attempt = 1; attempt < Math.max(1, rerollCap); attempt += 1) {
+    if (tierAtOrAbove(attemptResult.tier, floor, config.tiers)) {
+      return { tier: attemptResult.tier, wasPity: true, newStats: attemptResult.newStats }
+    }
+    attemptStats = attemptResult.newStats
+    attemptResult = rollGacha(config, attemptStats, rng)
+  }
+  if (tierAtOrAbove(attemptResult.tier, floor, config.tiers)) {
+    return { tier: attemptResult.tier, wasPity: true, newStats: attemptResult.newStats }
+  }
+  // Force-sample at floor — last attempt was below floor, so the inner rollGacha
+  // call already incremented `rollsSinceLast[floor]` (and tiers above the result).
+  // Override the floor counter (and any tier below it) so that stats reflect a hit
+  // at the floor tier, matching the natural-path semantics of rollGacha. Pity
+  // counters for tiers ABOVE floor are preserved (the forced tier did NOT clear them).
+  const trackedTiers = new Set<string>([
+    ...Object.keys(attemptResult.newStats.rollsSinceLast),
+    ...config.pityRules.map((r) => r.tier),
+  ])
+  const forcedRollsSinceLast: Record<string, number> = {}
+  for (const tierId of trackedTiers) {
+    forcedRollsSinceLast[tierId] = tierAtOrAbove(floor, tierId, config.tiers)
+      ? 0
+      : (attemptResult.newStats.rollsSinceLast[tierId] ?? 0)
+  }
+  return {
+    tier: floor,
+    wasPity: true,
+    newStats: {
+      totalRolls: attemptResult.newStats.totalRolls,
+      rollsSinceLast: forcedRollsSinceLast,
+    },
+  }
+}

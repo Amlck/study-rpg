@@ -69,3 +69,16 @@ export async function getContentPack(baseUrl = '/content/neurons-tw'): Promise<C
     questions,
   }
 }
+
+export {
+  NEURON_VARIANT_CATALOG,
+  VARIANT_RARITY_WEIGHTS,
+  SLOT_RARITY_FLOOR,
+  VARIANT_REROLL_CAP,
+  DEFAULT_VARIANT_TITLE_BY_RARITY,
+  composeVariantDisplayName,
+  type Rarity,
+  type SlotIndex,
+  type NeuronVariantDef,
+  type VariantRarityTier,
+} from './variants'

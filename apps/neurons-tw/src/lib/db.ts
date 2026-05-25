@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
 import type { ContentPack } from '@study-rpg/core'
 
 export type SynapseState = 'dormant' | 'weak' | 'strong'
@@ -30,11 +30,24 @@ export interface FamilyMasteryRow {
   total: number
 }
 
+export type VariantRarity = 'P1' | 'P2' | 'P3' | 'P4' | 'P5'
+
+export interface NeuronVariantRow {
+  familyId: string
+  slotIndex: number
+  rarity: VariantRarity
+  displayName: string
+  spriteKey: string
+  rolledAt: number
+  wasPityFloor: boolean
+}
+
 export class NeuronsDB extends Dexie {
   synapses!: EntityTable<SynapseRow, 'pairKey'>
   familyAccrual!: EntityTable<FamilyAccrualRow, 'familyId'>
   meta!: EntityTable<MetaRow, 'key'>
   familyMastery!: EntityTable<FamilyMasteryRow, 'familyId'>
+  neuronVariants!: Table<NeuronVariantRow, [string, number]>
 
   constructor() {
     super('neurons-rpg')
@@ -48,6 +61,15 @@ export class NeuronsDB extends Dexie {
       familyAccrual: 'familyId, lastFireDate, firedToday',
       meta: 'key',
       familyMastery: 'familyId',
+    })
+    this.version(3).stores({
+      synapses: 'pairKey, lastCoFireDate, state',
+      familyAccrual: 'familyId, lastFireDate, firedToday',
+      meta: 'key',
+      familyMastery: 'familyId',
+      // Composite PK [familyId+slotIndex] enforces lifetime uniqueness per
+      // (family, slot). Secondary indices on familyId + rolledAt for queries.
+      neuronVariants: '[familyId+slotIndex], familyId, rolledAt',
     })
   }
 }

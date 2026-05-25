@@ -5,6 +5,7 @@ import {
   decodePairKey,
   subscribeConnectomeEvents,
 } from '../lib/services/connectome'
+import { subscribeVariantGachaEvents } from '../lib/services/variant-gacha'
 import type { SynapseState } from '../lib/db'
 import { useRespectsReducedMotion, TOAST_AUTO_DISMISS_MS } from '../lib/motion'
 
@@ -42,7 +43,7 @@ export default function ConnectomeToastHost({ pack }: Props): JSX.Element {
       }, TOAST_AUTO_DISMISS_MS)
     }
 
-    const sub = subscribeConnectomeEvents({
+    const connectomeSub = subscribeConnectomeEvents({
       'connectome.synapseFormed': (p) => {
         const [a, b] = decodePairKey(p.pairKey)
         push('✨', `新連線形成：「${labelFor(a)}」⇌「${labelFor(b)}」— 兩個 neuron family 在今天同時 fire，wire together`)
@@ -53,7 +54,19 @@ export default function ConnectomeToastHost({ pack }: Props): JSX.Element {
       },
     })
 
-    return () => sub.dispose()
+    const variantSub = subscribeVariantGachaEvents({
+      variantRolled: ({ variant, familyDisplayName }) => {
+        push(
+          '🧬',
+          `${familyDisplayName} 變體解鎖：「${variant.displayName}」（Slot ${variant.slotIndex}）`,
+        )
+      },
+    })
+
+    return () => {
+      connectomeSub.dispose()
+      variantSub.dispose()
+    }
   }, [pack])
 
   if (toasts.length === 0) return <></>

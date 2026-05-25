@@ -7,6 +7,11 @@ import OverviewPage from './routes/OverviewPage'
 import ConnectomePage from './routes/ConnectomePage'
 import MotionDemoPage from './routes/MotionDemoPage'
 import ConnectomeToastHost from './components/SynapseFormationToast'
+import VariantUnlockModal from './components/VariantUnlockModal'
+import {
+  backfillUnlockedSlots,
+  registerVariantGachaSubscriber,
+} from './lib/services/variant-gacha'
 
 interface AppState {
   loading: boolean
@@ -23,7 +28,19 @@ export default function App(): JSX.Element {
       root.style.setProperty(k, v)
     }
     getContentPack()
-      .then((pack) => setState({ loading: false, pack }))
+      .then(async (pack) => {
+        const familyById = new Map(pack.subjects.map((s) => [s.id, s]))
+        const resolveFamilyDisplayName = (familyId: string): string =>
+          familyById.get(familyId)?.displayName ?? familyId
+        registerVariantGachaSubscriber(resolveFamilyDisplayName)
+        // Backfill variants for slots the player already crossed AP threshold
+        // for before this change shipped. Awaited (not fire-and-forget) so
+        // chips mount with the correct count on first render. Silent inside —
+        // NO modal/toast for backfilled variants. Total boot cost: ~50ms for a
+        // typical save (a few rows); errors logged but do not block boot.
+        await backfillUnlockedSlots(resolveFamilyDisplayName)
+        setState({ loading: false, pack })
+      })
       .catch((e) => setState({ loading: false, error: String(e) }))
   }, [])
 
@@ -39,6 +56,7 @@ export default function App(): JSX.Element {
   return (
     <BrowserRouter>
       <ConnectomeToastHost pack={pack} />
+      <VariantUnlockModal />
       <main style={pageStyle}>
         <nav style={navStyle}>
           <NavLink to="/" style={navLinkStyle} end>

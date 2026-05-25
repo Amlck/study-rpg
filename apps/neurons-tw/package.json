@@ -8,9 +8,10 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "pnpm --filter @study-rpg/core build && pnpm --filter @study-rpg/content-neurons-tw build && node ./scripts/copy-content.mjs",
-    "predev": "pnpm --filter @study-rpg/content-neurons-tw build && node ./scripts/copy-content.mjs",
+    "predev": "pnpm --filter @study-rpg/core build && pnpm --filter @study-rpg/content-neurons-tw build && node ./scripts/copy-content.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "pretypecheck": "pnpm --filter @study-rpg/core build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
