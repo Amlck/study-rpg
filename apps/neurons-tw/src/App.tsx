@@ -6,6 +6,7 @@ import { THEME_PIXEL_NEURONS } from '@study-rpg/theme-pixel-neurons'
 import OverviewPage from './routes/OverviewPage'
 import ConnectomePage from './routes/ConnectomePage'
 import MotionDemoPage from './routes/MotionDemoPage'
+import LeaderboardPage from './routes/LeaderboardPage'
 import ConnectomeToastHost from './components/SynapseFormationToast'
 import VariantUnlockModal from './components/VariantUnlockModal'
 import {
@@ -67,6 +68,11 @@ export default function App(): JSX.Element {
               <span style={isActive ? activeLinkStyle : undefined}>Connectome 連結組</span>
             )}
           </NavLink>
+          <NavLink to="/leaderboard" style={navLinkStyle}>
+            {({ isActive }) => (
+              <span style={isActive ? activeLinkStyle : undefined}>排名</span>
+            )}
+          </NavLink>
           <NavLink to="/motion-demo" style={navLinkStyle}>
             {({ isActive }) => (
               <span style={isActive ? activeLinkStyle : undefined}>動畫 demo</span>
@@ -76,6 +82,7 @@ export default function App(): JSX.Element {
         <Routes>
           <Route path="/" element={<OverviewPage pack={pack} />} />
           <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/motion-demo" element={<MotionDemoPage />} />
         </Routes>
       </main>

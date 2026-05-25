@@ -5,6 +5,7 @@ import { THEME_PIXEL_NEURONS, COSMETIC_CATALOG_SIZE } from '@study-rpg/theme-pix
 const SPRITE_MAP = THEME_PIXEL_NEURONS.sprites
 import { initMasteryForPack } from '../lib/services/connectome'
 import MasteryChip from '../components/MasteryChip'
+import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
 
 interface Props {
   pack: ContentPack
@@ -21,6 +22,7 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
 
   return (
     <>
+      <LeaderboardPromoBanner />
       <header style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>{pack.meta.displayName}</h1>
         <p style={{ margin: 0, color: '#5a3f29', fontStyle: 'italic' }}>

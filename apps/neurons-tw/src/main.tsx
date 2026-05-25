@@ -6,9 +6,12 @@ import '@study-rpg/theme-pixel-neurons/styles/global.css'
 
 if (import.meta.env.DEV) {
   db.open().then(async () => {
-    const count = await db.neuronVariants.count()
+    const [variantCount, profileCount] = await Promise.all([
+      db.neuronVariants.count(),
+      db.leaderboardProfile.count(),
+    ])
     console.info(
-      `[neurons-tw] Dexie v${db.verno / 10} ready · ${count} neuronVariant row${count === 1 ? '' : 's'}`,
+      `[neurons-tw] Dexie v${db.verno} ready · ${variantCount} neuronVariant row${variantCount === 1 ? '' : 's'} · ${profileCount} leaderboardProfile row${profileCount === 1 ? '' : 's'}`,
     )
   })
   ;(globalThis as unknown as { __db?: typeof db }).__db = db

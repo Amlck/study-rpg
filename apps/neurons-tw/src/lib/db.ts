@@ -42,12 +42,23 @@ export interface NeuronVariantRow {
   wasPityFloor: boolean
 }
 
+export interface LeaderboardProfileRow {
+  user_id: string
+  nickname: string
+  nickname_lower: string
+  opted_in: boolean
+  is_public: boolean
+  dismissed_at: number | null
+  last_pushed_at: number | null
+}
+
 export class NeuronsDB extends Dexie {
   synapses!: EntityTable<SynapseRow, 'pairKey'>
   familyAccrual!: EntityTable<FamilyAccrualRow, 'familyId'>
   meta!: EntityTable<MetaRow, 'key'>
   familyMastery!: EntityTable<FamilyMasteryRow, 'familyId'>
   neuronVariants!: Table<NeuronVariantRow, [string, number]>
+  leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
 
   constructor() {
     super('neurons-rpg')
@@ -70,6 +81,16 @@ export class NeuronsDB extends Dexie {
       // Composite PK [familyId+slotIndex] enforces lifetime uniqueness per
       // (family, slot). Secondary indices on familyId + rolledAt for queries.
       neuronVariants: '[familyId+slotIndex], familyId, rolledAt',
+    })
+    this.version(4).stores({
+      synapses: 'pairKey, lastCoFireDate, state',
+      familyAccrual: 'familyId, lastFireDate, firedToday',
+      meta: 'key',
+      familyMastery: 'familyId',
+      neuronVariants: '[familyId+slotIndex], familyId, rolledAt',
+      // Per-user leaderboard profile (opt-in state + nickname + push tracking).
+      // Single-row table in practice — keyed by Supabase auth user_id.
+      leaderboardProfile: 'user_id, nickname_lower',
     })
   }
 }
