@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { ContentPack } from '@study-rpg/core'
 import {
   decodePairKey,
   subscribeConnectomeEvents,
 } from '../lib/services/connectome'
 import type { SynapseState } from '../lib/db'
+import { useRespectsReducedMotion, TOAST_AUTO_DISMISS_MS } from '../lib/motion'
 
 const STATE_LABEL: Record<SynapseState, string> = {
   dormant: '休眠 dormant',
@@ -22,11 +24,11 @@ interface Props {
   pack: ContentPack
 }
 
-const TOAST_DURATION_MS = 8000
 let nextId = 0
 
 export default function ConnectomeToastHost({ pack }: Props): JSX.Element {
   const [toasts, setToasts] = useState<ToastEntry[]>([])
+  const reduced = useRespectsReducedMotion()
 
   useEffect(() => {
     const familyById = new Map(pack.subjects.map((s) => [s.id, s]))
@@ -37,7 +39,7 @@ export default function ConnectomeToastHost({ pack }: Props): JSX.Element {
       setToasts((prev) => [...prev, { id, message, emoji }])
       window.setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id))
-      }, TOAST_DURATION_MS)
+      }, TOAST_AUTO_DISMISS_MS)
     }
 
     const sub = subscribeConnectomeEvents({
@@ -56,14 +58,28 @@ export default function ConnectomeToastHost({ pack }: Props): JSX.Element {
 
   if (toasts.length === 0) return <></>
 
+  const initial = reduced ? { opacity: 0 } : { x: 400, opacity: 0 }
+  const animate = reduced ? { opacity: 1 } : { x: 0, opacity: 1 }
+  const exit = reduced ? { opacity: 0 } : { x: 100, opacity: 0 }
+  const transitionDuration = reduced ? 0.2 : 0.3
+
   return (
     <div style={hostStyle}>
-      {toasts.map((t) => (
-        <div key={t.id} style={toastStyle}>
-          <span style={emojiStyle}>{t.emoji}</span>
-          <span>{t.message}</span>
-        </div>
-      ))}
+      <AnimatePresence>
+        {toasts.map((t) => (
+          <motion.div
+            key={t.id}
+            initial={initial}
+            animate={animate}
+            exit={exit}
+            transition={{ duration: transitionDuration, ease: 'easeOut' }}
+            style={toastStyle}
+          >
+            <span style={emojiStyle}>{t.emoji}</span>
+            <span>{t.message}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   )
 }
@@ -89,7 +105,6 @@ const toastStyle: React.CSSProperties = {
   display: 'flex',
   gap: '0.5rem',
   alignItems: 'flex-start',
-  animation: 'connectomeToastIn 0.3s ease-out',
 }
 
 const emojiStyle: React.CSSProperties = {
