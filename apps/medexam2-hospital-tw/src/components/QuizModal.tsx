@@ -42,6 +42,12 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
   const [revealed, setRevealed] = useState(false)
   const seenIdsRef = useRef<Set<string>>(new Set())
   const consumedDueIdsRef = useRef<Set<string>>(new Set())
+  // Cross-session questionHistory id cache for the skipSrs path. Keyed by
+  // subjectId so a subject switch can reuse / invalidate independently.
+  // Populated lazily on first skipSrs=true tick per (modal session, subject);
+  // appended to in handlePickOption so fresh answers don't re-roll within
+  // the same session.
+  const historyIdsRef = useRef<Map<SubjectId, Set<string>>>(new Map())
   const wasFromDueRef = useRef<boolean>(false)
   const [boundDoctorId, setBoundDoctorId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
@@ -126,11 +132,35 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     if (resetSeen) {
       seenIdsRef.current = new Set()
       consumedDueIdsRef.current = new Set()
+      // Invalidate the cross-session history cache for this subject so the
+      // next skipSrs tick rebuilds from current Dexie state (catches any new
+      // rows synced in or written between modal sessions).
+      historyIdsRef.current.delete(forSubject)
     }
 
     // Use the latest persisted year-filter snapshot (ref avoids closing over a
     // stale value when the player toggles chips between renders).
     const activeYearFilter = yearFilterRef.current
+
+    // skipSrs path: hydrate (or reuse cached) cross-session questionHistory
+    // id set for this subject, used as `excludeIds` so the random picker
+    // surfaces only never-answered questions. Done up front because both
+    // the picker call AND the exhaustion-toast condition need the set.
+    let historyIds: Set<string> | undefined
+    if (skipSrs) {
+      historyIds = historyIdsRef.current.get(forSubject)
+      if (!historyIds) {
+        const keys = await db.questionHistory
+          .where('subjectId')
+          .equals(forSubject)
+          .primaryKeys()
+        historyIds = new Set(keys as string[])
+        historyIdsRef.current.set(forSubject, historyIds)
+        if (import.meta.env.DEV) {
+          console.info('[skipSrs] excluding %d ids for %s', historyIds.size, forSubject)
+        }
+      }
+    }
 
     // Due-first: walk the cap-allocated due queue for this subject, skipping
     // orphans (questionHistory rows whose questionId no longer exists in the
@@ -165,9 +195,14 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     }
 
     // No due card available → fall back to random new question.
+    // skipSrs=true: pass excludeIds so previously-answered questions cannot
+    // be returned (hard filter). skipSrs=false: omit excludeIds so the
+    // existing "random from full pool with repeats allowed" semantics are
+    // preserved (the depleted-due-queue fall-back path).
     wasFromDueRef.current = false
     const q = await pickRandomQuestion(forSubject, seenIdsRef.current, {
       yearFilter: activeYearFilter,
+      ...(skipSrs ? { excludeIds: historyIds } : {}),
     })
     if (!q) {
       setPoolEmpty(true)
@@ -176,12 +211,19 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
       setPoolEmpty(false)
       setQuestion(q)
 
-      // Exhaustion toast detection
+      // Exhaustion toast detection. When skipSrs=true the effective "covered"
+      // set is the union of in-session seen and cross-session history; when
+      // skipSrs=false fall back to in-session seenIds only (prior behavior).
+      // Year-filter awareness of `poolSize` is tracked separately by the
+      // follow-up change `fix-medexam2-exhaustion-toast-year-filter-pool-size`.
       const poolSizeMap = await loadPoolSizeMap()
       const poolSize = poolSizeMap.get(forSubject) ?? 0
+      const effectiveCoveredSize = skipSrs
+        ? new Set([...seenIdsRef.current, ...(historyIds ?? [])]).size
+        : seenIdsRef.current.size
       if (
         poolSize > 0 &&
-        seenIdsRef.current.size >= poolSize &&
+        effectiveCoveredSize >= poolSize &&
         seenIdsRef.current.has(q.id) &&
         !firedExhaustedRef.current.has(forSubject)
       ) {
@@ -280,6 +322,11 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
         })
       },
     )
+    // Keep the skipSrs history cache fresh: append the just-answered id so
+    // subsequent 「下一題」clicks within the same modal session don't re-roll
+    // a fresh answer (avoids the 3-roll budget being wasted on a question we
+    // just persisted to questionHistory).
+    historyIdsRef.current.get(subjectId)?.add(capturedQuestion.id)
     for (const text of rewardResult.toastTexts) emitToast(text)
   }
 
