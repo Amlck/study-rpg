@@ -1,0 +1,32 @@
+/**
+ * Public API surface for neurons-tw motion library.
+ *
+ * Capability spec: openspec/specs/neurons-motion-library/spec.md
+ */
+
+export { Toast } from './Toast'
+export type { ToastProps, ToastVariant } from './Toast'
+
+export { RarityRevealModal } from './RarityRevealModal'
+export type { RarityRevealModalProps } from './RarityRevealModal'
+
+export { AchievementUnlockModal } from './AchievementUnlockModal'
+export type { AchievementUnlockModalProps, AchievementUnlockModalContent } from './AchievementUnlockModal'
+
+export { NumberTickUp } from './NumberTickUp'
+export type { NumberTickUpProps } from './NumberTickUp'
+
+export { ReducedMotionAware } from './ReducedMotionAware'
+export type { ReducedMotionAwareProps } from './ReducedMotionAware'
+
+export { useRespectsReducedMotion } from './useRespectsReducedMotion'
+
+export { ParticleBurst } from './ParticleBurst'
+export type { ParticleBurstProps } from './ParticleBurst'
+
+export {
+  RARITY_TIMINGS,
+  SKIP_THRESHOLD_MS,
+  TOAST_AUTO_DISMISS_MS,
+} from './timings'
+export type { Rarity, RarityTiming } from './timings'

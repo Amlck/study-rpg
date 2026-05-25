@@ -20,6 +20,10 @@ import { handlePresign } from "./presign";
 import { handleDeleteOrReset } from "./delete";
 import { runBackupCron } from "./backup";
 import { handleLeaderboard, runLeaderboardCron } from "./leaderboard";
+import {
+  handleNeuronsLeaderboard,
+  runNeuronsLeaderboardCron,
+} from "./neurons-leaderboard";
 import { corsHeaders, preflightResponse } from "./cors";
 
 // Cron expressions — MUST stay byte-for-byte identical with the strings in
@@ -69,8 +73,13 @@ export default {
     const headers = corsHeaders(origin, corsAllowed);
 
     try {
-      // Leaderboard routes are sub-path matched (/leaderboard/*) — dispatch
-      // to the module which handles its own sub-routing.
+      // Neurons leaderboard routes (more specific prefix; must come BEFORE
+      // the general /leaderboard/* dispatch since `/leaderboard/neurons/...`
+      // also matches `/leaderboard/`).
+      if (url.pathname.startsWith("/leaderboard/neurons/")) {
+        return await handleNeuronsLeaderboard(request, env, headers);
+      }
+      // 二階 leaderboard routes (catches the remaining /leaderboard/* paths).
       if (url.pathname.startsWith("/leaderboard/")) {
         return await handleLeaderboard(request, env, headers);
       }
@@ -110,7 +119,24 @@ export default {
         ctx.waitUntil(runBackupCron(env));
         return;
       case CRON_LEADERBOARD_30MIN:
-        ctx.waitUntil(runLeaderboardCron(env));
+        // Run 二階 + 神經元 leaderboard crons sequentially within the same
+        // scheduled invocation per add-neurons-leaderboard design D6. Each
+        // is independently fault-tolerant — if one throws, the other still
+        // runs. Errors logged via console.error but not re-thrown.
+        ctx.waitUntil(
+          (async (): Promise<void> => {
+            try {
+              await runLeaderboardCron(env);
+            } catch (err) {
+              console.error("[scheduled] runLeaderboardCron failed", { err: String(err) });
+            }
+            try {
+              await runNeuronsLeaderboardCron(env);
+            } catch (err) {
+              console.error("[scheduled] runNeuronsLeaderboardCron failed", { err: String(err) });
+            }
+          })(),
+        );
         return;
       default:
         console.error(

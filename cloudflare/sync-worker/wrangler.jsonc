@@ -87,7 +87,7 @@
 	// (see design.md Decision 6), Worker never reads user data on behalf of users.
 	"vars": {
 		"R2_BUCKET_NAME": "study-rpg-saves",
-		"CORS_ALLOWED_ORIGINS": "https://fireman333.github.io,https://med-study-rpg.com,http://localhost:5173,http://localhost:4173",
+		"CORS_ALLOWED_ORIGINS": "https://fireman333.github.io,https://med-study-rpg.com,http://localhost:5173,http://localhost:4173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,http://localhost:5178,http://localhost:5179",
 		"PRESIGN_TTL_SECONDS": "300"
 	}
 }

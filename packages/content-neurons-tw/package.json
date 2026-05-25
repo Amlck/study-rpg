@@ -1,0 +1,25 @@
+{
+  "name": "@study-rpg/content-neurons-tw",
+  "version": "0.0.1",
+  "description": "Content pack scaffold: neurons-themed reskin of Taiwan Stage-1 medical board exam. Subjects to be renamed to neuron families on a Linnean phylogenetic taxonomy (4 neurotransmitter branches). Question corpus reuse + subject rename + statSchema override deferred to wire-neurons-content-and-theme.",
+  "license": "CC-BY-NC-4.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "verify:validator": "tsx scripts/verify-validator.ts"
+  },
+  "peerDependencies": {
+    "@study-rpg/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  }
+}

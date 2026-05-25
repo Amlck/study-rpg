@@ -19,6 +19,7 @@ export {
 } from './lib/loot'
 export {
   rollGacha,
+  rollGachaWithFloor,
   initialGachaStats,
   type GachaTier,
   type PityRule,

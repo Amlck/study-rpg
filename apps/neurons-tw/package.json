@@ -1,0 +1,35 @@
+{
+  "name": "@study-rpg/neurons-tw",
+  "version": "0.0.1",
+  "description": "Neurons-themed (Long-term potentiation / Hebbian) reskin of the Stage-1 medical board exam study-rpg app. Scaffold stage — placeholder shell only.",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "prebuild": "pnpm --filter @study-rpg/core build && pnpm --filter @study-rpg/content-neurons-tw build && node ./scripts/copy-content.mjs",
+    "predev": "pnpm --filter @study-rpg/core build && pnpm --filter @study-rpg/content-neurons-tw build && node ./scripts/copy-content.mjs",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "pretypecheck": "pnpm --filter @study-rpg/core build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@study-rpg/content-neurons-tw": "workspace:*",
+    "@study-rpg/core": "workspace:*",
+    "@study-rpg/theme-pixel-neurons": "workspace:*",
+    "@supabase/supabase-js": "^2.105.4",
+    "dexie": "^4.0.10",
+    "framer-motion": "^11.11.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.10"
+  }
+}
