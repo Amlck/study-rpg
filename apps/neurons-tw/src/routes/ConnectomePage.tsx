@@ -11,6 +11,7 @@ import {
 import { AP_THRESHOLDS, nextSlotThreshold } from '../lib/connectome'
 import ConnectomeDebugPanel from '../components/ConnectomeDebugPanel'
 import MasteryChip from '../components/MasteryChip'
+import { FamilyMasteryBadge } from '../components/FamilyMasteryBadge'
 import VariantCollectionChip from '../components/VariantCollectionChip'
 
 interface Props {
@@ -184,7 +185,8 @@ function FamilyCard({
           ? `／MAX（${AP_THRESHOLDS.length}/${AP_THRESHOLDS.length}）`
           : `／next @ ${next}（${unlockedSlots.length}/${AP_THRESHOLDS.length}）`}
       </div>
-      <div style={{ marginTop: '0.3rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+      <div style={{ marginTop: '0.3rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
+        <FamilyMasteryBadge familyId={family.id} size={28} />
         <MasteryChip familyId={family.id} displayName={family.displayName} />
         <VariantCollectionChip familyId={family.id} />
       </div>

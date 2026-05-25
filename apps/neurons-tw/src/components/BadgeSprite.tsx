@@ -1,13 +1,11 @@
 /**
- * Category × tier achievement badge.
+ * Category × tier achievement badge — atlas-mode rendering.
  *
- * PLACEHOLDER RENDERING — currently SVG-based color+letter combo while the
- * pixel-art `badge-atlas.png` is being generated via codex CLI (per
- * `image_gen_routing.md` / `codex_image_gen.md` recipe). Once the atlas ships
- * at `apps/neurons-tw/src/assets/achievements/badge-atlas.png` (896×512, 7×4
- * grid, 128 px cells), swap the implementation to CSS background-position
- * sprite atlas (per spec atlas requirement). Keep the public API the same so
- * the swap is a one-file change.
+ * Atlas: `apps/neurons-tw/src/assets/achievements/badge-atlas.png`
+ * Layout: 896×512 px = 7 columns × 4 rows × 128 px cells (16-color GBA palette,
+ * transparent bg). Column index = category, row index = tier (P4 top → P1
+ * bottom). Atlas generated via codex CLI per `generate-neurons-achievement-
+ * atlases` change.
  *
  * Capability spec: openspec/specs/neurons-achievements/spec.md
  */
@@ -16,6 +14,7 @@ import type {
   NeuronsAchievementCategory,
   NeuronsAchievementTier,
 } from '@study-rpg/content-neurons-tw'
+import badgeAtlasUrl from '../assets/achievements/badge-atlas.png'
 
 export interface BadgeSpriteProps {
   category: NeuronsAchievementCategory
@@ -24,24 +23,27 @@ export interface BadgeSpriteProps {
   locked?: boolean
 }
 
-// Tier ring color — matches PSN Trophy convention.
-const TIER_COLOR: Record<NeuronsAchievementTier, string> = {
-  P1: '#b9f2ff', // 鑽石 / diamond
-  P2: '#d4a04d', // 金 / gold
-  P3: '#c0c0c0', // 銀 / silver
-  P4: '#cd7f32', // 銅 / bronze
+// Column index per category (atlas left-to-right ordering).
+const CATEGORY_COL: Record<NeuronsAchievementCategory, number> = {
+  study: 0,
+  quiz: 1,
+  variant: 2,
+  synapse: 3,
+  mastery: 4,
+  fortune: 5,
+  hidden: 6,
 }
 
-// Category emoji glyph — placeholder identity hint until pixel atlas ships.
-const CATEGORY_GLYPH: Record<NeuronsAchievementCategory, string> = {
-  study: '📖',
-  quiz: '✓',
-  variant: '🧬',
-  synapse: '⚡',
-  mastery: '🎓',
-  fortune: '🎲',
-  hidden: '✦',
+// Row index per tier (atlas top-to-bottom ordering — bronze P4 first, diamond P1 last).
+const TIER_ROW: Record<NeuronsAchievementTier, number> = {
+  P4: 0,
+  P3: 1,
+  P2: 2,
+  P1: 3,
 }
+
+const NUM_COLS = 7
+const NUM_ROWS = 4
 
 export function BadgeSprite({
   category,
@@ -49,10 +51,14 @@ export function BadgeSprite({
   size = 48,
   locked = false,
 }: BadgeSpriteProps): JSX.Element {
-  const ring = TIER_COLOR[tier]
-  const glyph = CATEGORY_GLYPH[category]
-  const fillBg = locked ? '#3a3128' : '#f4ecd8'
-  const fillFg = locked ? '#6a5d4a' : '#5a3f29'
+  const col = CATEGORY_COL[category]
+  const row = TIER_ROW[tier]
+  // CSS background-position percentage formula for sprite atlas: when
+  // background-size is N*100% (atlas spans N container widths), cell K is at
+  //   bg-position-x = K / (N-1) * 100%   (positive — NOT negative).
+  // For N=1 single cell, position = 0%. Guard against div-by-zero.
+  const xPct = NUM_COLS > 1 ? (col * 100) / (NUM_COLS - 1) : 0
+  const yPct = NUM_ROWS > 1 ? (row * 100) / (NUM_ROWS - 1) : 0
 
   return (
     <div
@@ -60,22 +66,15 @@ export function BadgeSprite({
       style={{
         width: size,
         height: size,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: '50%',
-        border: `${Math.max(2, Math.round(size / 16))}px solid ${locked ? '#5a4d3a' : ring}`,
-        background: fillBg,
-        color: fillFg,
-        fontSize: Math.round(size * 0.5),
-        lineHeight: 1,
-        fontFamily: "'Cubic 11', 'Noto Sans TC', sans-serif",
-        filter: locked ? 'grayscale(80%) opacity(0.7)' : undefined,
+        backgroundImage: `url(${badgeAtlasUrl})`,
+        backgroundPosition: `${xPct}% ${yPct}%`,
+        backgroundSize: `${NUM_COLS * 100}% ${NUM_ROWS * 100}%`,
+        backgroundRepeat: 'no-repeat',
+        imageRendering: 'pixelated',
         flexShrink: 0,
         userSelect: 'none',
+        filter: locked ? 'grayscale(80%) opacity(0.6)' : undefined,
       }}
-    >
-      <span>{glyph}</span>
-    </div>
+    />
   )
 }
