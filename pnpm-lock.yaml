@@ -136,6 +136,9 @@ importers:
       '@study-rpg/theme-pixel-neurons':
         specifier: workspace:*
         version: link:../../packages/theme-pixel-neurons
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
       dexie:
         specifier: ^4.0.10
         version: 4.4.2

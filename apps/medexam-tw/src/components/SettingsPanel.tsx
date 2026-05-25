@@ -401,6 +401,26 @@ export function SettingsPanel({
           </p>
         </section>
 
+        {/* ─── 神經元主題 companion app (M_3rd) ──────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">神經元主題版（neurons-themed companion app）</div>
+          <p className="settings-hint" style={{ marginTop: 0 }}>
+            一階題庫的同主題 reskin — Hebbian「neurons that fire together, wire together」收集養成。
+            資料獨立、不影響此存檔；可以併行玩或當作換口味。
+          </p>
+          <div className="settings-actions">
+            <a
+              href="https://med-study-rpg.com/neurons/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-btn settings-btn--secondary"
+              style={{ textDecoration: 'none' }}
+            >
+              🧠 前往 neurons-tw（新分頁）
+            </a>
+          </div>
+        </section>
+
         {/* ─── 回報問題 / 建議 (M4.5) ─────────────────────────── */}
         <section className="settings-section">
           <div className="settings-section-title">回報問題 / 建議</div>

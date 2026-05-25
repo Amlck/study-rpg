@@ -17,6 +17,9 @@ import { backfillAchievementsFromCurrentStats } from './lib/services/achievement
 import AchievementsPage from './routes/AchievementsPage'
 import AchievementToastHost from './components/AchievementToastHost'
 import AchievementUnlockModal from './components/AchievementUnlockModal'
+import { AuthProvider } from './lib/auth/AuthContext'
+import { AuthGate } from './components/AuthGate'
+import { SyncMount } from './lib/sync/SyncMount'
 
 interface AppState {
   loading: boolean
@@ -64,46 +67,52 @@ export default function App(): JSX.Element {
   const pack = state.pack!
 
   return (
-    <BrowserRouter>
-      <ConnectomeToastHost pack={pack} />
-      <VariantUnlockModal />
-      <AchievementToastHost />
-      <AchievementUnlockModal />
-      <main style={pageStyle}>
-        <nav style={navStyle}>
-          <NavLink to="/" style={navLinkStyle} end>
-            {({ isActive }) => <span style={isActive ? activeLinkStyle : undefined}>總覽</span>}
-          </NavLink>
-          <NavLink to="/connectome" style={navLinkStyle}>
-            {({ isActive }) => (
-              <span style={isActive ? activeLinkStyle : undefined}>Connectome 連結組</span>
-            )}
-          </NavLink>
-          <NavLink to="/leaderboard" style={navLinkStyle}>
-            {({ isActive }) => (
-              <span style={isActive ? activeLinkStyle : undefined}>排名</span>
-            )}
-          </NavLink>
-          <NavLink to="/achievements" style={navLinkStyle}>
-            {({ isActive }) => (
-              <span style={isActive ? activeLinkStyle : undefined}>成就</span>
-            )}
-          </NavLink>
-          <NavLink to="/motion-demo" style={navLinkStyle}>
-            {({ isActive }) => (
-              <span style={isActive ? activeLinkStyle : undefined}>動畫 demo</span>
-            )}
-          </NavLink>
-        </nav>
-        <Routes>
-          <Route path="/" element={<OverviewPage pack={pack} />} />
-          <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
-          <Route path="/leaderboard" element={<LeaderboardPage />} />
-          <Route path="/achievements" element={<AchievementsPage />} />
-          <Route path="/motion-demo" element={<MotionDemoPage />} />
-        </Routes>
-      </main>
-    </BrowserRouter>
+    <AuthProvider>
+      <SyncMount />
+      <BrowserRouter>
+        <ConnectomeToastHost pack={pack} />
+        <VariantUnlockModal />
+        <AchievementToastHost />
+        <AchievementUnlockModal />
+        <main style={pageStyle}>
+          <nav style={navStyle}>
+            <NavLink to="/" style={navLinkStyle} end>
+              {({ isActive }) => <span style={isActive ? activeLinkStyle : undefined}>總覽</span>}
+            </NavLink>
+            <NavLink to="/connectome" style={navLinkStyle}>
+              {({ isActive }) => (
+                <span style={isActive ? activeLinkStyle : undefined}>Connectome 連結組</span>
+              )}
+            </NavLink>
+            <NavLink to="/leaderboard" style={navLinkStyle}>
+              {({ isActive }) => (
+                <span style={isActive ? activeLinkStyle : undefined}>排名</span>
+              )}
+            </NavLink>
+            <NavLink to="/achievements" style={navLinkStyle}>
+              {({ isActive }) => (
+                <span style={isActive ? activeLinkStyle : undefined}>成就</span>
+              )}
+            </NavLink>
+            <NavLink to="/motion-demo" style={navLinkStyle}>
+              {({ isActive }) => (
+                <span style={isActive ? activeLinkStyle : undefined}>動畫 demo</span>
+              )}
+            </NavLink>
+            <span style={{ marginLeft: 'auto' }}>
+              <AuthGate />
+            </span>
+          </nav>
+          <Routes>
+            <Route path="/" element={<OverviewPage pack={pack} />} />
+            <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/achievements" element={<AchievementsPage />} />
+            <Route path="/motion-demo" element={<MotionDemoPage />} />
+          </Routes>
+        </main>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
 

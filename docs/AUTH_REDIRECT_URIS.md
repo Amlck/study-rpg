@@ -30,11 +30,18 @@ https://fireman333.github.io/study-rpg/**
 https://fireman333.github.io/study-rpg/hospital/**
 https://med-study-rpg.com/1st/**
 https://med-study-rpg.com/2nd/**
+https://med-study-rpg.com/neurons/**
 http://localhost:5173/**
 http://localhost:5174/**
+http://localhost:5175/**
 ```
 
-The two `localhost` entries cover the dev servers for 一階 (5173) and 二階 (5174).
+The three `localhost` entries cover the dev servers for 一階 (5173), 二階 (5174), and neurons-tw (5175).
+
+The `/neurons/**` entry is required for M_3rd neurons-tw OAuth callback per spec
+`openspec/specs/neurons-deploy/spec.md` Req 3 ("OAuth sign-in SHALL succeed on
+the `/neurons/` subpath using the shared Supabase project"). Added by change
+`add-neurons-deploy`.
 
 ### Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client
 

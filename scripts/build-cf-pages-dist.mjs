@@ -5,6 +5,7 @@
  * Inputs (must exist before this runs):
  *   apps/medexam-tw/dist/                ← 一階, built with VITE_DEPLOY_BASE=/1st/
  *   apps/medexam2-hospital-tw/dist/      ← 二階, built with VITE_DEPLOY_BASE=/2nd/
+ *   apps/neurons-tw/dist/                ← 神經元 (M_3rd), built with VITE_DEPLOY_BASE=/neurons/
  *   scripts/cf-landing-template.html     ← root landing page
  *
  * Output:
@@ -13,9 +14,13 @@
  *     _redirects                         ← SPA fallback rules
  *     1st/                               ← 一階 dist
  *     2nd/                               ← 二階 dist
+ *     neurons/                           ← 神經元 dist
  *
- * Spec: openspec/changes/add-med-study-rpg-domain-migration/specs/deploy-pipeline/spec.md
- *       — "Cloudflare Pages deploy target alongside GitHub Pages" + "SPA fallback via _redirects"
+ * Specs:
+ *   openspec/changes/add-med-study-rpg-domain-migration/specs/deploy-pipeline/spec.md
+ *     — "Cloudflare Pages deploy target alongside GitHub Pages" + "SPA fallback via _redirects"
+ *   openspec/specs/neurons-deploy/spec.md (added by add-neurons-deploy)
+ *     — "CF Pages build pipeline SHALL produce dist-cf/neurons/ artifact"
  */
 
 import { promises as fs } from 'node:fs'
@@ -28,6 +33,7 @@ const repoRoot = path.resolve(__dirname, '..')
 const ROUTES = [
   { src: 'apps/medexam-tw/dist', dest: '1st' },
   { src: 'apps/medexam2-hospital-tw/dist', dest: '2nd' },
+  { src: 'apps/neurons-tw/dist', dest: 'neurons' },
 ]
 
 const OUTPUT_DIR = 'dist-cf'
