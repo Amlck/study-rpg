@@ -4089,6 +4089,72 @@ body:has(.modal-backdrop) {
   margin-top: 16px;
 }
 
+/* Sub-tabs inside 「錯題」 tab (目前未答對 / 歷史曾錯) */
+.bookmarks-subtabs {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 8px;
+  border-bottom: 1px solid var(--border-muted, #444);
+}
+.bookmarks-subtabs__tab {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted, #999);
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 5px 5px 0 0;
+  margin-bottom: -1px;
+}
+.bookmarks-subtabs__tab:hover:not(.bookmarks-subtabs__tab--active) {
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  color: inherit;
+}
+.bookmarks-subtabs__tab--active {
+  background: var(--surface-1, rgba(255, 255, 255, 0.06));
+  border-color: var(--border-muted, #444);
+  border-bottom-color: var(--surface-1, rgba(255, 255, 255, 0.06));
+  color: inherit;
+  font-weight: 600;
+}
+
+/* State chip on 歷史曾錯 entries */
+.bookmarks-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.bookmarks-state-chip--wrong {
+  background: rgba(220, 60, 60, 0.12);
+  color: #c44d4d;
+}
+.bookmarks-state-chip--correct {
+  background: rgba(80, 160, 80, 0.14);
+  color: #4a8a4a;
+}
+.bookmarks-page__entry-row-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Pager spacing — appears below list */
+.bookmarks-pager {
+  display: inline-flex;
+  margin: 16px auto 4px;
+  justify-content: center;
+}
+.bookmarks-tab .bookmarks-pager {
+  display: flex;
+  justify-content: center;
+}
+
 .bookmarks-tab__toolbar {
   display: flex;
   justify-content: space-between;
@@ -5204,6 +5270,75 @@ body:has(.modal-backdrop) {
   font-weight: 700;
 }
 
+/* ── Grace toast (add-bookmarks-filters-and-wrong-history-medexam2) ─────── */
+.grace-toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 210; /* above sync-error-toast which sits at 200 */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  max-width: calc(100vw - 32px);
+}
+.grace-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 280px;
+  max-width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-paper, #fffaf2);
+  color: var(--text-strong, #2e2515);
+  border: 1px solid var(--border-soft, #d6c8b0);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  animation: grace-toast-in 180ms ease-out;
+}
+@keyframes grace-toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.grace-toast__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.grace-toast__qid {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grace-toast__msg {
+  font-size: 12px;
+}
+.grace-toast__actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.grace-toast__star,
+.grace-toast__close {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+  border: 1px solid var(--border-soft, #d6c8b0);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.grace-toast__star:hover { background: rgba(255, 220, 100, 0.45); }
+.grace-toast__close:hover { background: rgba(0, 0, 0, 0.08); }
+
 /* ── Mobile reflow (≤ 639px) ────────────────────────────── */
 @media (max-width: 639px) {
   .auth-button__email { display: none; }
@@ -5214,6 +5349,22 @@ body:has(.modal-backdrop) {
     padding: 6px 10px;
   }
   .sync-error-toast { max-width: calc(100vw - 16px); }
+  .grace-toast-stack {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+    align-items: stretch;
+  }
+  .grace-toast { min-width: 0; }
+  /* Tighten filter-bar layout on mobile so chip-group + pager stay one line.
+     bookmarks filter (add-bookmarks-filters-and-wrong-history-medexam2) uses
+     subjectChipsPerPage=3 on < 768 px viewports; year row also benefits from
+     the tighter chip gap. */
+  .filter-bar__group { gap: 6px; }
+  .filter-chip-group { gap: 4px; }
+  .filter-chip { padding: 4px 7px; }
+  .filter-bar__pager { gap: 2px; }
+  .filter-bar__pager-btn { min-width: 26px; min-height: 26px; font-size: 16px; }
 }
 
 /* ─── Migration banner (R2 cloud-sync migration, Phase 2) ──────────────── */

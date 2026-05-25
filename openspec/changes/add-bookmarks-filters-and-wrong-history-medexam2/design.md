@@ -80,17 +80,20 @@ The filter bar renders once at the top of `BookmarksPage` (above the existing `?
 - *Persist to Dexie* — rejected; explicit non-goal (and would conflict with `YearFilterBar`'s persisted version in the same Dexie store).
 - *Keep 全不選 / 反選 buttons* — rejected; doesn't match the existing design language. Edge case "I want everything except 內科" is rare enough that clicking 內科 once (un-select after 全部 → uncheck) is acceptable friction.
 
-### Decision 3 — Year chips use the same PAGES pagination as `YearFilterBar` when > 5 chips
+### Decision 3 — Both year AND subject chips paginate 5 per page
 
-Match `YearFilterBar.tsx:10-13`'s PAGES pattern exactly:
-- Available years are split into pages of 5 chips each, ordered newest-first
-- 全部 button + 5 chips + `‹ ›` pager + `1/N` indicator render on a single row via `.filter-bar__pager*` classes
-- Currently corpus spans民國 108-116 = 9 years = 2 pages (page 0: [116, 115, 114, 113, 112], page 1: [111, 110, 109, 108])
-- Pagination state = `useState<number>(0)` (page index); switches via `‹ ›` buttons, disabled at boundaries
+Match `YearFilterBar.tsx:10-13`'s PAGES pattern for BOTH chip groups:
+- Year chips: 9 民國 years → 2 pages (page 0: [116, 115, 114, 113, 112], page 1: [111, 110, 109, 108])
+- Subject chips: 14 二階 subjects → 3 pages (5 + 5 + 4)
+- 全部 button + chips + `‹ ›` pager + `1/N` indicator render on a single row via `.filter-bar__pager*` classes
+- Each group's pagination state = independent `useState<number>(0)`
 
-Subject chips (14 subjects) wrap naturally via `.filter-chip-group { flex-wrap: wrap }` — no pagination needed at this scale. Both desktop and mobile (< 768 px) handle the wrap via existing `.filter-bar` flex behavior.
+**Why paginate subjects too** (revised from initial draft):
+- First-pass dogfood (2026-05-25) showed 14 subjects wrapping naturally pushed the `科別` label and chips onto separate rows, breaking visual parity with the year row. The bar took ~3× vertical space and the two label-rows didn't align.
+- Paginating both groups at 5-per-page keeps the bar at exactly 2 rows (one per dimension) and visually aligns the `年份` / `科別` labels on the left edge.
+- Trade-off: discovering a subject now requires page navigation (up to 2 `›` clicks). Acceptable because 99% of natural queries are single-subject focus + players quickly memorize the page where their常用科 lives.
 
-**Why pagination for years but not subjects:** strictly mirrors the existing precedent — `YearFilterBar` paginates because years extend back across multiple cohorts; DoctorRoster rarity filter (6 chips) wraps without pagination. Same threshold (~ 5-6 chips per row before paging makes sense).
+DoctorRoster's rarity filter (6 chips) still wraps without pagination because 6 fits in one row at most viewports; the threshold for "pagination starts paying off" is ~ 5-6 chips.
 
 ### Decision 4: Filter combination is AND across (year, subject); orphan rows bypass filter
 

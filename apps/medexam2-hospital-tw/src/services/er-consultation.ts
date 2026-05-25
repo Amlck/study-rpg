@@ -33,6 +33,7 @@ import {
 } from '../db/schema'
 import { loadSubjectQuestionIds } from '../lib/quiz'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
+import { emitGraceToast } from '../lib/grace-toast'
 import { ER_DOCTOR_SPRITE_KEYS } from '../lib/sprite-lookup'
 
 const SETTINGS_META_KEY = 'er-consult-settings'
@@ -280,6 +281,7 @@ export async function answerERConsult(opts: {
         await recordCorrectAnswer(
           { subjectId, questionId: opts.active.questionId },
           null, // no partner doctor — ER doctor is NPC
+          { onTransitionToCorrect: (qid) => emitGraceToast({ questionId: qid }) },
         )
       } else {
         await recordWrongAnswer({ subjectId, questionId: opts.active.questionId })

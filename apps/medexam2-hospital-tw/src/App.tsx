@@ -32,6 +32,7 @@ import { AccountSwitchPrompt } from './components/AccountSwitchPrompt'
 import { SyncStatusChip } from './components/SyncStatusChip'
 import { SyncErrorToast } from './components/SyncErrorToast'
 import { V6MigrationModal } from './components/V6MigrationModal'
+import { GraceToastContainer } from './components/GraceToastContainer'
 import { TutorialOnboarding } from './components/TutorialOnboarding'
 import { MilestoneTipToast } from './components/MilestoneTipToast'
 import { AchievementUnlockToast } from './components/AchievementUnlockToast'
@@ -269,6 +270,7 @@ function App() {
         onDismiss={sync.dismissSyncError}
         onRetry={sync.retrySyncError}
       />
+      <GraceToastContainer />
       {v6Migration && (
         <V6MigrationModal counters={v6Migration} onDismiss={() => setV6Migration(null)} />
       )}

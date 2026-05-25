@@ -311,7 +311,7 @@ const HOSPITAL_MASTERY: TableAdapter = {
   },
 }
 
-const HOSPITAL_QUESTION_HISTORY: TableAdapter = {
+export const HOSPITAL_QUESTION_HISTORY: TableAdapter = {
   postgresTable: 'hospital_question_history',
   shape: 'collection',
   dexieTable: 'questionHistory',
@@ -349,12 +349,34 @@ const HOSPITAL_QUESTION_HISTORY: TableAdapter = {
     const data = cloudRow.data as WithUpdatedAt<Record<string, unknown>> | undefined
     if (!pk || !data) return false
     const force = opts?.force ?? false
+    const local = await (db as HospitalDB).questionHistory.get(pk)
+    // CRITICAL: `everWrong` uses monotonic-OR merge (NOT LWW) to neutralize
+    // the v1↔v2 cross-version sync race. Once any client writes everWrong=true,
+    // no subsequent write (regardless of LWW ordering or schema_version) can
+    // clear it. Per Decision 8 of add-bookmarks-filters-and-wrong-history-medexam2.
+    // DO NOT "fix" this by removing the OR — it's intentional.
+    const cloudEverWrong = (data as { everWrong?: boolean }).everWrong === true
+    const localEverWrong = (local as { everWrong?: boolean } | undefined)?.everWrong === true
     if (!force) {
-      const local = await (db as HospitalDB).questionHistory.get(pk)
       const localMs = (local as WithUpdatedAt<unknown> | undefined)?._updatedAt
-      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) {
+        // Cloud loses LWW for the row as a whole — but still promote everWrong
+        // if cloud has it true and local doesn't (monotonic-OR semantics).
+        if (cloudEverWrong && !localEverWrong && local) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (db as HospitalDB).questionHistory.put({ ...local, everWrong: true } as any)
+          return true
+        }
+        return false
+      }
     }
-    const next = { ...data, _updatedAt: Date.parse(cloudRow.updated_at) }
+    // Cloud wins LWW for standard fields; OR-merge everWrong so local true
+    // is never silently overwritten by missing/false incoming value.
+    const next = {
+      ...data,
+      _updatedAt: Date.parse(cloudRow.updated_at),
+      everWrong: cloudEverWrong || localEverWrong,
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as HospitalDB).questionHistory.put(next as any)
     return true

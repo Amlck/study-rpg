@@ -12,9 +12,11 @@ The filter bar SHALL provide exactly **one** control button per chip group, labe
 
 The filter bar SHALL render a `.filter-bar__count` badge right-aligned showing `N / M 題` where N is the number of currently visible rows in the active sub-tab/sub-view and M is the total number of rows before filter (matches DoctorRoster precedent at `DoctorRoster.tsx:114`).
 
-The set of available chips SHALL be derived dynamically:
-- **Year chips** = the union of `meta.year` values present in the currently-loaded `questionsById` map (the corpus, NOT only currently-displayed rows). Sorted descending (most recent year first). When the available year count exceeds 5, the chip group SHALL paginate via the same PAGES pattern as `YearFilterBar.tsx:10-13` — 5 chips per page, navigable via `‹ ›` pager buttons with a `1/N` indicator. The 全部 button and pager controls SHALL remain visible regardless of active page.
-- **Subject chips** = the 14 二階 subjects in their canonical content-pack order. Subject chips SHALL NOT paginate; they SHALL wrap naturally via `.filter-chip-group { flex-wrap: wrap }` on narrow viewports.
+The set of available chips SHALL be derived dynamically. BOTH year and subject chip groups SHALL paginate at 5 chips per page when the chip count exceeds 5:
+- **Year chips** = the union of `meta.year` values present in the currently-loaded `questionsById` map (the corpus, NOT only currently-displayed rows). Sorted descending (most recent year first). Paginated via the same PAGES pattern as `YearFilterBar.tsx:10-13` — 5 chips per page, navigable via `‹ ›` pager buttons with a `1/N` indicator. The 全部 button and pager controls SHALL remain visible regardless of active page.
+- **Subject chips** = the 14 二階 subjects in their canonical content-pack order. Also paginated at 5 chips per page (3 pages: 5 + 5 + 4). Same pager UI pattern. Independent page state from the year chip group.
+
+Both groups SHALL share the same visual pattern so the `年份` and `科別` labels visually align on the left edge of the filter bar (1 row per dimension).
 
 Filter combination semantics SHALL be: a row matches the active filter if AND ONLY IF its joined `meta.year` ∈ selected years (treating empty year selection as match-all) AND its joined `subject` ∈ selected subjects (treating empty subject selection as match-all). Empty selection on a dimension means that dimension is unfiltered (full set); selecting zero of N chips is equivalent to selecting all N chips for filtering purposes.
 
@@ -101,12 +103,21 @@ Orphan rows (bookmarks or wrong-answer entries whose `questionId` is not in curr
 - **AND** the `›` button SHALL be disabled (at last page)
 - **AND** previously-selected chips on page 0 SHALL retain their pressed state when navigating back
 
-#### Scenario: Subject chip group wraps without pagination
+#### Scenario: Subject chip group paginates at 5 per page
 
 - **GIVEN** the 14 二階 subjects are available
 - **WHEN** the player views the filter bar
-- **THEN** all 14 subject chips SHALL be visible at once (wrapping to multiple rows via `flex-wrap`)
-- **AND** no pager controls SHALL be rendered for the 科別 group
+- **THEN** the 科別 chip group SHALL render the first 5 subject chips on page 0
+- **AND** the pager indicator SHALL show `1/3` (14 / 5 = 3 pages)
+- **AND** the `›` button SHALL be enabled
+- **AND** the 年份 and 科別 labels SHALL visually align on the left edge (one row per dimension)
+
+#### Scenario: Subject pagination is independent from year pagination
+
+- **GIVEN** the player has the year chip group on page 0 and the subject chip group on page 2
+- **WHEN** the player clicks `›` on the 年份 group
+- **THEN** the year group advances to page 1
+- **AND** the subject group SHALL remain on page 2 (independent pager state)
 
 #### Scenario: Filter bar count badge shows visible / total
 

@@ -31,3 +31,27 @@ export function useWrongAnswers(): QuestionHistoryRow[] | undefined {
       .toArray(),
   )
 }
+
+/**
+ * 「歷史曾錯」 sub-view: every questionHistory row whose `everWrong === true`,
+ * sorted by `lastAnsweredAt` descending. Once a row is added, it never auto-
+ * leaves this view (mirrors monotonic-OR sync semantics — see
+ * sync/tables.ts QUESTION_HISTORY adapter).
+ *
+ * Per add-bookmarks-filters-and-wrong-history-medexam2 — wrong-answer-list
+ * 「錯題」 tab sub-view split requirement.
+ */
+export function useEverWrongAnswers(): QuestionHistoryRow[] | undefined {
+  return useLiveQuery(async () => {
+    // Dexie boolean equality has well-known quirks across versions — use a
+    // `.filter()` predicate scan, which is reliable. For corpus-scale (~6000
+    // questions, half answered) the in-memory scan + sort is sub-millisecond
+    // and avoids per-version index gotchas. The `everWrong` Dexie index from
+    // v17 is still useful for future query plan optimizations.
+    const rows = await getHospitalDB()
+      .questionHistory
+      .filter((r) => r.everWrong === true)
+      .toArray()
+    return rows.sort((a, b) => b.lastAnsweredAt - a.lastAnsweredAt)
+  })
+}
