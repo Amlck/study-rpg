@@ -138,4 +138,4 @@ These 10 tests are the regression safety net. UI scenarios stay in §11.x Chrome
   - empty-state renders
 - [x] 12.6 Run `/opsx:verify` for the change (completeness / correctness / coherence pass)
 - [x] 12.7 Update CLAUDE.md if needed: bumped Dexie version (v17), m2 bundle schema_version (2), new `BookmarkFilterBar` component, new `lib/grace-toast.ts` module, `everWrong` monotonic-OR merge convention
-- [ ] 12.8 Stage explicit files (no `git add -A` per multi-agent git safety) and commit when user confirms
+- [x] 12.8 Stage explicit files (no `git add -A` per multi-agent git safety) and commit when user confirms — committed in `1db2748` (track-m2)
