@@ -380,52 +380,72 @@ Backfill SHALL be guarded against StrictMode double-mount by `bulkPut` idempoten
 - **AND** the app boot SHALL continue normally
 - **AND** subsequent triggers (correct answer, variant unlock) SHALL still evaluate and unlock achievements via the diff-based path
 
-### Requirement: BadgeSprite component SHALL render category × tier badges with atlas-ready API
+### Requirement: BadgeSprite component SHALL render category × tier badges from sprite atlas
 
-The system SHALL ship a `<BadgeSprite category={c} tier={t} size={n} locked={b} />` component at `apps/neurons-tw/src/components/BadgeSprite.tsx` that accepts the 7 neurons category literals and 4 tier literals via the props API and renders a visually distinct badge per (category, tier) pair at the requested pixel size.
+The system SHALL ship a `<BadgeSprite category={c} tier={t} size={n} locked={b} />` component at `apps/neurons-tw/src/components/BadgeSprite.tsx` that renders category × tier badges from the sprite atlas at `apps/neurons-tw/src/assets/achievements/badge-atlas.png` (896×512 px = 7 columns × 4 rows × 128 px cells, 16-color GBA pixel-art palette, transparent background).
 
-The component MAY ship in one of two rendering modes:
+Column index maps to category (study=0, quiz=1, variant=2, synapse=3, mastery=4, fortune=5, hidden=6); row index maps to tier (P4=0, P3=1, P2=2, P1=3).
 
-1. **Placeholder mode** (acceptable at ship time): SVG / inline rendering with category glyph + tier-color ring. Sufficient for production while pixel-art atlas is being generated.
-2. **Atlas mode** (target end state): CSS `background-position` against `apps/neurons-tw/src/assets/achievements/badge-atlas.png` (896×512 px, 7×4 grid, 128 px cells, 16-color GBA palette, transparent background). Row index maps to category (study=0, quiz=1, variant=2, synapse=3, mastery=4, fortune=5, hidden=6); column index maps to tier (P4=0, P3=1, P2=2, P1=3).
+Note: dimensions 896×512 = 7 × 128 cols by 4 × 128 rows. The original spec text in `add-neurons-achievements` mistakenly declared "7 rows × 4 columns" which is dimensionally inconsistent with the 896×512 size; this change corrects the row/column ordering to match dimensions.
 
-Atlas mode MUST be reachable from placeholder mode via a single-file swap of `BadgeSprite.tsx`'s rendering body — no consumer-side change. Atlas asset generation is tracked by a separate `generate-neurons-achievement-atlases` follow-up change.
+The component SHALL use CSS `background-image` + `background-position` + `background-size` to slice the atlas. Vite asset pipeline (`import url from '../assets/achievements/badge-atlas.png'`) provides the asset URL with cache-busting hash.
 
-#### Scenario: BadgeSprite renders without throwing for every (category, tier) pair
+The component MAY provide a defensive fallback rendering (e.g., neutral square) if the atlas asset fails to load, but the spec assumes the asset exists and is loadable.
+
+`locked={true}` SHALL apply CSS `filter: grayscale(80%) opacity(0.6)` (or equivalent treatment) to dim the cell visual without changing the atlas slice.
+
+Public API (`category` / `tier` / `size` / `locked` props) is unchanged from `add-neurons-achievements` ship.
+
+#### Scenario: BadgeSprite renders correct cell for every (category, tier) pair
 
 - **WHEN** any of the 7 × 4 = 28 valid (category, tier) prop combinations is rendered
-- **THEN** the component SHALL render without React error / Vite error / TypeScript error
-- **AND** the rendered output SHALL be visually distinguishable from other (category, tier) combinations (different tier ring color OR different category glyph)
+- **THEN** the component SHALL render the corresponding atlas cell via CSS background-position
+- **AND** the rendered output SHALL be visually distinguishable from other (category, tier) combinations
 
-#### Scenario: Atlas swap is a single-file change
+#### Scenario: BadgeSprite consumer files unchanged from add-neurons-achievements
 
-- **GIVEN** placeholder mode currently ships
-- **WHEN** a future change generates `badge-atlas.png` and updates `BadgeSprite.tsx` to atlas mode
-- **THEN** the change SHALL NOT touch `AchievementCard.tsx`, `AchievementToastHost.tsx`, `AchievementUnlockModal.tsx`, `AchievementsPage.tsx`, or `NicknameWithBadges` helper
-- **AND** the BadgeSprite public API (`category` / `tier` / `size` / `locked` props) SHALL remain unchanged
+- **GIVEN** atlas mode now ships
+- **WHEN** any of these consumers render BadgeSprite: `AchievementCard.tsx`, `AchievementToastHost.tsx`, `AchievementUnlockModal.tsx`, `AchievementsPage.tsx`, `NicknameWithBadges` helper in `LeaderboardPage.tsx`
+- **THEN** the consumer site SHALL NOT have changed shape (props passed remain `category` / `tier` / `size` / `locked` only)
 
-### Requirement: FamilyMasteryBadgeSprite component slot SHALL be reserved without partial implementation
+#### Scenario: Locked prop applies dimming filter
 
-The system SHALL NOT ship a partially-built `<FamilyMasteryBadgeSprite />` component at initial release. The component shape and the per-family-per-tier atlas (11 families × 5 mastery tiers = 55 cells) MUST land together as a coherent follow-up unit, not piecemeal.
+- **WHEN** `<BadgeSprite category="variant" tier="P1" size={48} locked={true} />` is rendered
+- **THEN** the rendered element SHALL have CSS `filter: grayscale(...)` (or equivalent) applied
+- **AND** the underlying atlas slice SHALL remain at the same row/column position
 
-A future change SHALL add all three of these together:
+### Requirement: FamilyMasteryBadgeSprite component SHALL ship with atlas + consumer site
 
-1. A 1408×640 px 11×5 atlas at `apps/neurons-tw/src/assets/achievements/family-mastery-atlas.png`
-2. The corresponding `FamilyMasteryBadgeSprite.tsx` component sourcing cells via CSS `background-position`
-3. At least one consumer site (e.g., LeaderboardPage 鎖籤 inline display or a dedicated mastery grid component)
+The system SHALL ship a `<FamilyMasteryBadgeSprite familyId={f} masteryTier={t} size={n} />` component at `apps/neurons-tw/src/components/FamilyMasteryBadgeSprite.tsx` that renders per-family per-mastery-tier badges from the atlas at `apps/neurons-tw/src/assets/achievements/family-mastery-atlas.png` (1408×640 px, 11 columns × 5 rows × 128 px cells, 16-color GBA palette, transparent background).
 
-Column index SHALL map to familyId (alphabetical sort of the 11 neuron family IDs); row index SHALL map to mastery tier (P5=0, P4=1, P3=2, P2=3, P1=4).
+Column index SHALL map to family id via the exported constant `FAMILY_INDEX_BY_ID: Record<string, number>` declared alongside the component, using alphabetical sort of the 11 family IDs: `公共衛生學`=0 / `免疫學`=1 / `寄生蟲學`=2 / `微生物學`=3 / `病理學`=4 / `生物化學`=5 / `生理學`=6 / `組織學`=7 / `胚胎學`=8 / `解剖學`=9 / `藥理學`=10.
 
-#### Scenario: Future change scope is clear
+Row index SHALL map to mastery tier: P5=0 / P4=1 / P3=2 / P2=3 / P1=4. When `masteryTier === 'none'`, the component SHALL return `null` (don't render anything — no atlas cell exists for the no-data state).
 
-- **WHEN** the follow-up change for family mastery atlas is proposed
-- **THEN** the proposal SHALL ship the atlas + component + ≥ 1 consumer site as a coherent unit (no half-built component)
+At least ONE consumer site SHALL render this component at initial ship — currently `apps/neurons-tw/src/routes/ConnectomePage.tsx` family cards rendering the badge alongside the existing `<MasteryChip>` text via the `<FamilyMasteryBadge>` wrapper component that subscribes to mastery events and derives the tier.
 
-#### Scenario: No consumer requires the component at initial ship
+#### Scenario: FamilyMasteryBadgeSprite renders correct cell
 
-- **GIVEN** initial ship of `add-neurons-achievements` (this change)
-- **WHEN** the full `apps/neurons-tw` codebase is searched
-- **THEN** no file SHALL reference `FamilyMasteryBadgeSprite` (the component doesn't exist yet by design)
+- **WHEN** `<FamilyMasteryBadgeSprite familyId="藥理學" masteryTier="P3" size={48} />` is rendered
+- **THEN** the component SHALL show the cell at column 10 (藥理學 alphabetical position), row 2 (P3 Proficient)
+
+#### Scenario: FamilyMasteryBadgeSprite returns null for none-tier
+
+- **WHEN** `<FamilyMasteryBadgeSprite familyId="藥理學" masteryTier="none" size={48} />` is rendered
+- **THEN** the component SHALL return `null` (no DOM element emitted)
+
+#### Scenario: ConnectomePage renders FamilyMasteryBadgeSprite per family card
+
+- **WHEN** the player visits `/connectome`
+- **THEN** each of the 11 family cards SHALL render `<FamilyMasteryBadgeSprite>` (via the `<FamilyMasteryBadge>` wrapper) for the family whose mastery tier is currently P5 or better (the badge appears next to the existing MasteryChip text)
+- **AND** family cards whose mastery tier is `'none'` (insufficient attempts) SHALL NOT render the badge (per the null-return rule above)
+
+#### Scenario: FAMILY_INDEX_BY_ID is alphabetical and complete
+
+- **WHEN** a consumer imports `FAMILY_INDEX_BY_ID` from `FamilyMasteryBadgeSprite.tsx`
+- **THEN** the record SHALL contain exactly 11 entries
+- **AND** values SHALL be 0..10 with no gaps
+- **AND** ordering SHALL match alphabetical sort of zh-TW family ids (公共衛生學 first, 藥理學 last)
 
 ### Requirement: Family-mastery atlas SHALL render per-family per-mastery-tier badges from an 11×5 grid
 
