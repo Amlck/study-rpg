@@ -11,7 +11,8 @@
   },
   "scripts": {
     "build": "tsx scripts/build.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:validator": "tsx scripts/verify-validator.ts"
   },
   "peerDependencies": {
     "@study-rpg/core": "workspace:*"

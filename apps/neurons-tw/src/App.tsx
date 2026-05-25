@@ -13,6 +13,10 @@ import {
   backfillUnlockedSlots,
   registerVariantGachaSubscriber,
 } from './lib/services/variant-gacha'
+import { backfillAchievementsFromCurrentStats } from './lib/services/achievement'
+import AchievementsPage from './routes/AchievementsPage'
+import AchievementToastHost from './components/AchievementToastHost'
+import AchievementUnlockModal from './components/AchievementUnlockModal'
 
 interface AppState {
   loading: boolean
@@ -40,6 +44,11 @@ export default function App(): JSX.Element {
         // NO modal/toast for backfilled variants. Total boot cost: ~50ms for a
         // typical save (a few rows); errors logged but do not block boot.
         await backfillUnlockedSlots(resolveFamilyDisplayName)
+        // Silent achievement backfill — write rows for predicates already
+        // satisfied by current Dexie state (no toast / modal / reward). Safe
+        // to run AFTER variant backfill so variant-derived predicates see
+        // the latest variant rows. Idempotent on subsequent boots.
+        await backfillAchievementsFromCurrentStats()
         setState({ loading: false, pack })
       })
       .catch((e) => setState({ loading: false, error: String(e) }))
@@ -58,6 +67,8 @@ export default function App(): JSX.Element {
     <BrowserRouter>
       <ConnectomeToastHost pack={pack} />
       <VariantUnlockModal />
+      <AchievementToastHost />
+      <AchievementUnlockModal />
       <main style={pageStyle}>
         <nav style={navStyle}>
           <NavLink to="/" style={navLinkStyle} end>
@@ -73,6 +84,11 @@ export default function App(): JSX.Element {
               <span style={isActive ? activeLinkStyle : undefined}>排名</span>
             )}
           </NavLink>
+          <NavLink to="/achievements" style={navLinkStyle}>
+            {({ isActive }) => (
+              <span style={isActive ? activeLinkStyle : undefined}>成就</span>
+            )}
+          </NavLink>
           <NavLink to="/motion-demo" style={navLinkStyle}>
             {({ isActive }) => (
               <span style={isActive ? activeLinkStyle : undefined}>動畫 demo</span>
@@ -83,6 +99,7 @@ export default function App(): JSX.Element {
           <Route path="/" element={<OverviewPage pack={pack} />} />
           <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route path="/achievements" element={<AchievementsPage />} />
           <Route path="/motion-demo" element={<MotionDemoPage />} />
         </Routes>
       </main>

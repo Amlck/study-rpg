@@ -10,6 +10,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+import { NEURONS_ACHIEVEMENTS, NEURONS_ACHIEVEMENTS_STATS } from '../src/achievements'
+import { validateNeuronsAchievementCatalog } from '../src/achievement-validator'
+
 const ROOT = resolve(import.meta.dirname, '..', '..', '..')
 const MEDEXAM_TW_DIST =
   process.env.MEDEXAM_TW_DIST ?? resolve(ROOT, 'apps/medexam-tw/public/content/medexam-tw')
@@ -293,6 +296,15 @@ function main(): void {
     `subjects: ${outputSubjects.length} (DA ${ntCount('DA')} / 5-HT ${ntCount('5HT')} / GABA ${ntCount('GABA')} / Glu ${ntCount('Glu')})`,
   )
   console.log(`Written: ${OUT_DIR}`)
+
+  // Step 8: Validate achievement catalog (fail build on rule violation)
+  validateNeuronsAchievementCatalog(NEURONS_ACHIEVEMENTS)
+  console.log(
+    `achievements: ${NEURONS_ACHIEVEMENTS_STATS.total} entries — ` +
+      Object.entries(NEURONS_ACHIEVEMENTS_STATS.byCategory)
+        .map(([c, n]) => `${c}:${n}`)
+        .join(', '),
+  )
 }
 
 main()

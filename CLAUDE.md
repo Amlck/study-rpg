@@ -307,6 +307,44 @@ Known follow-ups (deferred):
 
 Full change reference: `openspec/changes/add-hospital-equipment-medexam2/` (proposal / design / specs / tasks).
 
+## Neurons achievement system (M_3rd, 2026-05-25)
+
+`apps/neurons-tw` ships a milestone-recognition system borrowed from 二階 `achievement-system` pattern: 7 categories × 4 tiers = 30 catalog entries. Borrowed per `neurons-mode` Req 5 (independent capability spec; no modification of 二階 source).
+
+**Category set** (string union locally declared, NOT imported from `@study-rpg/core`'s 二階-shaped `AchievementCategory`): `study | quiz | variant | synapse | mastery | fortune | hidden`. Semantic mappings: 二階 recruit → variant; hospital → synapse; subject → mastery.
+
+**Catalog** = `packages/content-neurons-tw/src/achievements.ts` (30 entries: 4 study + 5 quiz + 5 variant + 4 synapse + 4 mastery + 4 fortune + 4 hidden). Tiers `P1 鑽石 / P2 金 / P3 銀 / P4 銅` (mirror PSN Trophy convention). Build-time validator at `packages/content-neurons-tw/src/achievement-validator.ts` enforces: (a) every P1 entry MUST declare `composite: true`, (b) non-P1 entries MUST NOT declare composite, (c) all required fields populated, (d) ids unique, (e) every category has ≥ 1 entry. Smoke covered by `scripts/verify-validator.ts` (6 fixtures pass).
+
+**Types declared LOCALLY** at `packages/content-neurons-tw/src/achievement-types.ts` — not in `@study-rpg/core`. Reasoning: core's `AchievementCategory` is a strict 7-literal union containing 二階 字面值 (`'recruit'|'hospital'|'subject'`); `AchievementStats` references `SubjectId` + `totalDoctorsRecruited` + `currentHospitalTier`; `AchievementReward` includes `'cosmetic'`. Widening core to fit both 二階 + neurons would invasively break published `@study-rpg/core@0.4.x` API contract. Neurons uses `NeuronsAchievement` / `NeuronsAchievementStats` / `NeuronsAchievementReward` / `NeuronsAchievementCategory` and re-implements the 5-line `checkAchievementUnlocks` diff function locally at `apps/neurons-tw/src/lib/services/achievement.ts`. Apply-phase decision in `add-neurons-achievements/tasks.md` §1.2.
+
+**Reward channels = 2** (TS union locked): `{kind:'leaderboard'}` (implicit — every unlock contributes to `badges_csv`) + `{kind:'title';title:string}` (appends to `leaderboardProfile.unlockedTitles`, selectable via `TitleSelector` in `LeaderboardSettingsControls`). `cosmetic` / `equipment` / `ticket` / `currency` are TypeScript-rejected at catalog declaration site.
+
+**Persistence** (Dexie v5): new `achievements` table (PK `id`, indexed `unlockedAt`). v4 → v5 is additive. Extended `LeaderboardProfileRow` with `unlockedTitles?: string[]` + `selectedTitle?: string | null` (no schema migration; Dexie tolerates undefined for existing rows).
+
+**Streak counter** persisted in `meta` table: `meta['currentQuizCorrectStreak']` (LWW, +1 correct / reset 0 wrong) + `meta['maxQuizCorrectStreak']` (MAX-merge). Co-commits with `recordCorrectAnswer` / `recordIncorrectAnswer` Dexie transaction.
+
+**Trigger hooks** (3 sites — `apps/neurons-tw/src/lib/services/`):
+- `connectome.ts` `recordCorrectAnswer` collapse-point — captures `prevStats` pre-tx, calls `triggerAchievementCheck` post-commit
+- `connectome.ts` `recordIncorrectAnswer` — streak reset + post-commit check
+- `variant-gacha.ts` `handleSlotUnlock` — capture pre-state if non-silent; trigger check after persist
+
+Each hook wrapped in try/catch (`[achievement]` channel) so failure doesn't break originating game action. `study` category predicates evaluate against `totalStudyMinutes: 0` placeholder (reading-timer not yet wired in neurons-tw); catalog ships ready for when timer ships.
+
+**Backfill** at app boot via `backfillAchievementsFromCurrentStats()` in `App.tsx` `useEffect`: builds stats from Dexie, finds predicates already true, `bulkPut` missing rows with `notificationShown: true`, dispatches NO rewards / NO toasts / NO modals. Idempotent. Same function shape ready for future `onPullComplete` sync hook (post `add-neurons-deploy`).
+
+**UI** components: `BadgeSprite` (placeholder SVG + emoji glyph + tier-color ring — atlas swap deferred to follow-up `generate-neurons-achievement-atlases`), `AchievementCard`, `AchievementsPage` at `/achievements` (sub-tabs 「全部 / 已解鎖」 + category/tier filter dropdowns + strict hidden filtering), `AchievementToastHost` (wraps motion library `<Toast>` + `TOAST_AUTO_DISMISS_MS`), `AchievementUnlockModal` (wraps motion library `<AchievementUnlockModal>` primitive). Toast/modal queue singleton at `lib/achievement-toast-queue.ts`.
+
+**Leaderboard integration**: `deriveAchievementSnapshot(unlocked)` + `deriveBadgesCsvFromDexie()` in `lib/services/neurons-leaderboard.ts` produce max-tier-per-category CSV with hidden category excluded (fits Worker regex `^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$` since 7 categories − 1 hidden = 6 max entries). `LeaderboardPage` renders inline 20px badges via `NicknameWithBadges` helper. `D1 leaderboard_neurons.badges_csv` column was reserved by `add-neurons-leaderboard` Req 11 — **no D1 migration** needed. Title display on leaderboard rows deferred to a separate follow-up (would need Worker schema addition for `selected_title`).
+
+**Smoke results** (2026-05-25 Chrome MCP end-to-end): boot backfill populated `mastery-first-novice` row silently; 10× +5 答對 on 藥理學 fired `variant-first-pull` toast + `quiz-streak-10` queued + `hidden-first-day-blitz` queued; `/achievements` page rendered 4 unlocked + 26 locked silhouettes + 3 hidden-locked invisible. Console clean (only pre-existing React Router future warnings).
+
+**Deferred follow-ups**:
+- Atlas asset generation (60–90 min codex CLI batch × 2 atlases) → separate `generate-neurons-achievement-atlases` change
+- Title display on leaderboard rows (needs Worker `selected_title` D1 column + KV)
+- `study` category active triggers (needs reading-timer follow-up)
+
+Full change reference: `openspec/changes/archive/2026-05-25-add-neurons-achievements/`.
+
 ## Source data path
 
 題庫原始 .md 在使用者本機（**不在 repo 內**）：

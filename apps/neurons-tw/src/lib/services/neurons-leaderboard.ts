@@ -13,6 +13,11 @@
  */
 
 import { db, type LeaderboardProfileRow } from '../db'
+import {
+  NEURONS_ACHIEVEMENTS,
+  tierRank,
+  type NeuronsAchievement,
+} from '@study-rpg/content-neurons-tw'
 
 // Worker base URL — same Cloudflare Worker as 二階. Configurable via env var
 // for local Worker (`wrangler dev` on port 8787) testing; defaults to prod.
@@ -101,6 +106,9 @@ export async function buildLeaderboardPayload(
   // counter). Future wiring lands in add-neurons-deploy alongside cloud sync.
   const total_study_min = 0
 
+  // Derive badges_csv from currently-unlocked achievements (hidden excluded).
+  const badges_csv = await deriveBadgesCsvFromDexie()
+
   return {
     nickname,
     variant_count,
@@ -110,7 +118,46 @@ export async function buildLeaderboardPayload(
     total_study_min,
     is_public: isPublic ? 1 : 0,
     updated_at: Date.now(),
+    badges_csv,
   }
+}
+
+/**
+ * Read currently-unlocked achievements from Dexie, derive max-tier-per-category
+ * CSV. Hidden category is filtered out (player-private). Categories sorted
+ * alphabetically for deterministic ordering. Max 6 entries × ~12 chars = ≤ 72
+ * chars, fits Worker regex `^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$`.
+ *
+ * Capability spec: openspec/specs/neurons-achievements/spec.md "Leaderboard
+ * badges_csv SHALL be derived as max-tier-per-category with hidden excluded".
+ */
+export async function deriveBadgesCsvFromDexie(): Promise<string> {
+  const rows = await db.achievements.toArray()
+  const unlockedIds = new Set(rows.map((r) => r.id))
+  const unlocked = NEURONS_ACHIEVEMENTS.filter((a) => unlockedIds.has(a.id))
+  return deriveAchievementSnapshot(unlocked)
+}
+
+/**
+ * Pure derivation function — useful for unit testing without Dexie. Filters
+ * hidden, groups by category, picks best tier (lowest tierRank), sorts
+ * alphabetically by category, joins with comma.
+ */
+export function deriveAchievementSnapshot(
+  unlocked: readonly NeuronsAchievement[],
+): string {
+  const bestByCategory = new Map<string, NeuronsAchievement>()
+  for (const a of unlocked) {
+    if (a.category === 'hidden') continue
+    const existing = bestByCategory.get(a.category)
+    if (!existing || tierRank(a.tier) < tierRank(existing.tier)) {
+      bestByCategory.set(a.category, a)
+    }
+  }
+  return Array.from(bestByCategory.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([cat, a]) => `${cat}:${a.tier}`)
+    .join(',')
 }
 
 interface AuthedFetchOptions {

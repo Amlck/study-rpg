@@ -16,6 +16,11 @@
 import { useEffect, useState } from 'react'
 import LeaderboardOptInModal from '../components/LeaderboardOptInModal'
 import LeaderboardSettingsControls from '../components/LeaderboardSettingsControls'
+import { BadgeSprite } from '../components/BadgeSprite'
+import type {
+  NeuronsAchievementCategory,
+  NeuronsAchievementTier,
+} from '@study-rpg/content-neurons-tw'
 import {
   fetchLeaderboardSnapshot,
   getLeaderboardProfile,
@@ -265,7 +270,7 @@ function LeaderboardGrid({
         return (
           <div key={row.user_id} style={rowStyleFinal}>
             <span style={{ ...rankCellStyle, ...rankAccent(rank) }}>{rank}</span>
-            <span style={nicknameCellStyle}>{row.nickname}</span>
+            <NicknameWithBadges nickname={row.nickname} badgesCsv={row.badges_csv ?? ''} />
             <span style={statCellWithPrimary(primaryStat === 'variant_count')}>
               {row.variant_count}
             </span>
@@ -284,6 +289,54 @@ function LeaderboardGrid({
       })}
     </div>
     </>
+  )
+}
+
+interface ParsedBadge {
+  category: NeuronsAchievementCategory
+  tier: NeuronsAchievementTier
+}
+
+const VALID_CATEGORIES = new Set<NeuronsAchievementCategory>([
+  'study',
+  'quiz',
+  'variant',
+  'synapse',
+  'mastery',
+  'fortune',
+])
+
+function parseBadgesCsv(csv: string): ParsedBadge[] {
+  if (!csv) return []
+  const out: ParsedBadge[] = []
+  for (const token of csv.split(',')) {
+    const [cat, tier] = token.split(':')
+    if (!cat || !tier) continue
+    if (!VALID_CATEGORIES.has(cat as NeuronsAchievementCategory)) continue
+    if (!['P1', 'P2', 'P3', 'P4'].includes(tier)) continue
+    out.push({
+      category: cat as NeuronsAchievementCategory,
+      tier: tier as NeuronsAchievementTier,
+    })
+  }
+  return out
+}
+
+function NicknameWithBadges({
+  nickname,
+  badgesCsv,
+}: {
+  nickname: string
+  badgesCsv: string
+}): JSX.Element {
+  const badges = parseBadgesCsv(badgesCsv)
+  return (
+    <span style={nicknameCellStyle}>
+      <span style={{ marginRight: badges.length > 0 ? '0.4rem' : 0 }}>{nickname}</span>
+      {badges.map((b) => (
+        <BadgeSprite key={`${b.category}:${b.tier}`} category={b.category} tier={b.tier} size={20} />
+      ))}
+    </span>
   )
 }
 

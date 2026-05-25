@@ -221,6 +221,18 @@ export default function LeaderboardSettingsControls({ userId, accessToken }: Pro
       </div>
 
       <div style={rowStyle}>
+        <span style={labelStyle}>稱號</span>
+        <TitleSelector
+          profile={profile}
+          onChange={async (newTitle) => {
+            await db.leaderboardProfile.update(profile.user_id, { selectedTitle: newTitle })
+            const updated = await db.leaderboardProfile.get(userId)
+            setProfile(updated ?? null)
+          }}
+        />
+      </div>
+
+      <div style={rowStyle}>
         <span style={labelStyle}>最後上傳</span>
         <span style={valueStyle}>
           {profile.last_pushed_at
@@ -241,6 +253,45 @@ export default function LeaderboardSettingsControls({ userId, accessToken }: Pro
         手動上傳是雲端同步未接前的暫時做法。日後 add-neurons-deploy 接上 cloud sync 後將自動推送。
       </p>
     </div>
+  )
+}
+
+/**
+ * Title selector — dropdown over `profile.unlockedTitles`. Title rewards from
+ * achievement unlocks populate this list via the reward dispatcher. Per
+ * neurons-achievements spec Req "Title reward updates unlocked titles list".
+ */
+function TitleSelector({
+  profile,
+  onChange,
+}: {
+  profile: LeaderboardProfileRow
+  onChange: (value: string | null) => Promise<void>
+}): JSX.Element {
+  const titles = profile.unlockedTitles ?? []
+  if (titles.length === 0) {
+    return <span style={{ ...mutedSmallStyle, fontStyle: 'normal' }}>尚無稱號 — 解鎖成就以取得</span>
+  }
+  return (
+    <select
+      value={profile.selectedTitle ?? ''}
+      onChange={(e) => void onChange(e.target.value === '' ? null : e.target.value)}
+      style={{
+        fontFamily: "'Cubic 11', 'Noto Sans TC', sans-serif",
+        fontSize: '0.85rem',
+        padding: '0.2rem 0.4rem',
+        background: '#f4ecd8',
+        border: '1px solid #8c6d4a',
+        color: '#1a1410',
+      }}
+    >
+      <option value="">（無）</option>
+      {titles.map((t) => (
+        <option key={t} value={t}>
+          {t}
+        </option>
+      ))}
+    </select>
   )
 }
 

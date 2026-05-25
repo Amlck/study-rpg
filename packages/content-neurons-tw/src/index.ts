@@ -82,3 +82,27 @@ export {
   type NeuronVariantDef,
   type VariantRarityTier,
 } from './variants'
+
+export {
+  NEURONS_ACHIEVEMENTS,
+  NEURONS_ACHIEVEMENTS_STATS,
+} from './achievements'
+
+export {
+  NEURONS_ACHIEVEMENT_CATEGORIES,
+  TIER_LABEL,
+  CATEGORY_LABEL,
+  tierRank,
+  type NeuronsAchievement,
+  type NeuronsAchievementTier,
+  type NeuronsAchievementCategory,
+  type NeuronsAchievementReward,
+  type NeuronsAchievementStats,
+  type NeuronsPlayerSnapshot,
+  type FamilyMasteryTier,
+} from './achievement-types'
+
+export {
+  validateNeuronsAchievementCatalog,
+  type ValidationFailure,
+} from './achievement-validator'

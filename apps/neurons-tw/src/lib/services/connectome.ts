@@ -19,6 +19,8 @@ import {
   initFamilyMasteryIfEmpty,
   type MasteryUpdate,
 } from './mastery'
+import { incrementCurrentStreak, resetCurrentStreak } from './streak'
+import { buildAchievementStats, triggerAchievementCheck } from './achievement'
 import type { ContentPack } from '@study-rpg/core'
 
 export const events = new ConnectomeEventEmitter()
@@ -91,10 +93,16 @@ export async function recordCorrectAnswer(familyId: string): Promise<void> {
   const today = todayISO()
   let pending: PendingEvent[] = []
   let masteryUpdate: MasteryUpdate | null = null
+  // Capture stats BEFORE the write transaction so the achievement diff sees
+  // the pre-mutation state. Read-only, no transaction needed.
+  const prevStats = await buildAchievementStats()
 
   await db.transaction('rw', db.synapses, db.familyAccrual, db.meta, db.familyMastery, async (tx) => {
     pending.push(...(await runDailyResetIfNeededInTx(today)))
     masteryUpdate = await recordAttemptInTx(tx, familyId, true)
+    // Co-commit streak counter increment with mastery / synapse writes per
+    // neurons-achievements spec Req "Streak counter SHALL be persisted...".
+    await incrementCurrentStreak()
 
     const accrual = await db.familyAccrual.get(familyId)
     if (!accrual) {
@@ -172,16 +180,25 @@ export async function recordCorrectAnswer(familyId: string): Promise<void> {
 
   emitAll(pending)
   if (masteryUpdate) emitMasteryUpdated(masteryUpdate)
+  // Post-commit: achievement diff against prev snapshot. Wrapped in its own
+  // try/catch inside triggerAchievementCheck so failure doesn't break gameplay.
+  await triggerAchievementCheck(prevStats)
 }
 
 export async function recordIncorrectAnswer(familyId: string): Promise<void> {
   // Per connectome-collection spec: AP / firedToday / synapse state unchanged.
   // Per neuron-family-mastery spec: total counter increments (correct does not).
+  // Per neurons-achievements spec: streak reset to 0 in same tx as mastery.
   let masteryUpdate: MasteryUpdate | null = null
-  await db.transaction('rw', db.familyMastery, async (tx) => {
+  const prevStats = await buildAchievementStats()
+  await db.transaction('rw', db.familyMastery, db.meta, async (tx) => {
     masteryUpdate = await recordAttemptInTx(tx, familyId, false)
+    await resetCurrentStreak()
   })
   if (masteryUpdate) emitMasteryUpdated(masteryUpdate)
+  // Post-commit: achievement diff (mainly for streak-reset edge case where a
+  // related predicate flips — uncommon but cheap to check).
+  await triggerAchievementCheck(prevStats)
 }
 
 export async function initMasteryForPack(pack: ContentPack): Promise<void> {

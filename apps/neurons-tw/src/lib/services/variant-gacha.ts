@@ -24,6 +24,7 @@ import {
 } from '@study-rpg/content-neurons-tw'
 import { db, type NeuronVariantRow } from '../db'
 import { subscribeConnectomeEvents } from './connectome'
+import { buildAchievementStats, triggerAchievementCheck } from './achievement'
 
 const GACHA_CONFIG: GachaConfig = {
   // rollGacha convention: tiers[0] is the LOWEST rarity (highest weight);
@@ -176,6 +177,8 @@ export async function handleSlotUnlock(
     // Pre-check idempotency outside the rolling tx to avoid wasted RNG calls.
     const existing = await db.neuronVariants.get([payload.familyId, payload.slotIndex])
     if (existing) return
+    // Capture pre-state for achievement diff (only non-silent path).
+    const prevStats = options.silent ? null : await buildAchievementStats()
     await rollAndPersist(
       payload.familyId,
       payload.slotIndex,
@@ -183,6 +186,11 @@ export async function handleSlotUnlock(
       resolveFamilyDisplayName,
       options,
     )
+    if (prevStats) {
+      // Variant just persisted — check for variant / family-complete / fortune
+      // category achievements. Silent backfill path skips toast pipeline entirely.
+      await triggerAchievementCheck(prevStats)
+    }
   } catch (err) {
     console.error(`[variant-gacha] handleSlotUnlock failed for ${payload.familyId}:${payload.slotIndex}:`, err)
   }
