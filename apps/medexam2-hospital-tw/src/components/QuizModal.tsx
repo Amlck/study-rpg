@@ -6,7 +6,12 @@ import { RARITY_LABELS, getSpecialtyMultiplier } from '@study-rpg/content-medexa
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
 import { loadPoolSizeMap, pickQuestionById, pickRandomQuestion } from '../lib/quiz'
-import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
+import {
+  recordCorrectAnswer,
+  recordWrongAnswer,
+  applyQualityModifier,
+  type PrevSrsSnapshot,
+} from '../lib/mastery'
 import { emitGraceToast } from '../lib/grace-toast'
 import { applyQuizReward } from '../services/quiz-rewards'
 import { getNextDueCardForSubject } from '../lib/srs-scheduler'
@@ -22,6 +27,7 @@ import { EmojiIcon } from './EmojiIcon'
 import { ExplanationMarkdown } from './ExplanationMarkdown'
 import { QuizBugReportSheet } from './QuizBugReportSheet'
 import { buildQuestionSnapshot, type QuizQuestionSnapshot } from '../services/bug-report'
+import { incrementEasyClick, incrementGuessedClick } from '../lib/srs-telemetry'
 
 const ALL_SUBJECT_IDS: SubjectId[] = [
   '內科', '家醫科', '小兒科', '皮膚科', '神經內科', '精神科',
@@ -54,6 +60,14 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
   const [picking, setPicking] = useState(false)
   const [skipSrs, setSkipSrs] = useState(false)
   const [toasts, setToasts] = useState<Array<{ id: number; text: string }>>([])
+  // SRS state captured BEFORE recordCorrectAnswer overwrites it. Used by the
+  // 「太簡單」/「我亂猜的」 button handlers to compute the modifier path from the
+  // correct baseline (not stacked on the default-path write). Reset on each pick.
+  const prevSrsRef = useRef<PrevSrsSnapshot | null>(null)
+  // Tracks which opt-in modifier (if any) the player has clicked for the
+  // current reveal. Reset on each pick. Buttons toggle is-active visual based
+  // on this.
+  const [activeQuality, setActiveQuality] = useState<'easy' | 'guessed' | null>(null)
   const firedExhaustedRef = useRef<Set<SubjectId>>(new Set())
   const [bugSheetSnapshot, setBugSheetSnapshot] = useState<QuizQuestionSnapshot | null>(null)
   const [bugFullModalOpen, setBugFullModalOpen] = useState(false)
@@ -251,11 +265,26 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     if (revealed || !question || !boundDoctor) return
     setSelectedOption(optionKey)
     setRevealed(true)
+    setActiveQuality(null) // reset modifier state for the new reveal
     // 送分題: 考選部判定全部給分 — 任何選項都算對
     const wasCorrect = question.disputed || optionKey === question.answer
     const payload = { subjectId, questionId: question.id }
     const capturedQuestion = question
     const capturedDoctor = boundDoctor
+
+    // Capture prev SRS state BEFORE recordCorrectAnswer overwrites it — used
+    // by the 「太簡單」/「我亂猜的」 buttons if the player clicks one. Only
+    // meaningful on correct answers (buttons hidden on wrong).
+    if (wasCorrect) {
+      const priorRow = await db.questionHistory.get(capturedQuestion.id)
+      prevSrsRef.current = {
+        interval: priorRow?.interval ?? 0,
+        easeFactor: priorRow?.easeFactor ?? 2.5,
+        nextDueAt: priorRow?.nextDueAt ?? null,
+      }
+    } else {
+      prevSrsRef.current = null
+    }
 
     // Atomic answer + reward — single Dexie transaction wrapping both helpers.
     // Inner `db.transaction(...)` calls inside recordCorrectAnswer / applyQuizReward
@@ -344,7 +373,38 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
       await loadNextQuestion(subjectId, false)
     } finally {
       setPicking(false)
+      // Clear modifier state on advance — next reveal starts fresh.
+      setActiveQuality(null)
+      prevSrsRef.current = null
     }
+  }
+
+  /**
+   * Click handler for 「太簡單」 / 「我亂猜的」 opt-in modifier buttons.
+   * Re-applies SRS update using the captured pre-answer state — overwrites
+   * the default-path write that ran during handlePickOption.
+   *
+   * Re-click on the same modifier is debounced (no-op). Switching between
+   * modifiers replaces the prior modifier write (e.g., player clicks 「太簡單」
+   * then realizes they actually guessed, clicks 「我亂猜的」 → guessed wins).
+   *
+   * Note: clicking the same modifier a second time does NOT revert to default
+   * — that would require reconstructing the default-path write from the
+   * captured prev state and accurately restoring the pre-answer everWrong
+   * value (which we don't snapshot to avoid widening the ref). If a player
+   * wants "default" semantics, they simply don't click any modifier on the
+   * next pick.
+   */
+  async function handleQualityClick(target: 'easy' | 'guessed'): Promise<void> {
+    if (!revealed || !question || picking) return
+    if (activeQuality === target) return // debounce: same-click is no-op
+    const prev = prevSrsRef.current
+    if (!prev) return // safety: only on correct (captured set there)
+    await applyQualityModifier(question.id, target, prev)
+    setActiveQuality(target)
+    // DEV-only telemetry: count click on first selection per question.
+    if (target === 'easy') incrementEasyClick()
+    else incrementGuessedClick()
   }
 
   const optionKeys = useMemo(() => (question ? Object.keys(question.options).sort() : []), [question])
@@ -544,6 +604,32 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
           >
             <EmojiIcon char="🐞" size={20} />
           </button>
+          {revealed && question && selectedOption !== null && (
+            (question.disputed || selectedOption === question.answer) && (
+              <>
+                <button
+                  type="button"
+                  className={`quiz-quality-btn quiz-quality-easy${activeQuality === 'easy' ? ' is-active' : ''}`}
+                  onClick={() => void handleQualityClick('easy')}
+                  title="這題很簡單 — 下次更晚再考"
+                  disabled={picking}
+                >
+                  <EmojiIcon char="✨" size={16} />
+                  <span>太簡單</span>
+                </button>
+                <button
+                  type="button"
+                  className={`quiz-quality-btn quiz-quality-guessed${activeQuality === 'guessed' ? ' is-active' : ''}`}
+                  onClick={() => void handleQualityClick('guessed')}
+                  title="其實是亂猜 — 明天再考一次驗證"
+                  disabled={picking}
+                >
+                  <EmojiIcon char="🤔" size={16} />
+                  <span>我亂猜的</span>
+                </button>
+              </>
+            )
+          )}
           <button
             type="button"
             className="quiz-modal__next"

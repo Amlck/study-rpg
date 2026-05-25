@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { AuthProvider } from './lib/auth/AuthContext'
 import { initConsoleErrorBuffer } from './services/console-error-buffer'
+import { installSrsDevHandle } from './lib/srs-telemetry'
 import './styles.css'
 
 // Inject a base-aware @font-face so the pixel font loads under any deploy
@@ -25,6 +26,7 @@ function injectBaseAwareFontFace(): void {
 injectBaseAwareFontFace()
 
 initConsoleErrorBuffer()
+installSrsDevHandle()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

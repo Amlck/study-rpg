@@ -206,79 +206,89 @@ The `questionHistory` Dexie store SHALL include a column `everWrong: boolean` (d
 
 The `recordWrongAnswer` flow (per `hospital-quiz` capability) SHALL set `everWrong = true` on the upserted row whenever the row is being written with `lastResult = 'wrong'`. If the row already has `everWrong = true`, the write SHALL be idempotent (no-op flip).
 
-The `recordCorrectAnswer` flow SHALL NOT modify `everWrong` — once set to `true`, it remains `true` for the lifetime of the row regardless of subsequent answer outcomes.
+The `recordCorrectAnswer` flow SHALL NOT modify `everWrong` — the default correct-answer path leaves the flag untouched.
 
-The Dexie v17 migration SHALL NOT backfill `everWrong` on pre-existing rows. Rows existing before the migration retain `everWrong = false` until the next write touches them. This is acceptable because (a) currently-wrong rows still appear in 「目前未答對」 sub-view via the existing `lastResult === 'wrong'` query (unchanged), and (b) players' active study loops naturally re-touch questions, migrating them forward.
+The `everWrong` flag MAY transition from `true` to `false` ONLY via the player's explicit click on the 「太簡單」 button in `QuizModal` (per the `hospital-srs` capability's `Easy modifier path (二階)` requirement). No other code path SHALL clear `everWrong`. A row that was set `true` by `recordWrongAnswer` and has not received a player-explicit 「太簡單」 click SHALL remain `true` indefinitely.
 
-The R2 `m2` bundle schema_version SHALL bump from `1` to `2` in this change. The bundle's `questionHistory` adapter SHALL pass through the `everWrong` field on serialize. On deserialize, missing `everWrong` (from older payloads) SHALL be treated as `false`. v2-aware clients pulling v1 bundles SHALL apply the default; v1 clients pulling v2 bundles SHALL drop the unknown field harmlessly.
+The Dexie v17 migration SHALL NOT backfill `everWrong` on pre-existing rows. Rows existing before the migration retain `everWrong = false` until the next write touches them.
 
-The `questionHistory` adapter's `applyToLocal` (or equivalent merge function) SHALL implement **monotonic-OR merge semantics** for the `everWrong` field specifically — distinct from the standard LWW merge applied to all other fields. After the LWW resolution determines which row wins for other fields (`lastResult`, `attempts`, `correctCount`, `lastAnsweredAt`, `nextDueAt`, `interval`, `easeFactor`), the final row's `everWrong` value SHALL be `(existing?.everWrong === true) || (incoming.everWrong === true)`. Once any client writes `everWrong: true` to a row, NO subsequent sync write (regardless of `updated_at` timestamp ordering, regardless of incoming client's schema_version) SHALL clear it.
+The R2 `m2` bundle schema_version SHALL bump from `1` to `2` in this change. The bundle's `questionHistory` adapter SHALL pass through the `everWrong` field on serialize. On deserialize, missing `everWrong` (from older payloads) SHALL be treated as `false`.
+
+The `questionHistory` adapter's `applyToLocal` (or equivalent merge function) SHALL implement **last-explicit-write-wins** semantics for the `everWrong` field — distinct from the prior monotonic-OR behavior. The merge SHALL use the row's `lastAnsweredAt` as the LWW timestamp for `everWrong` alongside all other SRS / answer fields (uniform row-level LWW). Concretely: the row whose `lastAnsweredAt` is more recent dictates the final `everWrong` value (regardless of whether the value is `true` or `false`).
+
+This intentionally permits cross-device `true → false` propagation: when device A writes `everWrong = false` via 「太簡單」 click (which also updates `lastAnsweredAt` to `now`), the next sync push delivers that newer timestamp to device B; on pull, device B's older `everWrong = true` is overwritten by the newer `false`.
+
+To prevent a stale-clock device from inadvertently revoking a fresh `everWrong = true`, write paths SHALL always update `lastAnsweredAt = Date.now()` whenever `everWrong` is mutated (both `recordWrongAnswer` setting `true` and 「太簡單」 setting `false`). This couples the field to the canonical row timestamp.
+
+For backwards-compat with older clients that ship payloads without an `everWrong` field, the adapter SHALL preserve the local value when cloud omits the field (treat "no claim" as "no change").
 
 #### Scenario: First wrong answer sets everWrong to true
 
 - **GIVEN** the player has no `questionHistory` row for question `Q_A`
 - **WHEN** the player selects an incorrect option for `Q_A` and `recordWrongAnswer` writes the row
-- **THEN** the row SHALL exist with `lastResult = 'wrong'`, `attempts = 1`, `everWrong = true`
+- **THEN** the row SHALL exist with `lastResult = 'wrong'`, `attempts = 1`, `everWrong = true`, `lastAnsweredAt = now`
 
-#### Scenario: Subsequent correct answer preserves everWrong
+#### Scenario: Subsequent correct answer preserves everWrong (default path)
 
 - **GIVEN** `questionHistory[Q_A] = { lastResult: 'wrong', attempts: 1, correctCount: 0, everWrong: true }`
-- **WHEN** the player answers `Q_A` correctly and `recordCorrectAnswer` writes the row
-- **THEN** the row SHALL update to `{ lastResult: 'correct', attempts: 2, correctCount: 1, everWrong: true }`
+- **WHEN** the player answers `Q_A` correctly via default path (no 「太簡單」 click) and `recordCorrectAnswer` writes the row
+- **THEN** the row SHALL update to `{ lastResult: 'correct', attempts: 2, correctCount: 1, everWrong: true, lastAnsweredAt: now }`
 - **AND** `everWrong` SHALL remain `true`
+
+#### Scenario: 「太簡單」 click clears everWrong (explicit player action)
+
+- **GIVEN** `questionHistory[Q_B] = { lastResult: 'wrong', attempts: 3, correctCount: 0, everWrong: true, lastAnsweredAt: T_old }`
+- **WHEN** the player answers `Q_B` correctly AND clicks 「太簡單」
+- **THEN** the row SHALL update to `{ lastResult: 'correct', attempts: 4, correctCount: 1, everWrong: false, lastAnsweredAt: now, interval: round(prev × 3), easeFactor: prev × 1.5 }`
+- **AND** `Q_B` SHALL no longer appear in the 「歷史曾錯」 sub-view
+- **AND** `Q_B` SHALL no longer appear in the 「目前未答對」 sub-view (because `lastResult = 'correct'`)
+
+#### Scenario: 「我亂猜的」 click does NOT clear everWrong
+
+- **GIVEN** `questionHistory[Q_C] = { lastResult: 'wrong', everWrong: true }`
+- **WHEN** the player answers `Q_C` correctly AND clicks 「我亂猜的」 (not 「太簡單」)
+- **THEN** the row SHALL update to `{ lastResult: 'correct', everWrong: true, interval: 1 }`
+- **AND** `everWrong` SHALL remain `true`
+- **AND** `Q_C` SHALL still appear in the 「歷史曾錯」 sub-view (with 「✅ 已答對」 chip)
 
 #### Scenario: Player who never got Q wrong has everWrong false
 
-- **GIVEN** `questionHistory[Q_B]` has been written only via `recordCorrectAnswer` (correct on first attempt)
-- **THEN** `questionHistory[Q_B].everWrong` SHALL equal `false`
+- **GIVEN** `questionHistory[Q_D]` has been written only via `recordCorrectAnswer` (correct on first attempt)
+- **THEN** `questionHistory[Q_D].everWrong` SHALL equal `false`
 
 #### Scenario: Migration v17 does not backfill historical wrong-answer rows
 
-- **GIVEN** before deploying this change, the player has `questionHistory[Q_C] = { lastResult: 'wrong', attempts: 3, correctCount: 0 }` (no `everWrong` column existed)
+- **GIVEN** before this change the player had `questionHistory[Q_E] = { lastResult: 'wrong', attempts: 3 }` (no `everWrong` column existed)
 - **WHEN** the v17 migration runs on app upgrade
-- **THEN** `questionHistory[Q_C]` SHALL be `{ lastResult: 'wrong', attempts: 3, correctCount: 0, everWrong: false }` (`everWrong` defaulted on insert, not backfilled to reflect history)
-- **AND** `Q_C` SHALL still appear in the 「目前未答對」 sub-view (because `lastResult === 'wrong'`)
+- **THEN** `questionHistory[Q_E]` SHALL be `{ lastResult: 'wrong', attempts: 3, everWrong: false }` (`everWrong` defaulted on insert, not backfilled)
+- **AND** `Q_E` SHALL still appear in the 「目前未答對」 sub-view (because `lastResult === 'wrong'`)
 
-#### Scenario: Re-answering migrated wrong row correctly leaves everWrong false (acceptable migration gap)
+#### Scenario: Cross-device 「太簡單」 click propagates clear
 
-- **GIVEN** after migration, `questionHistory[Q_C] = { lastResult: 'wrong', ..., everWrong: false }`
-- **WHEN** the player answers `Q_C` correctly and `recordCorrectAnswer` fires
-- **THEN** `questionHistory[Q_C]` SHALL update to `{ lastResult: 'correct', ..., everWrong: false }`
-- **AND** `Q_C` SHALL leave the 「目前未答對」 sub-view
-- **AND** `Q_C` SHALL NOT appear in the 「歷史曾錯」 sub-view (because `everWrong = false` from migration gap)
-- **AND** this gap is accepted; player's future wrong answers on other questions populate 「歷史曾錯」 normally
+- **GIVEN** device A and device B are both signed in
+- **AND** `questionHistory[Q_F]` on both devices = `{ lastResult: 'wrong', everWrong: true, lastAnsweredAt: T_old }`
+- **WHEN** the player on device A answers `Q_F` correctly AND clicks 「太簡單」
+- **AND** device A writes `{ lastResult: 'correct', everWrong: false, lastAnsweredAt: T_new }` (T_new > T_old)
+- **AND** the sync engine pushes the m2 bundle to R2
+- **AND** device B pulls
+- **THEN** device B's `questionHistory[Q_F].everWrong` SHALL equal `false` (last-explicit-write-wins via row-level LWW)
+- **AND** the 「歷史曾錯」 sub-view on device B SHALL no longer contain `Q_F`
 
-#### Scenario: Re-answering migrated wrong row incorrectly sets everWrong to true
+#### Scenario: Stale-clock device cannot revoke a fresh everWrong=true
 
-- **GIVEN** after migration, `questionHistory[Q_C] = { lastResult: 'wrong', ..., everWrong: false }`
-- **WHEN** the player answers `Q_C` incorrectly again and `recordWrongAnswer` fires
-- **THEN** `questionHistory[Q_C]` SHALL update with `everWrong = true`
-- **AND** `Q_C` SHALL now appear in 「歷史曾錯」 sub-view going forward
+- **GIVEN** device A has `questionHistory[Q_G] = { lastResult: 'wrong', everWrong: true, lastAnsweredAt: T_now }`
+- **AND** device B has a stale local clock reporting `T_stale < T_now`
+- **AND** device B writes `{ lastResult: 'wrong', everWrong: true, lastAnsweredAt: T_stale }` (T_stale older)
+- **WHEN** the sync engine merges
+- **THEN** the row SHALL retain device A's `lastAnsweredAt = T_now` and `everWrong = true` (LWW wins for newer timestamp)
+- **AND** device B's stale write SHALL lose the LWW resolution
 
-#### Scenario: Cross-device pull preserves local everWrong via monotonic-OR merge
+#### Scenario: Older client omits everWrong field — local preserved
 
-- **GIVEN** device A is on v17 (has `everWrong` column) with `questionHistory[Q_X] = { lastResult: 'wrong', everWrong: true, lastAnsweredAt: T_old }`
-- **AND** device B is on an older deploy (writes `m2` bundle v1 without `everWrong`)
-- **WHEN** device A pulls device B's v1 bundle containing `Q_X` with `lastAnsweredAt: T_new` (T_new > T_old)
-- **THEN** device A's `questionHistory[Q_X]` SHALL end up with `everWrong = true` (preserved via monotonic-OR — local `true` || incoming undefined/false = true)
-- **AND** all other fields (`lastResult`, `attempts`, `correctCount`, `lastAnsweredAt`) SHALL follow standard LWW (incoming wins because T_new > T_old)
-- **AND** no error SHALL be thrown
-
-#### Scenario: Incoming everWrong=true wins regardless of LWW for that field
-
-- **GIVEN** device A's local `questionHistory[Q_Y] = { lastResult: 'correct', everWrong: false, lastAnsweredAt: T_local }`
-- **AND** incoming sync row has `{ lastResult: 'correct', everWrong: true, lastAnsweredAt: T_old }` where T_old < T_local (incoming would normally lose LWW)
-- **WHEN** the adapter merges
-- **THEN** local `everWrong` SHALL be promoted to `true` (monotonic-OR: false || true = true)
-- **AND** other fields SHALL remain unchanged (LWW: incoming loses → local wins)
-- **AND** the merge SHALL be idempotent — running it twice produces the same result
-
-#### Scenario: Both sides true stays true (no flapping)
-
-- **GIVEN** device A and device B both write `everWrong: true` for `Q_Z` (race condition)
-- **WHEN** either side pulls the other's write
-- **THEN** the merged row SHALL have `everWrong: true`
-- **AND** subsequent pull cycles in either direction SHALL NOT flap the value
+- **GIVEN** an older client running pre-`tune-srs-binary-modifiers-and-intervals` build writes a payload WITHOUT an `everWrong` field
+- **WHEN** a newer-client device pulls that payload with a newer `lastAnsweredAt`
+- **THEN** the newer client SHALL preserve its local `everWrong` value (cloud "no claim" → no change)
+- **AND** other fields SHALL follow standard LWW
 
 ### Requirement: The 「錯題」 tab SHALL split into 「目前未答對」 and 「歷史曾錯」 sub-views
 

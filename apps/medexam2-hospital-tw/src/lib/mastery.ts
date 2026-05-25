@@ -1,6 +1,14 @@
-import { reviewCardBinary, type SubjectId } from '@study-rpg/core'
+import {
+  reviewCardBinary,
+  reviewCardBinaryEasy,
+  reviewCardBinaryGuessed,
+  type SubjectId,
+} from '@study-rpg/core'
 import { getSpecialtyMultiplier, type Rarity } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB, type MasteryRow, type QuestionHistoryRow } from '../db/schema'
+
+/** Quality modifier signaled by player click on opt-in action-bar button after a correct answer. */
+export type CorrectAnswerQuality = 'default' | 'easy' | 'guessed'
 
 interface AnswerRecord {
   subjectId: SubjectId
@@ -16,6 +24,7 @@ async function upsertHistory(
   db: ReturnType<typeof getHospitalDB>,
   record: AnswerRecord,
   wasCorrect: boolean,
+  quality: CorrectAnswerQuality = 'default',
 ): Promise<{ prevLastResult: 'correct' | 'wrong' | null }> {
   const now = Date.now()
   const existing = await db.questionHistory.get(record.questionId)
@@ -23,10 +32,33 @@ async function upsertHistory(
   const prevSrs = existing
     ? { interval: existing.interval, easeFactor: existing.easeFactor, nextDueAt: existing.nextDueAt }
     : { interval: 0, easeFactor: 2.5, nextDueAt: null }
-  const srs = reviewCardBinary({ correct: wasCorrect, prev: prevSrs, now })
-  // everWrong is monotonic — once true, never unset. Set on first wrong
-  // answer; preserved across subsequent correct answers.
-  const everWrong = (existing?.everWrong === true) || !wasCorrect
+
+  // SRS update routed by quality modifier. Wrong answers always use the default
+  // binary path (quality only meaningful on correct answers; UI gates accordingly).
+  let srs: { interval: number; easeFactor: number; nextDueAt: number }
+  if (!wasCorrect) {
+    srs = reviewCardBinary({ correct: false, prev: prevSrs, now })
+  } else if (quality === 'easy') {
+    srs = reviewCardBinaryEasy({ prev: prevSrs, now })
+  } else if (quality === 'guessed') {
+    srs = reviewCardBinaryGuessed({ prev: prevSrs, now })
+  } else {
+    srs = reviewCardBinary({ correct: true, prev: prevSrs, now })
+  }
+
+  // everWrong semantics:
+  // - Wrong answer always sets true (idempotent if already true)
+  // - 'easy' on correct answer EXPLICITLY clears (player has graduated this question)
+  // - 'guessed' and 'default' on correct answer preserve existing value
+  let everWrong: boolean
+  if (!wasCorrect) {
+    everWrong = true
+  } else if (quality === 'easy') {
+    everWrong = false
+  } else {
+    everWrong = existing?.everWrong === true
+  }
+
   if (existing) {
     await db.questionHistory.put({
       ...existing,
@@ -89,8 +121,22 @@ export interface CorrectAnswerOpts {
    * Per Decision 6 of add-bookmarks-filters-and-wrong-history-medexam2:
    * making this required at TS level would force tests / internal helpers
    * to pass a callback too; discipline enforced via code review + this doc.
+   *
+   * NOT invoked when `quality === 'easy'` — the player has explicitly graduated
+   * the question; the grace-toast "answered correctly, removed from 「目前未答對」"
+   * narrative is redundant with the explicit graduation gesture.
    */
   onTransitionToCorrect?: (questionId: string) => void
+  /**
+   * Quality modifier signaled by the player after a correct answer.
+   * - `'default'` (default): standard binary SM-2 update (1d→6d→×ease, now using [3,7] seeds)
+   * - `'easy'`: applies `reviewCardBinaryEasy` (ease ×1.5, interval ×3, clamped) AND clears `everWrong`
+   * - `'guessed'`: applies `reviewCardBinaryGuessed` (interval=1, ease unchanged); `everWrong` preserved
+   *
+   * Reward dispatch (revenue, reputation, affinity, mastery) is IDENTICAL across
+   * all three values — only SRS state and (for 'easy') the `everWrong` flag differ.
+   */
+  quality?: CorrectAnswerQuality
 }
 
 /**
@@ -110,6 +156,7 @@ export async function recordCorrectAnswer(
   opts: CorrectAnswerOpts = {},
 ): Promise<void> {
   const db = getHospitalDB()
+  const quality: CorrectAnswerQuality = opts.quality ?? 'default'
   const multiplier = getSpecialtyMultiplier(
     partner?.subjectId ?? null,
     partner?.rarity ?? null,
@@ -118,7 +165,7 @@ export async function recordCorrectAnswer(
   let prevLastResult: 'correct' | 'wrong' | null = null
   await db.transaction('rw', db.mastery, db.questionHistory, db.affinity, async () => {
     await upsertMastery(db, record.subjectId, true, multiplier)
-    const r = await upsertHistory(db, record, true)
+    const r = await upsertHistory(db, record, true, quality)
     prevLastResult = r.prevLastResult
     const aff = await db.affinity.get(record.subjectId)
     await db.affinity.put({
@@ -126,6 +173,14 @@ export async function recordCorrectAnswer(
       correctCount: (aff?.correctCount ?? 0) + multiplier,
     })
   })
+  // Grace toast on wrong→correct transition. Note: the QuizModal opt-in
+  // 「太簡單」 / 「我亂猜的」 buttons currently follow up AFTER this call (via
+  // applyQualityModifier), so `quality` here is always `'default'` from the
+  // QuizModal pick path — the toast fires for every wrong→correct flip
+  // regardless of which modifier the player clicks afterward. If a future
+  // refactor inlines the modifier choice into this call site, gate the toast
+  // on `quality !== 'easy'` to suppress the toast when the player has
+  // explicitly graduated the question.
   if (prevLastResult === 'wrong') {
     opts.onTransitionToCorrect?.(record.questionId)
   }
@@ -141,6 +196,56 @@ export async function recordWrongAnswer(record: AnswerRecord): Promise<void> {
   await db.transaction('rw', db.mastery, db.questionHistory, async () => {
     await upsertMastery(db, record.subjectId, false)
     await upsertHistory(db, record, false)
+  })
+}
+
+export interface PrevSrsSnapshot {
+  interval: number
+  easeFactor: number
+  nextDueAt: number | null
+}
+
+/**
+ * Re-apply SRS state for a question using a quality modifier, computed from
+ * the row's state PRIOR to this answer.
+ *
+ * Use case: 「太簡單」 / 「我亂猜的」 buttons in 二階 QuizModal. Because
+ * `recordCorrectAnswer` writes immediately on pick (atomic mastery + SRS + reward
+ * transaction can't easily be deferred without breaking the achievement
+ * sub-transaction subset scope rule), we let the default-path write commit
+ * first, then if the player clicks a modifier we OVERWRITE the SRS portion
+ * using the captured pre-answer state — so the modifier escalator/reset is
+ * computed from the right baseline, not stacked on top of the default write.
+ *
+ * For 'easy': also clears `everWrong` (player has explicitly graduated this question).
+ * For 'guessed': preserves `everWrong`.
+ *
+ * Bumps `lastAnsweredAt = now` so the LWW sync merge picks up the explicit
+ * `everWrong` change cross-device.
+ */
+export async function applyQualityModifier(
+  questionId: string,
+  quality: Exclude<CorrectAnswerQuality, 'default'>,
+  prev: PrevSrsSnapshot,
+): Promise<void> {
+  const db = getHospitalDB()
+  const now = Date.now()
+  const srs =
+    quality === 'easy'
+      ? reviewCardBinaryEasy({ prev, now })
+      : reviewCardBinaryGuessed({ prev, now })
+  await db.transaction('rw', db.questionHistory, async () => {
+    const existing = await db.questionHistory.get(questionId)
+    if (!existing) return // safety: row should exist (recordCorrectAnswer ran first)
+    await db.questionHistory.put({
+      ...existing,
+      interval: srs.interval,
+      easeFactor: srs.easeFactor,
+      nextDueAt: srs.nextDueAt,
+      lastAnsweredAt: now,
+      // 'easy' clears everWrong (explicit graduation); 'guessed' preserves
+      everWrong: quality === 'easy' ? false : existing.everWrong,
+    })
   })
 }
 

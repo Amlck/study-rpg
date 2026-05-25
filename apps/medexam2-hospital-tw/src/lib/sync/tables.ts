@@ -350,32 +350,44 @@ export const HOSPITAL_QUESTION_HISTORY: TableAdapter = {
     if (!pk || !data) return false
     const force = opts?.force ?? false
     const local = await (db as HospitalDB).questionHistory.get(pk)
-    // CRITICAL: `everWrong` uses monotonic-OR merge (NOT LWW) to neutralize
-    // the v1↔v2 cross-version sync race. Once any client writes everWrong=true,
-    // no subsequent write (regardless of LWW ordering or schema_version) can
-    // clear it. Per Decision 8 of add-bookmarks-filters-and-wrong-history-medexam2.
-    // DO NOT "fix" this by removing the OR — it's intentional.
+
+    // `everWrong` merge semantics changed by `tune-srs-binary-modifiers-and-intervals`
+    // (2026-05-25):
+    //
+    // OLD (pre-2026-05-25): monotonic-OR — once any client wrote everWrong=true,
+    // no later sync could clear it.
+    //
+    // NEW: row-level LWW via `lastAnsweredAt` (which is what `updated_at` tracks
+    // for questionHistory rows). The 「太簡單」 opt-in button explicitly clears
+    // `everWrong=false` AND bumps `lastAnsweredAt`, so the newer row wins and
+    // the clear propagates cross-device.
+    //
+    // For graceful interop with pre-NEW clients that still ship monotonic-OR
+    // payloads: when a cloud row arrives WITHOUT an explicit `everWrong` field
+    // (older client writes omit the column entirely), we treat that as
+    // "incoming makes no claim about everWrong" and preserve the local value —
+    // this avoids stale clients silently revoking a fresh true.
+    //
+    // Reference: openspec/changes/archive/2026-05-25-tune-srs-binary-modifiers-and-intervals/
+    //   specs/wrong-answer-list/spec.md
+    const cloudHasEverWrong = 'everWrong' in (data as Record<string, unknown>)
     const cloudEverWrong = (data as { everWrong?: boolean }).everWrong === true
     const localEverWrong = (local as { everWrong?: boolean } | undefined)?.everWrong === true
+
     if (!force) {
       const localMs = (local as WithUpdatedAt<unknown> | undefined)?._updatedAt
       if (!cloudIsNewer(cloudRow.updated_at, localMs)) {
-        // Cloud loses LWW for the row as a whole — but still promote everWrong
-        // if cloud has it true and local doesn't (monotonic-OR semantics).
-        if (cloudEverWrong && !localEverWrong && local) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (db as HospitalDB).questionHistory.put({ ...local, everWrong: true } as any)
-          return true
-        }
+        // Cloud loses LWW. No write — local row stays as-is.
         return false
       }
     }
-    // Cloud wins LWW for standard fields; OR-merge everWrong so local true
-    // is never silently overwritten by missing/false incoming value.
+    // Cloud wins LWW. For `everWrong`: cloud's explicit value wins (including
+    // false from an explicit 「太簡單」 clear); if cloud omits the field
+    // (pre-NEW client payload), preserve local.
     const next = {
       ...data,
       _updatedAt: Date.parse(cloudRow.updated_at),
-      everWrong: cloudEverWrong || localEverWrong,
+      everWrong: cloudHasEverWrong ? cloudEverWrong : localEverWrong,
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as HospitalDB).questionHistory.put(next as any)

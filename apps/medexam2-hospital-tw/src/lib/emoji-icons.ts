@@ -58,6 +58,7 @@ const ICON_FILES: ReadonlyArray<readonly [string, string]> = [
   ['😞', '1f61e.png'],
   ['🚑', '1f691.png'],
   ['🚨', '1f6a8.png'],
+  ['🤔', '1f914.png'],
   ['🤷', '1f937.png'],
   ['🥇', '1f947.png'],
   ['🥈', '1f948.png'],
