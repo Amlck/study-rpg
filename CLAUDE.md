@@ -318,6 +318,21 @@ $HOME/Desktop/國考/一階國考/陽明國考考古/_extracted/
 
 Build script 預設讀此路徑；其他環境設 `MEDEXAM_SOURCE_ROOT` env var 覆寫。
 
+## Neuroscience design verification (M_3rd track / neurons-tw)
+
+設計 / 編寫 neurons-tw 相關內容（content pack 對映、design.md 的科學 anchor、spec 描述機制的文字、UI 文案中的神經學 metaphor）時，**任何對神經解剖學 / 神經生理學的疑問都應先走 OpenEvidence 查實證，不要憑記憶或泛用 LLM 知識 lock 決定**。
+
+具體流程：
+- 直接 `/oe <臨床問題>` 或 `/oe-triangulate` 查文獻；需要正反面證據時走 triangulate
+- 設計級的「這個 family 屬於哪 NT branch / 解剖位置 / 功能機制」由 PubMed-anchored 證據支持；persona 視覺 / 故事 hook 可以較自由，但**神經學 fact 必須嚴謹**（per `wire-neurons-content-and-theme` design.md Decision 1 「neuron 本身的 NT 識別 / 解剖位置 / 功能必須科學嚴謹」原則）
+- 把找到的 PubMed citation 附進 design.md 對應 decision 的 anchor 表格（mirror `wire-neurons-content-and-theme` 11-subject mapping 的 PMID anchor cadence）
+- 不適用：純 UI / 程式架構決策、game-loop 數值平衡（如 N=5 / 7 天 decay / AP threshold ladder — 這些是 game design 直覺 + dogfood telemetry，非神經科學 fact）
+
+為什麼這條規則重要：
+- Owner 是醫學生 + 即將 RA，產品定位是「教科書級臨床戲劇」，使用者群是同儕醫學生，神經學細節錯了立刻被看穿
+- 2026-05-25 `wire-neurons-content-and-theme` persona design 過程已示範：4 個 persona（寄生蟲 Toxoplasma / 免疫 anti-NMDAR / 倫理 DRN / 微生物 olfactory）就是透過 OpenEvidence 從「生物背景」升級為「臨床戲劇」，每個附 2-3 篇 PMID anchor
+- LLM generic 神經知識常見錯誤模式：把 receptor 跟 ion channel 搞混、解剖位置半對半錯、機制方向反掉 — OE 查證能擋掉這些
+
 ## Known sharp edges
 
 - TypeScript `tsconfig.base.json` 不要再加 `paths` — leaf packages 透過 pnpm workspace symlink 解析 `@study-rpg/core`，加 paths 反而觸發 rootDir 衝突（2026-05-14 踩過）

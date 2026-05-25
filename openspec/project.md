@@ -49,6 +49,7 @@
 - **版權投訴**: 24h takedown SLA — `CREDITS.md` + 每題卡底 inline source 連結；陽明小組可開 Issue 觸發
 - **題目附圖缺失**: YAML 有 `hasImage` 但圖不在 .md（196/418 題受影響）；MVP 顯示「[圖]」placeholder，M2 解
 - **跨裝置存檔**: MVP 不解；提供 export/import JSON；M4 才接 Supabase
+- **神經學 fact 嚴謹度（M_3rd / neurons-tw）**: 設計過程涉及神經解剖學 / 神經生理學的決定（neuron family → NT branch / 解剖位置 / 機制描述 / spec scenario 中的 mechanism 文字 / UI 文案中的神經學 metaphor）一律先走 `/oe`（OpenEvidence）查 PubMed-anchored 證據再 lock，**不憑記憶或泛用 LLM 知識決定**。Persona 視覺 / 故事 hook 可自由創作；neuron 本身的科學 fact 必須嚴謹（per `wire-neurons-content-and-theme` design.md Decision 1 既有原則）。Game-loop 數值平衡（N、decay 天數、AP threshold ladder）不適用本規則 — 那是 game design 直覺 + dogfood telemetry。詳細 rationale 見 project root `CLAUDE.md` 同名 section
 
 ## Out of Scope
 
