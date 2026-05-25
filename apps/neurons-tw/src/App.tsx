@@ -5,6 +5,7 @@ import { getContentPack } from '@study-rpg/content-neurons-tw'
 import { THEME_PIXEL_NEURONS } from '@study-rpg/theme-pixel-neurons'
 import OverviewPage from './routes/OverviewPage'
 import ConnectomePage from './routes/ConnectomePage'
+import MotionDemoPage from './routes/MotionDemoPage'
 import ConnectomeToastHost from './components/SynapseFormationToast'
 
 interface AppState {
@@ -48,10 +49,16 @@ export default function App(): JSX.Element {
               <span style={isActive ? activeLinkStyle : undefined}>Connectome 連結組</span>
             )}
           </NavLink>
+          <NavLink to="/motion-demo" style={navLinkStyle}>
+            {({ isActive }) => (
+              <span style={isActive ? activeLinkStyle : undefined}>動畫 demo</span>
+            )}
+          </NavLink>
         </nav>
         <Routes>
           <Route path="/" element={<OverviewPage pack={pack} />} />
           <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
+          <Route path="/motion-demo" element={<MotionDemoPage />} />
         </Routes>
       </main>
     </BrowserRouter>
