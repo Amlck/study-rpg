@@ -107,7 +107,7 @@ export function BookmarkFilterBar(props: BookmarkFilterBarProps) {
   }
 
   return (
-    <section className="filter-bar" aria-label="收藏題目篩選">
+    <section className="filter-bar filter-bar--stacked" aria-label="收藏題目篩選">
       <div className="filter-bar__group">
         <span className="filter-bar__label">年份</span>
         <span className="filter-chip-group" role="group" aria-label="民國年多選">

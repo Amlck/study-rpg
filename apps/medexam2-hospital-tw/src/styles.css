@@ -70,6 +70,9 @@ body .quiz-modal__image-missing,
 body .quiz-modal__explanation,
 body .explanation-markdown,
 body .bookmarks-page__entry-stem,
+body .bookmarks-page__entry-options,
+body .bookmarks-page__entry-option-key,
+body .bookmarks-page__entry-answer,
 body .bookmarks-page__entry-explanation,
 body .er-consult__stem,
 body .er-consult__explanation {
@@ -97,6 +100,9 @@ body[data-font-mode='pixel'] .quiz-modal__image-missing,
 body[data-font-mode='pixel'] .quiz-modal__explanation,
 body[data-font-mode='pixel'] .explanation-markdown,
 body[data-font-mode='pixel'] .bookmarks-page__entry-stem,
+body[data-font-mode='pixel'] .bookmarks-page__entry-options,
+body[data-font-mode='pixel'] .bookmarks-page__entry-option-key,
+body[data-font-mode='pixel'] .bookmarks-page__entry-answer,
 body[data-font-mode='pixel'] .bookmarks-page__entry-explanation,
 body[data-font-mode='pixel'] .er-consult__stem,
 body[data-font-mode='pixel'] .er-consult__explanation {
@@ -860,6 +866,14 @@ body:has(.modal-backdrop) {
   gap: 8px;
   flex-wrap: wrap;
   font-size: 18px;
+}
+
+/* Bookmarks-page filter bar variant — force each group to its own row so the
+   tail subject page (e.g. 3/3 with only 4 chips) doesn't squeeze up beside the
+   year row. Scoped to .filter-bar--stacked so YearFilterBar / DoctorRoster
+   layouts (single group + sibling count) stay unchanged. */
+.filter-bar--stacked .filter-bar__group {
+  flex: 1 0 100%;
 }
 
 .filter-bar__label {
