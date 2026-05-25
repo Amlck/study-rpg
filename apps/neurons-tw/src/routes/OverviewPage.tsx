@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import type { ContentPack } from '@study-rpg/core'
 import { THEME_PIXEL_NEURONS, COSMETIC_CATALOG_SIZE } from '@study-rpg/theme-pixel-neurons'
+
+const SPRITE_MAP = THEME_PIXEL_NEURONS.sprites
 import { initMasteryForPack } from '../lib/services/connectome'
 import MasteryChip from '../components/MasteryChip'
 
@@ -10,20 +12,11 @@ interface Props {
 
 export default function OverviewPage({ pack }: Props): JSX.Element {
   const ntCount = (br: string): number => pack.subjects.filter((s) => s.group === br).length
-  const [masteryReady, setMasteryReady] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
-    initMasteryForPack(pack)
-      .then(() => {
-        if (!cancelled) setMasteryReady(true)
-      })
-      .catch(() => {
-        // Non-fatal: chips just won't render until next load
-      })
-    return () => {
-      cancelled = true
-    }
+    initMasteryForPack(pack).catch(() => {
+      // Non-fatal: chips fall back to 0/0 display until next load
+    })
   }, [pack])
 
   return (
@@ -56,15 +49,11 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
 
       <section style={sectionStyle}>
         <h2 style={h2Style}>🎓 家族熟練度</h2>
-        {!masteryReady ? (
-          <p style={{ margin: 0, color: '#5a3f29' }}>初始化熟練度資料中…</p>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {pack.subjects.map((s) => (
-              <MasteryChip key={s.id} familyId={s.id} displayName={s.displayName} />
-            ))}
-          </div>
-        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+          {pack.subjects.map((s) => (
+            <MasteryChip key={s.id} familyId={s.id} displayName={s.displayName} />
+          ))}
+        </div>
         <p style={{ margin: '0.5rem 0 0', fontSize: '0.78em', color: '#8c6d4a' }}>
           每答對 1 題 correct +1 + total +1；答錯 total +1。tier 在 5 題後評估，需同時通過題數與正確率雙閘門。
         </p>
@@ -111,15 +100,40 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
               >
                 {branch} 分支（{familiesInBranch.length} 個）
               </h3>
-              <ul style={{ paddingLeft: '1.2rem', margin: 0 }}>
+              <ul style={{ paddingLeft: '0', margin: 0, listStyle: 'none' }}>
                 {familiesInBranch.map((s) => (
-                  <li key={s.id} style={{ margin: '0.25rem 0' }}>
-                    <strong style={{ color: s.color }}>{s.displayName}</strong>
-                    <span
-                      style={{ color: '#5a3f29', marginLeft: '0.4rem', fontSize: '0.85em' }}
-                    >
-                      （{s.totalQuestions} 題、id：<code>{s.id}</code>）
-                    </span>
+                  <li
+                    key={s.id}
+                    style={{
+                      margin: '0.4rem 0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.6rem',
+                    }}
+                  >
+                    <img
+                      src={SPRITE_MAP[`subject:${s.id}`] ?? ''}
+                      alt={s.displayName}
+                      width={48}
+                      height={48}
+                      style={{
+                        imageRendering: 'pixelated',
+                        border: `2px solid ${s.color}`,
+                        borderRadius: '4px',
+                        background: '#fdf6e3',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div>
+                      <div>
+                        <strong style={{ color: s.color }}>{s.displayName}</strong>
+                        <span
+                          style={{ color: '#5a3f29', marginLeft: '0.4rem', fontSize: '0.85em' }}
+                        >
+                          （{s.totalQuestions} 題、id：<code>{s.id}</code>）
+                        </span>
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>

@@ -66,14 +66,28 @@ export async function listAllMastery(): Promise<FamilyMasteryRow[]> {
 }
 
 export async function initFamilyMasteryIfEmpty(pack: ContentPack): Promise<void> {
-  const existingCount = await db.familyMastery.count()
-  if (existingCount === 0) {
-    await db.familyMastery.bulkAdd(
-      pack.subjects.map((subject) => ({
-        familyId: subject.id,
-        correct: 0,
-        total: 0,
-      })),
-    )
+  // Wrap count + bulkAdd in a Dexie tx so StrictMode double-mount race doesn't
+  // produce ConstraintError.
+  await db.transaction('rw', db.familyMastery, async () => {
+    const existingCount = await db.familyMastery.count()
+    if (existingCount === 0) {
+      await db.familyMastery.bulkAdd(
+        pack.subjects.map((subject) => ({
+          familyId: subject.id,
+          correct: 0,
+          total: 0,
+        })),
+      )
+    }
+  })
+  // Emit init events outside tx so any mounted MasteryChip refreshes from
+  // current rows (chip's own useEffect may have run before init completed).
+  const rows = await db.familyMastery.toArray()
+  for (const row of rows) {
+    masteryEvents.emit('mastery.updated', {
+      familyId: row.familyId,
+      correct: row.correct,
+      total: row.total,
+    })
   }
 }

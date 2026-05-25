@@ -59,22 +59,26 @@ export function todayISO(): string {
 }
 
 export async function initFamilyAccrualIfEmpty(pack: ContentPack): Promise<void> {
-  const existingCount = await db.familyAccrual.count()
-  if (existingCount === 0) {
-    const today = todayISO()
-    await db.familyAccrual.bulkAdd(
-      pack.subjects.map((subject) => ({
-        familyId: subject.id,
-        ap: 0,
-        firedToday: false,
-        lastFireDate: null,
-        unlockedSlots: [],
-        sameDayCorrect: 0,
-      })),
-    )
-    const existingMeta = await db.meta.get('lastResetDate')
-    if (!existingMeta) {
-      await db.meta.put({ key: 'lastResetDate', value: today })
+  // Wrap count + bulkAdd in a Dexie tx so StrictMode double-mount race doesn't
+  // produce ConstraintError (both effects see count=0 before either bulkAdds).
+  await db.transaction('rw', db.familyAccrual, db.meta, async () => {
+    const existingCount = await db.familyAccrual.count()
+    if (existingCount === 0) {
+      const today = todayISO()
+      await db.familyAccrual.bulkAdd(
+        pack.subjects.map((subject) => ({
+          familyId: subject.id,
+          ap: 0,
+          firedToday: false,
+          lastFireDate: null,
+          unlockedSlots: [],
+          sameDayCorrect: 0,
+        })),
+      )
+      const existingMeta = await db.meta.get('lastResetDate')
+      if (!existingMeta) {
+        await db.meta.put({ key: 'lastResetDate', value: today })
+      }
     }
-  }
+  })
 }
