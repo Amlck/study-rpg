@@ -2643,6 +2643,17 @@ body:has(.modal-backdrop) {
     font-size: 13px;
     gap: 4px;
   }
+  /* On narrow viewports the quality buttons need every horizontal pixel; the
+   * bookmark chip collapses to an icon-only square (same width as 🐞) so the
+   * row still fits without wrapping or clipping. */
+  .quiz-modal__footer-bookmark {
+    padding: 0;
+    width: 40px;
+    gap: 0;
+  }
+  .quiz-modal__footer-bookmark > span {
+    display: none;
+  }
   .quiz-modal__foot {
     gap: 6px;
     flex-wrap: wrap;
@@ -4301,19 +4312,13 @@ body:has(.modal-backdrop) {
 .quiz-modal__inline-promote {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
   margin: 8px 0 0;
-  padding: 6px 0;
-}
-
-.quiz-modal__inline-promote--wrong {
   padding: 10px 12px;
   background: rgba(255, 120, 80, 0.08);
   border: 1px dashed var(--accent, #d8a04a);
   border-radius: 4px;
-  justify-content: space-between;
 }
 
 .quiz-modal__inline-promote-hint {
@@ -4322,26 +4327,40 @@ body:has(.modal-backdrop) {
   flex: 1 1 auto;
 }
 
-.quiz-modal__inline-promote-btn {
-  appearance: none;
-  background: var(--surface-2, rgba(255, 255, 255, 0.08));
-  color: inherit;
-  border: 1px solid var(--border-muted, #555);
-  padding: 6px 12px;
+/* Footer-row ★ bookmark toggle — pinned to the same 46px chip height as the
+ * 🐞 trigger, quality buttons, and 下一題 so the whole footer aligns. */
+.quiz-modal__footer-bookmark {
+  flex: 0 0 auto;
+  height: 46px;
+  padding: 0 16px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+  background: var(--bg-cream);
+  color: var(--frame-dark);
+  border: 2px solid var(--frame-dark);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  box-shadow: 2px 2px 0 var(--frame-dark);
+  transition: transform 80ms, box-shadow 80ms, background 160ms;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
 }
-
-.quiz-modal__inline-promote-btn:hover {
-  background: var(--surface-3, rgba(255, 255, 255, 0.14));
+.quiz-modal__footer-bookmark:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--frame-dark);
 }
-
-.quiz-modal__inline-promote-btn--on {
-  background: rgba(255, 200, 80, 0.18);
-  border-color: var(--accent, #d8a04a);
-  color: var(--accent, #d8a04a);
+.quiz-modal__footer-bookmark:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--frame-dark);
+}
+.quiz-modal__footer-bookmark--on {
+  background: var(--accent-gold, #e3b341);
+  font-weight: 600;
 }
 
 /* ── Quiz inline bug-report (🐞 trigger + sheet) ──────────────────── */

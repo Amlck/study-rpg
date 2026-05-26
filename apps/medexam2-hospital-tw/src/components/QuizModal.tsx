@@ -582,16 +582,10 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
                 </div>
               )}
 
-              {revealed && (
-                <InlinePromote
-                  questionId={question.id}
-                  wasWrong={
-                    selectedOption !== null &&
-                    selectedOption !== question.answer &&
-                    !question.disputed
-                  }
-                />
-              )}
+              {revealed &&
+                selectedOption !== null &&
+                selectedOption !== question.answer &&
+                !question.disputed && <InlinePromoteHint />}
             </>
           )}
         </div>
@@ -607,6 +601,9 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
           >
             <EmojiIcon char="🐞" size={20} />
           </button>
+          {revealed && question && (
+            <FooterBookmarkToggle questionId={question.id} />
+          )}
           {revealed && question && selectedOption !== null && (
             (question.disputed || selectedOption === question.answer) && (
               <>
@@ -698,38 +695,39 @@ function QuestionMetaRow({ questionId }: { questionId: string }) {
 }
 
 /**
- * Inline ★ promote affordance shown beside the answer-feedback region.
- * Shares state with the top-of-modal corner toggle via the same `bookmarks`
- * Dexie row; `useBookmark` is live-query so both render in sync.
- *
- * `wasWrong` only affects visual emphasis (hint text on wrong answers) — the
- * toggle behaviour is identical regardless.
+ * Wrong-answer hint banner — appears above the footer when the player answered
+ * wrong, pointing them at the ⭐ toggle now living in the footer row.
  */
-function InlinePromote({ questionId, wasWrong }: { questionId: string; wasWrong: boolean }) {
+function InlinePromoteHint() {
+  return (
+    <div className="quiz-modal__inline-promote quiz-modal__inline-promote--wrong">
+      <span className="quiz-modal__inline-promote-hint">
+        想之後再複習這題？點下方 ⭐ 加入手動收藏永久保留。
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Footer-row ★ bookmark toggle. Same Dexie row as the corner-of-modal toggle
+ * (`useBookmark` is live-query), so both render in sync. Sized to match the
+ * 46px 🐞 / 太簡單 / 我亂猜的 / 下一題 chips so the whole footer lines up.
+ */
+function FooterBookmarkToggle({ questionId }: { questionId: string }) {
   const bookmarked = !!useBookmark(questionId)
   return (
-    <div
-      className={`quiz-modal__inline-promote${
-        wasWrong ? ' quiz-modal__inline-promote--wrong' : ''
+    <button
+      type="button"
+      role="switch"
+      aria-pressed={bookmarked}
+      aria-label={bookmarked ? '取消手動收藏' : '加入手動收藏'}
+      className={`quiz-modal__footer-bookmark${
+        bookmarked ? ' quiz-modal__footer-bookmark--on' : ''
       }`}
+      onClick={() => void toggleBookmark(questionId)}
     >
-      {wasWrong && (
-        <span className="quiz-modal__inline-promote-hint">
-          想之後再複習這題？加入手動收藏永久保留。
-        </span>
-      )}
-      <button
-        type="button"
-        role="switch"
-        aria-pressed={bookmarked}
-        aria-label={bookmarked ? '取消手動收藏' : '加入手動收藏'}
-        className={`quiz-modal__inline-promote-btn${
-          bookmarked ? ' quiz-modal__inline-promote-btn--on' : ''
-        }`}
-        onClick={() => void toggleBookmark(questionId)}
-      >
-        <EmojiIcon char={bookmarked ? '⭐' : '☆'} size={18} /> {bookmarked ? '已收藏' : '加入收藏'}
-      </button>
-    </div>
+      <EmojiIcon char={bookmarked ? '⭐' : '☆'} size={18} />
+      <span>{bookmarked ? '已收藏' : '加入收藏'}</span>
+    </button>
   )
 }
