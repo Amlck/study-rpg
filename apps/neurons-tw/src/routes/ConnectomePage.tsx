@@ -13,6 +13,7 @@ import ConnectomeDebugPanel from '../components/ConnectomeDebugPanel'
 import MasteryChip from '../components/MasteryChip'
 import { FamilyMasteryBadge } from '../components/FamilyMasteryBadge'
 import VariantCollectionChip from '../components/VariantCollectionChip'
+import { ConnectomeTreeSvg } from '../components/connectome/ConnectomeTreeSvg'
 
 interface Props {
   pack: ContentPack
@@ -76,8 +77,10 @@ export default function ConnectomePage({ pack }: Props): JSX.Element {
         </p>
       </header>
 
+      <ConnectomeTreeSvg pack={pack} />
+
       <section style={sectionStyle}>
-        <h2 style={h2Style}>🧬 Neuron family（action potential 與槽位進度）</h2>
+        <h2 style={h2Style}>🧬 Neuron family 詳細（action potential 與槽位進度）</h2>
         <div style={branchGridStyle}>
           {NT_BRANCHES.map((branch) => {
             const families = pack.subjects.filter((s) => s.group === branch)

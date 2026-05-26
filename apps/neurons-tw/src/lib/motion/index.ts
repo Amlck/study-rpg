@@ -28,5 +28,6 @@ export {
   RARITY_TIMINGS,
   SKIP_THRESHOLD_MS,
   TOAST_AUTO_DISMISS_MS,
+  SYNAPSE_TIMINGS,
 } from './timings'
-export type { Rarity, RarityTiming } from './timings'
+export type { Rarity, RarityTiming, SynapseTimings } from './timings'

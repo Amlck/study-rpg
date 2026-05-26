@@ -34,6 +34,30 @@ const subjectSprites: Record<string, string> = Object.fromEntries(
   }),
 )
 
+// 4 NT-branch hub icons (DA / 5HT / GABA / Glu). Same glob pattern as subjects.
+const branchSpriteModules = import.meta.glob('../sprites/branches/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const branchSprites: Record<string, string> = Object.fromEntries(
+  Object.entries(branchSpriteModules).map(([path, url]) => {
+    // Filename pattern: `<nt>-icon.png` → key `branch:<nt>` (e.g. da-icon.png → branch:da)
+    const stem = path.replace(/.*\/(.+)\.png$/, '$1').replace(/-icon$/, '')
+    return [`branch:${stem}`, url]
+  }),
+)
+
+// Root brain icon (central Neuron Connectome node). Single file.
+const rootSpriteModules = import.meta.glob('../sprites/root/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const rootSprite: string | undefined = Object.values(rootSpriteModules)[0]
+
 // 11 subject icon keys (matched to FAMILY_BY_SUBJECT in content-neurons-tw build.ts)
 const SUBJECT_IDS = [
   '藥理學',
@@ -130,6 +154,9 @@ const CORE_KEYS = [
   'variant:default',
 ] as const
 
+// 4 NT-branch hub keys — `branch:da` / `branch:5ht` / `branch:gaba` / `branch:glu`.
+const BRANCH_KEYS = ['branch:da', 'branch:5ht', 'branch:gaba', 'branch:glu'] as const
+
 export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
   ...CORE_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   // Subject icons: real sprite if file present, else defensive fallback to placeholder
@@ -137,6 +164,10 @@ export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
     `subject:${id}`,
     subjectSprites[`subject:${id}`] ?? TRANSPARENT_PIXEL,
   ]),
+  // NT-branch hub icons: real sprite if file present, else placeholder
+  ...BRANCH_KEYS.map((k) => [k, branchSprites[k] ?? TRANSPARENT_PIXEL]),
+  // Root brain icon (central Neuron Connectome).
+  ['root:brain', rootSprite ?? TRANSPARENT_PIXEL],
   ...ITEM_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...COSMETIC_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...SKILL_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
