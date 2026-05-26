@@ -27,6 +27,7 @@ import {
   setLastSignedInUserId,
 } from './account-switch'
 import { checkAssignmentInvariants } from '../assignment'
+import { reconcileRetiredDoctors } from '../retirement-reconcile'
 import { getBackendConfig } from './backend-config'
 import { pushLeaderboardIfOptedIn } from './leaderboard'
 import { deleteLeaderboardMe } from '../leaderboard/api'
@@ -250,6 +251,12 @@ export function useSync(): UseSyncReturn {
               { bundle: 'bookmarks', adapters: BOOKMARKS_ADAPTERS },
             ],
             // Post-pull chain (runs after every successful pull cycle):
+            //   0. Retire reconcile — kills any local doctor row whose
+            //      `doctorId` appears in the local retirementLog. MUST run
+            //      BEFORE checkAssignmentInvariants() so the invariant
+            //      repair observes the correct doctor roster (per cloud-sync
+            //      spec "Post-pull reconcile" + fix-doctor-retire-cloud-
+            //      resurrection 2026-05-26).
             //   1. Invariant repair — restores doctor↔room SOT if cloud applied
             //      stale hospital_state.rooms (legacy non-null assignedDoctorId
             //      values from pre-fix saves).
@@ -260,6 +267,24 @@ export function useSync(): UseSyncReturn {
             //      pull cycle (per spec scenario "Backfill error does not
             //      break the pull cycle").
             onPullComplete: async () => {
+              // Reconcile in its own try/catch so a transient failure here
+              // does NOT break achievement/invariant repair downstream.
+              try {
+                const reconcile = await reconcileRetiredDoctors()
+                if (reconcile.cleaned > 0) {
+                  // eslint-disable-next-line no-console
+                  console.info(
+                    `[retire-reconcile] cleaned ${reconcile.cleaned} ghost doctor row(s) via local retirementLog tombstones`,
+                  )
+                }
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[retire-reconcile] failed, will retry on next pull cycle:',
+                  err,
+                )
+              }
+
               try {
                 await checkAssignmentInvariants()
                 // Counter backfill MUST run first — achievement-backfill's

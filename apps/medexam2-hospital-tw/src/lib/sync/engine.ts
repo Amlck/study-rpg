@@ -48,6 +48,17 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
   let userId: string | null = null
   let status: SyncStatus = 'unauthed'
   let paused = false
+  /**
+   * Non-null when sync is gated by a recoverable backend defect such as a
+   * partial Supabase migration (fix-doctor-retire-cloud-resurrection §6).
+   * When set, ALL push paths (pushNow / pushAllNow / debounced timer)
+   * SHALL refuse to fire — otherwise pushAllNow's unconditional
+   * `dirty.perTable.values().clear()` would burn pending dirty markers
+   * on a guaranteed-to-fail RPC. Cleared automatically when the probe
+   * passes on a subsequent retry (typically triggered by manual sync
+   * action after the owner finishes applying the missing migration).
+   */
+  let pausedReason: string | null = null
 
   // Observability state (fix-sync-sign-in-lifecycle M3) — ring buffer of last
   // N errors + per-op consecutive failure count. Drives sync_metadata
@@ -207,6 +218,11 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
     if (!userId) return
     if (status === 'disabled') return
     if (paused) return
+    // Defense-in-depth: pausedReason is only set when the startup probe
+    // identified a partial-migration state. Even if a future caller
+    // somehow bypasses the paused flag, refuse to push to avoid burning
+    // dirty markers on a guaranteed-to-fail RPC.
+    if (pausedReason) return
     const totalDirty = Array.from(dirty.perTable.values()).reduce((s, set) => s + set.size, 0)
     if (totalDirty === 0) return
 
@@ -292,6 +308,29 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
   async function pullNow(opts?: { sinceIso?: string; force?: boolean }): Promise<void> {
     if (!userId) return
     if (status === 'disabled') return
+
+    // Auto-retry whitelist probe on manual pull. If the engine is paused
+    // because a startup probe failed (partial Supabase migration), and a
+    // user-triggered pullNow comes in (status chip click → app refocus,
+    // resume button, etc.), re-run the probe. On success, clear the
+    // pausedReason + paused flag and continue with the pull. This is the
+    // owner-side recovery path: apply 0014 → next user interaction
+    // unblocks sync automatically. See fix-doctor-retire-cloud-
+    // resurrection §6 task 6.5.
+    if (pausedReason && backendConfig.writeSupabase) {
+      const reprobe = await runStartupProbe()
+      if (reprobe.ok) {
+        // eslint-disable-next-line no-console
+        console.info(`[sync] startup probe re-passed; resuming sync from ${pausedReason}`)
+        pausedReason = null
+        paused = false
+        status = 'idle'
+      } else {
+        // Still broken; defer.
+        return
+      }
+    }
+
     if (paused && !opts?.force) return
 
     status = 'pulling'
@@ -373,6 +412,22 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
     // Note: pushAllNow intentionally ignores `paused` because it's called
     // explicitly by the migration UI ("Upload local" / "Use local") which
     // are user-initiated unpause actions.
+    //
+    // BUT — pausedReason being set means the startup whitelist probe
+    // identified a partial-migration state. Pushing would invoke
+    // upsert_lww which RAISEs `unknown table`, the error gets caught,
+    // and then the unconditional `dirty.perTable.values().clear()` at
+    // the bottom of this function would burn pending dirty markers
+    // (including unflushed retirement tombstones). Hard refuse in that
+    // case. See fix-doctor-retire-cloud-resurrection §6 + codex audit
+    // Attack 3.
+    if (pausedReason) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[sync] pushAllNow refused: ${pausedReason}. Retry once backend migration completes.`,
+      )
+      return
+    }
 
     status = 'pushing'
     const updatedAt = updatedAtOverride ?? new Date().toISOString()
@@ -471,7 +526,63 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
       recentErrors: recentErrors.slice(),
       dbRowCounts,
       consecutiveErrors: { ...consecutiveErrors },
+      pausedReason,
     }
+  }
+
+  /**
+   * Startup whitelist probe — fires a no-op `upsert_lww` call for every
+   * adapter's `postgresTable` and checks whether the RPC's whitelist
+   * accepts the table name. A typical failure mode: owner applied
+   * Supabase migration 0013 (creates `retirement_log` table) but forgot
+   * 0014 (extends upsert_lww whitelist) → the RPC throws
+   * `unknown table retirement_log` for any push of that table → if
+   * pushAllNow ran, its unconditional dirty-marker clear at the bottom
+   * would burn pending tombstone markers permanently.
+   *
+   * Returns `{ok: true}` when all probes succeed; `{ok: false, ...}`
+   * when any single adapter's table is missing from the whitelist.
+   * Network errors are NOT classified as probe failures — the engine
+   * tolerates transient backend unavailability and pulls/pushes will
+   * retry through their normal error paths.
+   *
+   * See openspec/specs/cloud-sync/spec.md "upsert_lww whitelist
+   * coverage SHALL be probed at engine startup" (fix-doctor-retire-
+   * cloud-resurrection §6, codex audit Attack 3 mitigation).
+   */
+  async function runStartupProbe(): Promise<
+    { ok: true } | { ok: false; missingTable: string; err: unknown }
+  > {
+    for (const adapter of adapters) {
+      try {
+        const { error } = await supabase.rpc('upsert_lww', {
+          table_name: adapter.postgresTable,
+          rows: [],
+        })
+        if (error) {
+          const msg = (error as { message?: string }).message ?? ''
+          if (/unknown table/i.test(msg)) {
+            return { ok: false, missingTable: adapter.postgresTable, err: error }
+          }
+          // Non-whitelist error (network, RLS misconfig, etc.) — log and
+          // continue probing; the engine will surface it through normal
+          // push/pull paths if it recurs.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[sync] startup probe for ${adapter.postgresTable} returned non-whitelist error; treating as transient:`,
+            error,
+          )
+        }
+      } catch (err) {
+        // Throw-style failure (likely network) — also treat as transient.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[sync] startup probe for ${adapter.postgresTable} threw; treating as transient:`,
+          err,
+        )
+      }
+    }
+    return { ok: true }
   }
 
   return {
@@ -482,13 +593,36 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
       installHooks()
       installVisibilityListener()
       if (!paused) {
-        // Cold-start ALWAYS force-pulls (fix-account-switch-data-loss C1) —
-        // see 一階 engine.ts comments for full rationale.
+        // Cold-start sequence:
+        //   1. Whitelist probe (fix-doctor-retire-cloud-resurrection §6) —
+        //      only when writeSupabase is in play. If it fails, engine
+        //      enters a paused-with-reason state until manual retry.
+        //   2. Cold-start force-pull (fix-account-switch-data-loss C1) —
+        //      see 一階 engine.ts comments for full rationale.
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console
-          console.log('[sync.start]', { phase: 'force-pull-on-cold-start', userId: uid })
+          console.log('[sync.start]', { phase: 'startup-probe', userId: uid })
         }
-        pullAllNow({ force: true }).catch((err) => onError(err, 'startupPullForce'))
+        void (async () => {
+          if (backendConfig.writeSupabase) {
+            const probe = await runStartupProbe()
+            if (!probe.ok) {
+              paused = true
+              status = 'paused'
+              pausedReason = `whitelist_missing:${probe.missingTable}`
+              // eslint-disable-next-line no-console
+              console.warn(
+                `[sync] startup probe failed: upsert_lww whitelist missing '${probe.missingTable}'; sync paused until backend migration completes. Retry via any manual sync action (status chip click, refresh) once owner finishes applying the missing migration.`,
+              )
+              return
+            }
+          }
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.log('[sync.start]', { phase: 'force-pull-on-cold-start', userId: uid })
+          }
+          pullAllNow({ force: true }).catch((err) => onError(err, 'startupPullForce'))
+        })()
       }
     },
     stop() {
