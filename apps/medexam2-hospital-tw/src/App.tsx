@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   TIER_ROOMS,
@@ -13,7 +13,6 @@ import { HomePage } from './pages/HomePage'
 import { DoctorRoster } from './pages/DoctorRoster'
 import { Hospital } from './pages/Hospital'
 import { StudySessionPage } from './pages/StudySessionPage'
-import { TrainingPage } from './pages/TrainingPage'
 import { FateCardPage } from './pages/FateCardPage'
 import { BookmarksPage } from './pages/BookmarksPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
@@ -311,7 +310,11 @@ function App() {
         <Route path="/roster" element={<DoctorRoster />} />
         <Route path="/hospital" element={<Hospital />} />
         <Route path="/study" element={<StudySessionPage />} />
-        <Route path="/training" element={<TrainingPage />} />
+        {/* /training kept for backward-compat (old share links) — redirects
+            to /roster?tab=training where the training panel is now hosted as
+            a sub-tab of 醫師. Spec: hospital-management-mode "Legacy /training
+            route SHALL redirect to /roster?tab=training". */}
+        <Route path="/training" element={<Navigate to="/roster?tab=training" replace />} />
         <Route path="/fate-cards" element={<FateCardPage />} />
         <Route path="/bookmarks" element={<BookmarksPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
