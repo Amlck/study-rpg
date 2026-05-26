@@ -18,6 +18,7 @@ import type {
   AchievementRow,
   AffinityRow,
   BookmarkRow,
+  DailyStudyLogRow,
   DoctorRow,
   GachaStatsRow,
   GameCountersRow,
@@ -734,6 +735,67 @@ const ACHIEVEMENTS: TableAdapter = {
   },
 }
 
+// ─── DAILY_STUDY_LOG adapter (v18, tidy-tabs-add-study-stats-medexam2) ─────
+// Mirror ACHIEVEMENTS precedent: R2-only, lives in M2_ADAPTERS only,
+// NOT in HOSPITAL_ADAPTERS. No Supabase migration, no upsert_lww whitelist
+// entry. Per `daily-study-log` spec §"R2 m2 bundle SHALL carry dailyStudyLog
+// with row-level LWW merge".
+//
+// Conflict resolution: pure row-level LWW on cloud's `updated_at` timestamp
+// vs Dexie hook's `_updatedAt`. The cumulative-per-day counter means
+// cross-device same-day work loses some minutes on conflict (last writer
+// wins) — accepted trade-off, vs the complexity of per-field monotonic-OR.
+// No cross-version contamination risk (v2 clients don't write this key).
+const DAILY_STUDY_LOG: TableAdapter = {
+  postgresTable: 'daily_study_log',
+  shape: 'collection',
+  dexieTable: 'dailyStudyLog',
+  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
+    if (!dirtyPks.size) return []
+    const rows: RowPayload[] = []
+    for (const pk of dirtyPks) {
+      const row = await (db as HospitalDB).dailyStudyLog.get(pk)
+      if (!row) continue
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: pk,
+        data: row,
+      })
+    }
+    return rows
+  },
+  async snapshotAll(db, userId, updatedAt, appVersion) {
+    const rows: RowPayload[] = []
+    await (db as HospitalDB).dailyStudyLog.each((row) => {
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: (row as DailyStudyLogRow).date,
+        data: row,
+      })
+    })
+    return rows
+  },
+  async applyToLocal(db, cloudRow, opts) {
+    const pk = cloudRow.id
+    const data = cloudRow.data as WithUpdatedAt<DailyStudyLogRow> | undefined
+    if (!pk || !data) return false
+    const force = opts?.force ?? false
+    if (!force) {
+      const local = await (db as HospitalDB).dailyStudyLog.get(pk)
+      const localMs = (local as WithUpdatedAt<DailyStudyLogRow> | undefined)?._updatedAt
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+    }
+    const next = { ...data, date: pk, _updatedAt: Date.parse(cloudRow.updated_at) }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as HospitalDB).dailyStudyLog.put(next as any)
+    return true
+  },
+}
+
 export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
   HOSPITAL_DOCTORS,
@@ -779,6 +841,7 @@ export const M2_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_MONOTONIC_COUNTERS,
   LEADERBOARD_PROFILE,
   ACHIEVEMENTS,
+  DAILY_STUDY_LOG,
 ]
 
 export const BOOKMARKS_ADAPTERS: readonly TableAdapter[] = [QUESTION_BOOKMARKS]

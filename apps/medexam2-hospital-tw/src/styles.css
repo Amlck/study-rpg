@@ -878,6 +878,7 @@ body:has(.modal-backdrop) {
 
 .filter-bar__label {
   white-space: nowrap;
+  color: var(--ink);
 }
 
 .filter-bar select {
@@ -3068,6 +3069,7 @@ body:has(.modal-backdrop) {
   background: rgba(255,255,255,0.3);
   border: 2px solid var(--frame-dark);
   font-size: 13px;
+  color: var(--ink);
 }
 
 .training-doctor-list { margin-top: 16px; }
@@ -3564,9 +3566,9 @@ body:has(.modal-backdrop) {
 .surface-hint__title {
   margin: 0 0 4px;
   font-size: 14px;
-  color: var(--frame-dark);
+  color: var(--ink);
 }
-.surface-hint__text { margin: 0; line-height: 1.5; }
+.surface-hint__text { margin: 0; line-height: 1.5; color: var(--ink); }
 .surface-hint__close {
   background: transparent;
   border: none;
@@ -4195,6 +4197,123 @@ body:has(.modal-backdrop) {
   border-bottom-color: var(--surface-1, rgba(255, 255, 255, 0.06));
   color: inherit;
   font-weight: 600;
+}
+
+/* ── Doctor page sub-tab structure (tidy-tabs-add-study-stats-medexam2) ── */
+
+.doctor-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-muted, #444);
+  margin: 12px 0 0;
+}
+
+.doctor-tabs__tab {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted, #999);
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+}
+
+.doctor-tabs__tab:hover:not(.doctor-tabs__tab--active) {
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  color: inherit;
+}
+
+.doctor-tabs__tab--active {
+  background: var(--surface-1, rgba(255, 255, 255, 0.06));
+  border-color: var(--border-muted, #444);
+  border-bottom-color: var(--surface-1, rgba(255, 255, 255, 0.06));
+  color: inherit;
+  font-weight: 600;
+}
+
+/* Training panel header row (revenue chip) — replaces what was app-header
+   meta in the old standalone TrainingPage. Sits above the filter bar. */
+.training-panel-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+/* ── Stats sub-tab (tidy-tabs-add-study-stats-medexam2) ─────────────────── */
+
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.stats-panel__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.stats-panel__residual-chip {
+  font-size: 13px;
+  color: var(--text-muted, #999);
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-muted, #444);
+  border-radius: 12px;
+  padding: 4px 10px;
+}
+
+.stats-panel__filter-caption {
+  font-size: 12px;
+  color: var(--text-muted, #999);
+  margin: 0;
+}
+
+.stats-panel__empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted, #999);
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  border-radius: 8px;
+}
+
+.stats-panel__chart {
+  margin: 0;
+  background: var(--surface-1, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-muted, #444);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.stats-panel__chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: inherit;
+}
+
+.stats-panel__chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.stats-panel__chart-y-label {
+  font-size: 10px;
+  fill: currentColor;
+  opacity: 0.65;
+}
+
+.stats-panel__chart-x-label {
+  font-size: 10px;
+  fill: currentColor;
+  opacity: 0.5;
 }
 
 .bookmarks-tab {
@@ -6005,23 +6124,12 @@ body:has(.modal-backdrop) {
 
 .achievements-page__filters {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column; /* one row per filter dimension */
+  gap: 8px;
   margin-bottom: 20px;
-}
-.achievements-filter {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.85em;
-  color: #aaa;
-  gap: 2px;
-}
-.achievements-filter select {
-  background: #2a2a2a;
-  color: #e4e4e4;
-  border: 1px solid #444;
-  padding: 4px 8px;
-  font: inherit;
+  /* Chip-style filter groups reuse `.filter-bar__group` / `.filter-chip*`
+     classes from the bookmarks page for visual consistency across all
+     three sub-tabs (成就 / 科別精通 / 統計). */
 }
 .achievements-page__empty {
   text-align: center;

@@ -43,6 +43,7 @@ import {
   shouldRollERConsult,
 } from '@study-rpg/core'
 import { getHospitalDB, type ERConsultActiveState } from '../db/schema'
+import { formatYMD } from './util/date'
 import {
   appendERConsultLog,
   getERConsultSettings,
@@ -131,6 +132,7 @@ export async function runTick(): Promise<TickResult> {
       db.eventLog,
       db.erConsultLog,
       db.hospitalEquipment,
+      db.dailyStudyLog,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -374,6 +376,20 @@ export async function runTick(): Promise<TickResult> {
           tierUpgradeCount: upgradedTo
             ? (mono.tierUpgradeCount ?? 0) + 1
             : (mono.tierUpgradeCount ?? 0),
+        })
+      }
+
+      // tidy-tabs-add-study-stats-medexam2: per-day study-minute snapshot for
+      // the 成就 → 統計 sub-tab charts. Forward-only — pre-v18 lifetime
+      // minutes are NOT backfilled here; the stats UI surfaces a residual
+      // chip showing (totalStudyMinutes − Σ dailyStudyLog.minutesAdded).
+      if (deltaStudyMinutes > 0) {
+        const today = formatYMD(new Date(now))
+        const existingDay = await db.dailyStudyLog.get(today)
+        await db.dailyStudyLog.put({
+          date: today,
+          minutesAdded: (existingDay?.minutesAdded ?? 0) + deltaStudyMinutes,
+          updatedAt: now,
         })
       }
 

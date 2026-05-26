@@ -343,6 +343,23 @@ export interface AchievementRow {
   notificationShown: boolean
 }
 
+/**
+ * Per-day study-minute snapshot — one row per calendar day on which the
+ * player accumulated active study time. Primary key is the local-timezone
+ * `YYYY-MM-DD` string. Forward-only: rows start landing from Dexie v18
+ * upgrade onwards; pre-v18 lifetime minutes remain only in
+ * `monotonicCounters.totalStudyMinutes`. R2 m2 bundle passenger (per
+ * `daily-study-log` capability spec); row-level LWW on `updatedAt`.
+ */
+export interface DailyStudyLogRow {
+  /** Local-timezone `YYYY-MM-DD` (e.g. `2026-05-26`). */
+  date: string
+  /** Cumulative active-study minutes credited on this calendar day. */
+  minutesAdded: number
+  /** Epoch ms of last upsert; powers row-level LWW conflict resolution. */
+  updatedAt: number
+}
+
 // v5 cloud-sync support tables — meta (migration choice/paused flags) +
 // localBackup (snapshot before destructive sign-in resolution).
 export interface HospitalMetaRow {
@@ -404,6 +421,7 @@ export class HospitalDB extends Dexie {
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
   achievements!: EntityTable<AchievementRow, 'id'>
   hospitalEquipment!: EntityTable<OwnedEquipmentRow, 'equipmentId'>
+  dailyStudyLog!: EntityTable<DailyStudyLogRow, 'date'>
 
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
@@ -838,6 +856,39 @@ export class HospitalDB extends Dexie {
       leaderboardProfile: '&user_id',
       achievements: '&id, unlockedAt',
       hospitalEquipment: '&equipmentId, updatedAt',
+    })
+
+    // v18: tidy-tabs-add-study-stats-medexam2 — adds `dailyStudyLog` table for
+    // per-day study-minute snapshots powering the 成就 → 統計 sub-tab charts.
+    // Forward-only: no backfill from monotonicCounters.totalStudyMinutes;
+    // existing players see an empty table at first cold-open. R2 m2 bundle
+    // schema_version bumps 2 → 3 in lockstep (bundles.ts).
+    this.version(18).stores({
+      affinity: '&subjectId',
+      doctors: '&id, subjectId, rarity, obtainedAt',
+      gachaStats: '&id',
+      tickets: '&id',
+      rooms: '&id, type, slot',
+      gameCounters: '&id',
+      mastery: '&subjectId',
+      questionHistory:
+        '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt], everWrong',
+      meta: '&key',
+      localBackup: '&key, takenAt',
+      monotonicCounters: '&id',
+      trainingHistory: '++id, doctorId, attemptedAt',
+      eventLog: '++id, triggeredAt',
+      fateCardHistory: '++id, drawnAt',
+      retirementLog: '++id, retiredAt, doctorId',
+      bookmarks: '&questionId, addedAt',
+      bannerUnlockBonusLog: '&subjectId',
+      targetedTickets: '&id, status, subjectId, obtainedAt',
+      targetedTicketHistory: '++id, ticketId, at, event',
+      erConsultLog: '++id, triggeredAt, subjectId',
+      leaderboardProfile: '&user_id',
+      achievements: '&id, unlockedAt',
+      hospitalEquipment: '&equipmentId, updatedAt',
+      dailyStudyLog: '&date, updatedAt',
     })
   }
 }

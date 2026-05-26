@@ -23,7 +23,14 @@ import type { CloudRow, RowPayload } from '../types'
 // explicit clear propagates cross-device. Older clients that omit the field
 // no longer overwrite a local true (preserving prior protection against
 // silent revocation). See tables.ts applyToLocal for the canonical impl.
-const SCHEMA_VERSION = 2
+//
+// v3 (tidy-tabs-add-study-stats-medexam2, 2026-05-26): m2 bundle now carries
+// a new top-level data key for `daily_study_log` (one row per calendar day
+// of active study). v3 client reading v2 bundle defaults the table to []
+// (the data dict simply lacks the key). v2 client reading v3 bundle ignores
+// the unknown key. Row-level LWW on `updatedAt` — no monotonic-OR carve-out
+// (cumulative-per-day counter, no cross-version contamination risk).
+const SCHEMA_VERSION = 3
 const CLIENT_ID_KEY = 'study-rpg.sync.clientId'
 const BUNDLE_APP_VERSION = '0.3.0'
 
