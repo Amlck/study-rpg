@@ -3,6 +3,7 @@
 // HospitalDB. See that file for full design rationale.
 
 import { getHospitalDB, type HospitalDB } from '../../db/schema'
+import { clearSchemaVersion } from './r2/etag'
 
 const LAST_SIGNED_IN_KEY = 'last_signed_in_user_id'
 const MIGRATION_CHOICE_PREFIX = 'migration_choice:'
@@ -57,6 +58,14 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       db.rooms,
       db.affinity,
       db.doctors,
+      // retirementLog joined the cloud-sync surface in
+      // fix-doctor-retire-cloud-resurrection (2026-05-26). Must be wiped
+      // alongside `doctors` on account-switch — otherwise user A's
+      // tombstones survive locally, get re-pushed to user B's cloud, and
+      // the post-pull reconciler erroneously deletes user B's doctors
+      // that happen to share an id (probability negligible with UUIDs,
+      // but spec coverage required).
+      db.retirementLog,
       db.mastery,
       db.questionHistory,
       db.targetedTickets,
@@ -71,6 +80,7 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       await db.rooms.clear()
       await db.affinity.clear()
       await db.doctors.clear()
+      await db.retirementLog.clear()
       await db.mastery.clear()
       await db.questionHistory.clear()
       await db.targetedTickets.clear()
@@ -87,4 +97,10 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       if (toDelete.length) await db.meta.bulkDelete(toDelete)
     },
   )
+
+  // Wipe R2 schema_version cache so the next account's first push
+  // is not blocked by the previous account's cached cloud SV
+  // (fix-doctor-retire-cloud-resurrection §5 + §7).
+  clearSchemaVersion('m2')
+  clearSchemaVersion('bookmarks')
 }

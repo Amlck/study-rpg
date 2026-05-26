@@ -334,6 +334,11 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       db.rooms,
       db.affinity,
       db.doctors,
+      // retirementLog joined the cloud-sync surface in
+      // fix-doctor-retire-cloud-resurrection (2026-05-26). Must be wiped
+      // alongside `doctors` whenever local state is reset; same rationale
+      // as account-switch.ts clearLocalSyncTables.
+      db.retirementLog,
       db.mastery,
       db.questionHistory,
       db.targetedTickets,
@@ -347,6 +352,7 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       await db.rooms.clear()
       await db.affinity.clear()
       await db.doctors.clear()
+      await db.retirementLog.clear()
       await db.mastery.clear()
       await db.questionHistory.clear()
       await db.targetedTickets.clear()

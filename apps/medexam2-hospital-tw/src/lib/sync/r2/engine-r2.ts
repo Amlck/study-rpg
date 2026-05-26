@@ -33,7 +33,7 @@ import {
   type ApplyResult,
 } from './bundles'
 import { requestPresign, type Bundle } from './client'
-import { getEtag, setEtag } from './etag'
+import { getEtag, setEtag, getSchemaVersion, setSchemaVersion } from './etag'
 
 const MAX_PUSH_RETRIES = 3
 // Exponential backoff (ms) between push retries after a 412 stale-ETag.
@@ -69,6 +69,22 @@ export async function pushBundle(
   for (let attempt = 1; attempt <= MAX_PUSH_RETRIES; attempt++) {
     try {
       const snapshot = await buildBundleSnapshot(db, adapters, userId)
+
+      // ─── Schema version monotonic guard (fix-doctor-retire-cloud-
+      //     resurrection 2026-05-26, codex audit Attack 1) ─────────────
+      // Refuse to PUT a snapshot whose schema_version is strictly less
+      // than the most recently observed cloud SV. This prevents a v3
+      // client that pulled a v4 bundle (caching the ETag) from
+      // overwriting the cloud blob with a v3-shaped snapshot — which
+      // would silently strip forward-compatibility keys like
+      // `retirement_log`. The error fires BEFORE any network PUT.
+      const cachedRemoteSV = getSchemaVersion(bundle)
+      if (cachedRemoteSV != null && cachedRemoteSV > snapshot.meta.schema_version) {
+        throw new Error(
+          `r2_schema_downgrade_refused: cloud=${cachedRemoteSV} local=${snapshot.meta.schema_version} bundle=${bundle}`,
+        )
+      }
+
       const gz = await gzipBundle(snapshot)
       const { url } = await requestPresign(supabase, bundle, 'put')
 
@@ -219,6 +235,11 @@ export async function pullBundle(
   }
 
   if (etag) setEtag(bundle, etag)
+  // Persist the observed cloud schema_version so a subsequent pushBundle
+  // can refuse a downgrade overwrite (fix-doctor-retire-cloud-resurrection
+  // §5 — Decision 8). The 304 short-circuit path (above) intentionally
+  // leaves the cache untouched (same blob → same SV).
+  setSchemaVersion(bundle, snapshot.meta.schema_version)
 
   const applied = await applyBundleSnapshot(db, adapters, snapshot, { force: opts?.force })
   return { etag, notModified: false, blobMissing: false, applied }
@@ -233,5 +254,9 @@ function isUnrecoverable(err: unknown): boolean {
   if (msg.includes('presign_no_session')) return true
   if (msg.includes('presign_failed_401')) return true
   if (msg.includes('presign_failed_403')) return true
+  // Schema version downgrade can never be resolved by retrying — the cached
+  // cloud SV won't change between attempts. Surface immediately so the
+  // engine records firstError and the sync status chip updates.
+  if (msg.includes('r2_schema_downgrade_refused')) return true
   return false
 }
