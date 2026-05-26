@@ -108,8 +108,8 @@
 - [x] 14.2 `/verify` end-to-end Chrome MCP probe — performed inline as §12 smoke; all 7 nav links / sub-tab switching / `/training` redirect / F5 persistence / stats panel charts / RWD widths all green
 - [x] 14.3 Self-simplify review — no over-engineering detected. SVG bar chart is ~110 LOC (chose vs ~30 KB chart lib per design D5). Date utility functions (`formatYMD`/`startOfDay`/`subDays`/`dateRangeYMD`) are 1-2 lines each but kept for testability + shared use. TrainingPanel is surgical extract — preserves original TrainingPage logic verbatim. `(USER-DRIVEN — to formally invoke /simplify, run separately)`
 - [x] 14.4 `git status` review: 12 modified + 8 untracked = 20 files for this change; 2 pre-existing dirty (`meta.json` + `supabase/functions/`) confirmed unchanged and explicitly excluded from commit scope
-- [ ] 14.5 Explicit `git add` file-by-file (per multi-agent git safety rule); avoid `git add .` or `git add -A` (USER-DRIVEN — curator rule blocks auto-commit)
-- [ ] 14.6 Commit with descriptive message; user confirms before commit (curator rule — no auto-commit) (USER-DRIVEN)
+- [x] 14.5 Explicit `git add` file-by-file (per multi-agent git safety rule); 25 entries staged (20 modifications + 4 new test files + 1 rename `TrainingPage.tsx → TrainingPanel.tsx` auto-detected at 94% similarity); pre-existing `meta.json` + `supabase/functions/` explicitly excluded
+- [x] 14.6 Committed as `ce2454c` on `track-m2` branch (25 files / +2484 / -326). Commit message uses canonical `spec(impl): wire <change-name>` format per project history
 - [ ] 14.7 Run `/opsx:archive tidy-tabs-add-study-stats-medexam2` to finalize and sync delta into main specs (USER-DRIVEN — invoke after commit lands)
 
 ## 15. UI consistency polish — chip-style filters across all achievement sub-tabs (added 2026-05-26 during /opsx:verify review)
