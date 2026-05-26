@@ -53,21 +53,13 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
         await db.gameCounters.put({ ...counters, revenue: counters.revenue + refund })
       }
 
-      // Append retirementLog row. Post-Dexie-v19 (fix-doctor-retire-
-      // cloud-resurrection 2026-05-26), `doctorId` is the primary key
-      // and the row acts as the authoritative tombstone for the deleted
-      // `doctors[doctor.id]` row in cross-device sync. `_updatedAt` is
-      // stamped explicitly here AND by the sync engine's creating hook;
-      // belt-and-suspenders so an unhooked test environment still has a
-      // monotonic timestamp on the row.
-      const nowMs = Date.now()
+      // Append retirementLog row
       const logRow: RetirementLogRow = {
-        retiredAt: nowMs,
+        retiredAt: Date.now(),
         doctorId: doctor.id,
         subjectId: doctor.subjectId,
         rarity: doctor.rarity,
         refund,
-        _updatedAt: nowMs,
       }
       await db.retirementLog.add(logRow)
 

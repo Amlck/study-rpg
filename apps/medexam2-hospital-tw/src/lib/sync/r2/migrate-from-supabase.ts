@@ -42,7 +42,6 @@ const M2_BUNDLE_SPEC: BundleSpec = {
   postgresTables: [
     { table: 'hospital_state', pkColumns: [] },                            // singleton
     { table: 'hospital_doctors', pkColumns: ['id'] },
-    { table: 'retirement_log', pkColumns: ['doctor_id'] },                 // tombstone for hospital_doctors (fix-doctor-retire-cloud-resurrection)
     { table: 'hospital_mastery', pkColumns: ['subject_id'] },
     { table: 'hospital_question_history', pkColumns: ['question_id'] },
     { table: 'targeted_tickets', pkColumns: ['id'] },

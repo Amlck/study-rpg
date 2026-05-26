@@ -239,25 +239,6 @@ const HOSPITAL_DOCTORS: TableAdapter = {
     const pk = cloudRow.id
     const data = cloudRow.data as WithUpdatedAt<Record<string, unknown>> | undefined
     if (!pk || !data) return false
-
-    // ─── Tombstone carve-out (fix-doctor-retire-cloud-resurrection) ──
-    // Before applying any cloud doctor row, check if `retirementLog`
-    // has a tombstone for this `doctorId`. If yes, the doctor was
-    // retired locally (or on another device) — skip the cloud write
-    // AND delete any stale local doctor row (covers prior-fix
-    // resurrection cleanup). This carve-out applies even when
-    // opts.force is true — `pullAllNow({force:true})` is the very
-    // pathway that previously caused resurrection, so cold-start
-    // force-pull MUST honor tombstones.
-    //
-    // See openspec/specs/cloud-sync/spec.md "Row deletion in collection
-    // tables SHALL propagate via tombstone-table mechanism".
-    const tombstone = await (db as HospitalDB).retirementLog.get(pk)
-    if (tombstone) {
-      await (db as HospitalDB).doctors.delete(pk)
-      return false
-    }
-
     const force = opts?.force ?? false
     if (!force) {
       const local = await (db as HospitalDB).doctors.get(pk)
@@ -267,74 +248,6 @@ const HOSPITAL_DOCTORS: TableAdapter = {
     const next = { ...data, _updatedAt: Date.parse(cloudRow.updated_at) }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as HospitalDB).doctors.put(next as any)
-    return true
-  },
-}
-
-const RETIREMENT_LOG: TableAdapter = {
-  postgresTable: 'retirement_log',
-  shape: 'collection',
-  dexieTable: 'retirementLog',
-  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
-    if (!dirtyPks.size) return []
-    const rows: RowPayload[] = []
-    for (const pk of dirtyPks) {
-      const row = await (db as HospitalDB).retirementLog.get(pk)
-      if (!row) continue
-      rows.push({
-        user_id: userId,
-        updated_at: updatedAt,
-        app_version: appVersion,
-        doctor_id: row.doctorId,
-        retired_at: row.retiredAt,
-        subject_id: row.subjectId,
-        rarity: row.rarity,
-        refund: row.refund,
-      })
-    }
-    return rows
-  },
-  async snapshotAll(db, userId, updatedAt, appVersion) {
-    const rows: RowPayload[] = []
-    await (db as HospitalDB).retirementLog.each((row) => {
-      rows.push({
-        user_id: userId,
-        updated_at: updatedAt,
-        app_version: appVersion,
-        doctor_id: row.doctorId,
-        retired_at: row.retiredAt,
-        subject_id: row.subjectId,
-        rarity: row.rarity,
-        refund: row.refund,
-      })
-    })
-    return rows
-  },
-  async applyToLocal(db, cloudRow, opts) {
-    const pk = cloudRow.doctor_id
-    if (!pk) return false
-    const force = opts?.force ?? false
-    if (!force) {
-      const local = await (db as HospitalDB).retirementLog.get(pk)
-      const localMs = (local as WithUpdatedAt<unknown> | undefined)?._updatedAt
-      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
-    }
-    const next: WithUpdatedAt<{
-      doctorId: string
-      retiredAt: number
-      subjectId: string
-      rarity: string
-      refund: number
-    }> = {
-      doctorId: pk,
-      retiredAt: Number(cloudRow.retired_at ?? 0),
-      subjectId: String(cloudRow.subject_id ?? ''),
-      rarity: String(cloudRow.rarity ?? ''),
-      refund: Number(cloudRow.refund ?? 0),
-      _updatedAt: Date.parse(cloudRow.updated_at),
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as HospitalDB).retirementLog.put(next as any)
     return true
   },
 }
@@ -885,12 +798,6 @@ const DAILY_STUDY_LOG: TableAdapter = {
 
 export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
-  // RETIREMENT_LOG MUST precede HOSPITAL_DOCTORS so Supabase per-table pull
-  // applies tombstones before doctor rows within the same pullNow cycle
-  // (per cloud-sync spec "Apply ordering"). The carve-out in
-  // HOSPITAL_DOCTORS.applyToLocal is the canonical guard, but ordering
-  // shortens the window where a ghost can be written then re-deleted.
-  RETIREMENT_LOG,
   HOSPITAL_DOCTORS,
   HOSPITAL_MASTERY,
   HOSPITAL_QUESTION_HISTORY,
@@ -926,12 +833,6 @@ export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
  */
 export const M2_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
-  // RETIREMENT_LOG MUST precede HOSPITAL_DOCTORS so R2 bundle apply path
-  // lands tombstones in Dexie before the doctor adapter's carve-out
-  // check runs (per cloud-sync spec "Apply ordering"). The applyBundle
-  // loop iterates adapters in array order, so this ordering is the
-  // canonical guard for the R2 path.
-  RETIREMENT_LOG,
   HOSPITAL_DOCTORS,
   HOSPITAL_MASTERY,
   HOSPITAL_QUESTION_HISTORY,

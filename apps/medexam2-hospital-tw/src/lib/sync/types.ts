@@ -73,17 +73,6 @@ export interface EngineDiagnosticSnapshot {
   recentErrors: SyncErrorRecord[]
   dbRowCounts: Record<string, number>
   consecutiveErrors: Record<SyncOp, number>
-  /**
-   * Reason the engine is in `paused` state, if any. Populated by the
-   * startup whitelist probe (fix-doctor-retire-cloud-resurrection §6)
-   * when the Supabase `upsert_lww` RPC rejects a probe table
-   * (e.g. `whitelist_missing:retirement_log` indicates migration 0014
-   * was not applied alongside 0013). Engine refuses to install hooks /
-   * fire pullAllNow / arm the debounce timer until the probe passes
-   * on a manual retry, preventing pushAllNow from clearing pending
-   * dirty markers under partial-deploy conditions.
-   */
-  pausedReason?: string | null
 }
 
 export interface CreateSyncEngineOptions {
@@ -168,16 +157,11 @@ export interface RowPayload {
   subject_id?: string
   ticket_id?: string  // targeted_ticket_history composite pk (with event)
   event?: 'obtained' | 'assigned' | 'consumed'  // targeted_ticket_history composite pk
-  doctor_id?: string  // retirement_log pk (fix-doctor-retire-cloud-resurrection)
   // payloads:
   data?: unknown
   correct?: number
   total?: number
   added_at?: string  // ISO string (question_bookmarks only — immutable display sort key)
-  // retirement_log flat columns (fix-doctor-retire-cloud-resurrection):
-  retired_at?: number
-  rarity?: string
-  refund?: number
 }
 
 /** Cloud row received from pull. */
@@ -194,9 +178,4 @@ export interface CloudRow {
   correct?: number
   total?: number
   added_at?: string  // ISO string (question_bookmarks only)
-  // retirement_log flat columns (fix-doctor-retire-cloud-resurrection):
-  doctor_id?: string
-  retired_at?: number
-  rarity?: string
-  refund?: number
 }

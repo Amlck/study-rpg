@@ -205,25 +205,13 @@ export interface FateCardHistoryRow {
   pityTriggered: boolean
 }
 
-/**
- * Tombstone row paired with `hospital_doctors` for cross-device retire
- * propagation. Primary key is `doctorId` (string, deterministic UUID
- * from `loot.ts` `randomId`) post-v19; pre-v19 was auto-increment `id`
- * (the v18→v19 upgrade callback dedups + rekeys existing rows).
- *
- * `_updatedAt` is stamped by Dexie creating/updating hooks installed
- * by sync/engine.ts; required for LWW conflict resolution.
- *
- * See openspec/specs/cloud-sync/spec.md "Row deletion in collection
- * tables SHALL propagate via tombstone-table mechanism".
- */
 export interface RetirementLogRow {
-  doctorId: string
+  id?: number
   retiredAt: number
+  doctorId: string
   subjectId: string
   rarity: Rarity
   refund: number
-  _updatedAt?: number
 }
 
 export type TargetedTicketStatus = 'pending' | 'assigned' | 'consumed'
@@ -424,7 +412,7 @@ export class HospitalDB extends Dexie {
   trainingHistory!: EntityTable<TrainingHistoryRow, 'id'>
   eventLog!: EntityTable<EventLogRow, 'id'>
   fateCardHistory!: EntityTable<FateCardHistoryRow, 'id'>
-  retirementLog!: EntityTable<RetirementLogRow, 'doctorId'>
+  retirementLog!: EntityTable<RetirementLogRow, 'id'>
   bookmarks!: EntityTable<BookmarkRow, 'questionId'>
   bannerUnlockBonusLog!: EntityTable<BannerUnlockBonusLogRow, 'subjectId'>
   targetedTickets!: EntityTable<TargetedTicketRow, 'id'>
@@ -902,87 +890,6 @@ export class HospitalDB extends Dexie {
       hospitalEquipment: '&equipmentId, updatedAt',
       dailyStudyLog: '&date, updatedAt',
     })
-
-    // v19: fix-doctor-retire-cloud-resurrection — rekey `retirementLog`
-    // primary key from auto-increment `++id` to deterministic `doctorId`
-    // (string UUID). This makes the table eligible to act as the
-    // authoritative tombstone for `hospital_doctors` cross-device sync
-    // (per openspec/specs/cloud-sync/spec.md "Row deletion in collection
-    // tables SHALL propagate via tombstone-table mechanism").
-    //
-    // Upgrade callback reads existing rows, dedups by `doctorId` keeping
-    // the smallest `retiredAt` (oldest retire wins — destructive retire
-    // means same-id duplicates can only arise from prior auto-incr
-    // schema artifacts, not legitimate cross-device retire-retire-retire
-    // races, but spec coverage required either way). Then `.clear()` +
-    // `bulkAdd` rewrites with the new pk and a stamped `_updatedAt`.
-    //
-    // R2 m2 bundle schema_version bumps 3 → 4 in lockstep (bundles.ts).
-    this.version(19)
-      .stores({
-        affinity: '&subjectId',
-        doctors: '&id, subjectId, rarity, obtainedAt',
-        gachaStats: '&id',
-        tickets: '&id',
-        rooms: '&id, type, slot',
-        gameCounters: '&id',
-        mastery: '&subjectId',
-        questionHistory:
-          '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt], everWrong',
-        meta: '&key',
-        localBackup: '&key, takenAt',
-        monotonicCounters: '&id',
-        trainingHistory: '++id, doctorId, attemptedAt',
-        eventLog: '++id, triggeredAt',
-        fateCardHistory: '++id, drawnAt',
-        retirementLog: '&doctorId, retiredAt, rarity, _updatedAt',
-        bookmarks: '&questionId, addedAt',
-        bannerUnlockBonusLog: '&subjectId',
-        targetedTickets: '&id, status, subjectId, obtainedAt',
-        targetedTicketHistory: '++id, ticketId, at, event',
-        erConsultLog: '++id, triggeredAt, subjectId',
-        leaderboardProfile: '&user_id',
-        achievements: '&id, unlockedAt',
-        hospitalEquipment: '&equipmentId, updatedAt',
-        dailyStudyLog: '&date, updatedAt',
-      })
-      .upgrade(async (tx) => {
-        // Read all v18 rows (still have auto-incr `id` field on each row).
-        // Use a permissive shape because rows may carry leftover keys we
-        // don't model on the new RetirementLogRow interface.
-        type LegacyRetirementLogRow = RetirementLogRow & { id?: number }
-        const oldRows = await tx
-          .table<LegacyRetirementLogRow, number>('retirementLog')
-          .toArray()
-
-        // Dedup by doctorId, keep smallest retiredAt (oldest retire wins).
-        const byDoctor = new Map<string, LegacyRetirementLogRow>()
-        for (const row of oldRows) {
-          if (!row.doctorId) continue
-          const existing = byDoctor.get(row.doctorId)
-          if (!existing || row.retiredAt < existing.retiredAt) {
-            byDoctor.set(row.doctorId, row)
-          }
-        }
-
-        // Wipe the table (old pk no longer applies).
-        await tx.table('retirementLog').clear()
-
-        // Rewrite with new pk = doctorId. Strip the legacy `id` field;
-        // stamp `_updatedAt` so the first push covers these rows.
-        const now = Date.now()
-        const newRows = Array.from(byDoctor.values()).map((r) => ({
-          doctorId: r.doctorId,
-          retiredAt: r.retiredAt,
-          subjectId: r.subjectId,
-          rarity: r.rarity,
-          refund: r.refund,
-          _updatedAt: now,
-        }))
-        if (newRows.length > 0) {
-          await tx.table('retirementLog').bulkAdd(newRows)
-        }
-      })
   }
 }
 

@@ -30,22 +30,7 @@ import type { CloudRow, RowPayload } from '../types'
 // (the data dict simply lacks the key). v2 client reading v3 bundle ignores
 // the unknown key. Row-level LWW on `updatedAt` — no monotonic-OR carve-out
 // (cumulative-per-day counter, no cross-version contamination risk).
-//
-// v4 (fix-doctor-retire-cloud-resurrection, 2026-05-26): m2 bundle now
-// carries a new top-level data key for `retirement_log` (one row per
-// retired doctor; pk = `doctor_id`). v4-aware clients use these rows
-// as authoritative tombstones for the paired `hospital_doctors`
-// entries. v3 client reading v4 bundle ignores the unknown key (no
-// adapter registered for retirement_log) and still resurrects deleted
-// doctors locally — known regression for the mid-version coexistence
-// window. v4 client reading v3 bundle defaults the table to [].
-//
-// CRITICAL: pushBundle now refuses to overwrite a cloud bundle whose
-// cached schema_version is greater than the local SCHEMA_VERSION
-// (see r2/engine-r2.ts and r2/etag.ts setSchemaVersion). This guard
-// protects v4 clouds from a v3 client downgrade overwrite that would
-// silently strip the retirement_log key.
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 3
 const CLIENT_ID_KEY = 'study-rpg.sync.clientId'
 const BUNDLE_APP_VERSION = '0.3.0'
 
