@@ -6392,3 +6392,110 @@ body:has(.modal-backdrop) {
   font-size: 0.85em;
   font-style: italic;
 }
+
+/* ─── Quiz keyboard hotkey badges (add-quiz-number-hotkeys-medexam2) ─── */
+/* Subscript number / Enter arrow shown at bottom-left of choice + modifier
+ * buttons. Desktop-only via `@media (hover: hover) and (pointer: fine)` —
+ * touch devices hide the badge entirely (listener still attached but harmless
+ * since touch devices have no physical keyboard). */
+.quiz-hotkey-badge {
+  display: none;
+}
+.quiz-modal__option,
+.quiz-quality-btn,
+.quiz-modal__next,
+.quiz-modal__footer-bookmark {
+  position: relative;
+}
+@media (hover: hover) and (pointer: fine) {
+  .quiz-hotkey-badge {
+    display: inline-block;
+    position: absolute;
+    left: 6px;
+    bottom: 3px;
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0.55;
+    pointer-events: none;
+    color: var(--frame-dark, #333);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .quiz-hotkey-badge--enter {
+    font-size: 12px;
+    opacity: 0.6;
+  }
+}
+
+/* Keyboard pre-submit highlight on choice buttons. Mouse click still
+ * single-step (select=submit); keyboard users press 1/2/3/4 to highlight,
+ * then Enter to commit. */
+.quiz-modal__option--highlighted {
+  background: var(--bg-cream, #f5edd6);
+  outline: 2px solid var(--accent-leaf, #2d8c4f);
+  outline-offset: -2px;
+}
+
+/* Homepage announcement banner for the new keyboard-hotkey feature.
+ * Desktop-only — touch devices hide it entirely since the feature requires
+ * a physical keyboard. Dismissible via localStorage per-device. */
+.quiz-hotkeys-banner {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .quiz-hotkeys-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0 12px;
+    padding: 10px 14px;
+    background: var(--bg-paper, #fdf8eb);
+    border: 2px solid var(--accent-leaf, #2d8c4f);
+    border-radius: 6px;
+    box-shadow: 3px 3px 0 var(--frame-dark, #3a2e1e);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .quiz-hotkeys-banner__icon {
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .quiz-hotkeys-banner__msg {
+    flex: 1;
+    color: var(--text-ink, #2a2118);
+  }
+  .quiz-hotkeys-banner__msg strong {
+    color: var(--accent-leaf, #2d8c4f);
+  }
+  .quiz-hotkeys-banner__msg kbd {
+    display: inline-block;
+    padding: 0 5px;
+    margin: 0 1px;
+    background: #fff;
+    border: 1px solid var(--frame-dark, #3a2e1e);
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    box-shadow: 1px 1px 0 var(--frame-dark, #3a2e1e);
+  }
+  .quiz-hotkeys-banner__inline-icon {
+    font-size: 14px;
+  }
+  .quiz-hotkeys-banner__dismiss {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-ink, #2a2118);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .quiz-hotkeys-banner__dismiss:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border-color: var(--frame-dark, #3a2e1e);
+  }
+}

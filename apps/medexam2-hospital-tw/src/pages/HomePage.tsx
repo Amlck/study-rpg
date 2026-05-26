@@ -44,6 +44,7 @@ import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
 import { TargetedTicketSection } from '../components/TargetedTicketSection'
 import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
+import { QuizHotkeysAnnouncementBanner } from '../components/QuizHotkeysAnnouncementBanner'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
 
@@ -169,6 +170,8 @@ export function HomePage() {
           </Link>
         </div>
       </header>
+
+      <QuizHotkeysAnnouncementBanner />
 
       <LeaderboardPromoBanner />
 
