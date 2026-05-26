@@ -4295,7 +4295,7 @@ body:has(.modal-backdrop) {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: inherit;
+  color: var(--ink);
 }
 
 .stats-panel__chart-svg {
@@ -4306,14 +4306,23 @@ body:has(.modal-backdrop) {
 
 .stats-panel__chart-y-label {
   font-size: 10px;
-  fill: currentColor;
-  opacity: 0.65;
+  fill: var(--ink);
 }
 
 .stats-panel__chart-x-label {
   font-size: 10px;
-  fill: currentColor;
-  opacity: 0.5;
+  fill: var(--ink);
+}
+
+.stats-panel__chart-axis {
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.stats-panel__chart-gridline {
+  stroke: var(--frame-light);
+  stroke-width: 1;
+  stroke-opacity: 0.35;
 }
 
 .bookmarks-tab {
