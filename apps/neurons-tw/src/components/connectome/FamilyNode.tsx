@@ -24,8 +24,6 @@ export interface FamilyNodeProps {
   firedToday: boolean
   /** Which side of the sprite the text label sits on (bilateral horizontal layout). */
   labelSide?: 'left' | 'right'
-  /** Optional max-width hint for the label so we can collapse long display names. */
-  labelMaxWidth?: number
 }
 
 const SPRITE_SIZE = 64
@@ -37,7 +35,6 @@ export function FamilyNode({
   ap,
   firedToday,
   labelSide = 'right',
-  labelMaxWidth = 180,
 }: FamilyNodeProps): JSX.Element {
   const labelOffsetX = labelSide === 'left' ? -(SPRITE_SIZE / 2 + 10) : SPRITE_SIZE / 2 + 10
   const textAnchor = labelSide === 'left' ? ('end' as const) : ('start' as const)
@@ -171,7 +168,6 @@ export function FamilyNode({
         textAnchor={textAnchor}
         fill={family.color ?? '#3b2a18'}
         style={{ pointerEvents: 'none', userSelect: 'none' }}
-        textLength={labelMaxWidth > 0 ? undefined : undefined}
       >
         {labelStripped}
       </text>
