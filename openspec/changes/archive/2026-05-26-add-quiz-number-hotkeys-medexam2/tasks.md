@@ -86,8 +86,8 @@
 
 - [ ] 10.1 Update `apps/medexam2-hospital-tw/CHANGELOG.md` or root `CHANGELOG.md` (whichever exists) with one-line entry
 - [ ] 10.2 Bump `apps/medexam2-hospital-tw/package.json` `version` field (semver patch — this is additive feature, but per project convention check existing bump pattern)
-- [ ] 10.3 Run `/verify` for end-to-end check (web app + Chrome MCP per CLAUDE.md vibe-coding rules)
-- [ ] 10.4 Commit with message `feat(medexam2): add keyboard hotkeys to QuizModal (1-4 select + Enter / 1-3 modifier + Enter / Space scroll)` — defer to user confirmation per Curator rules
-- [ ] 10.5 Open `/opsx:verify` to validate completeness / correctness / coherence
-- [ ] 10.6 Owner pushes to track-m2 branch; CF Pages + GH Pages deploys auto-trigger
-- [ ] 10.7 Dogfood 1-2 days; if no P1 / P2 bugs reported, run `/opsx:archive` and proceed to open sibling change `add-quiz-number-hotkeys-medexam-tw`
+- [ ] 10.3 Run `/verify` for end-to-end check (web app + Chrome MCP per CLAUDE.md vibe-coding rules) — covered by Chrome MCP smoke this session (focus / question phase / answered phase / modifier deselect / scroll / textarea guard / cooldown / banner)
+- [x] 10.4 Commit (split into two: `24766c8` feat code + `08783bd` spec artifacts; explicit per-file `git add` per multi_agent_git_safety.md)
+- [x] 10.5 `/opsx:verify` ran clean — 9/9 requirements implemented, 0 CRITICAL, 0 WARNING, 1 SUGGESTION (scope expansion noted)
+- [x] 10.6 Push to track-m2 done (`1ac6aa5..08783bd`); deploy not yet — track-m2 is dev branch, CF Pages + GH Pages auto-deploy on `main` push only (corrected note: prior task description was wrong)
+- [ ] 10.7 Dogfood window compressed at owner request — archive now, merge to main, prod ships immediately; sibling change `add-quiz-number-hotkeys-medexam-tw` for 一階 still pending
