@@ -3,6 +3,7 @@
 // HospitalDB. See that file for full design rationale.
 
 import { getHospitalDB, type HospitalDB } from '../../db/schema'
+import { clearSchemaVersion } from './r2/etag'
 
 const LAST_SIGNED_IN_KEY = 'last_signed_in_user_id'
 const MIGRATION_CHOICE_PREFIX = 'migration_choice:'
@@ -62,6 +63,7 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       db.targetedTickets,
       db.targetedTicketHistory,
       db.monotonicCounters,
+      db.retirementLog,
       db.meta,
     ],
     async () => {
@@ -76,6 +78,13 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       await db.targetedTickets.clear()
       await db.targetedTicketHistory.clear()
       await db.monotonicCounters.clear()
+      // fix-doctor-retire-cloud-resurrection-v2: retirementLog is now a
+      // cloud-synced collection (tombstone for hospital_doctors). Clearing it
+      // here prevents user A's retire history from polluting user B's local
+      // state (which would otherwise cause reconcileRetiredDoctors to
+      // erroneously delete B's doctors if any doctorId collision occurred —
+      // negligible at crypto.randomUUID() 128-bit, but spec-required).
+      await db.retirementLog.clear()
       const all = await db.meta.toArray()
       const toDelete = all
         .filter(
@@ -87,4 +96,10 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       if (toDelete.length) await db.meta.bulkDelete(toDelete)
     },
   )
+  // Drop cached R2 schema_version for m2 + bookmarks bundles so the next user's
+  // first push isn't blocked by the previous user's cached cloud SV. Outside
+  // the Dexie tx since it touches localStorage. Spec: cloud-sync "Account
+  // switch clears cached schemaVersion so next user is unconstrained".
+  clearSchemaVersion('m2')
+  clearSchemaVersion('bookmarks')
 }

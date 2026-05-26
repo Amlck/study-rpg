@@ -73,6 +73,15 @@ export interface EngineDiagnosticSnapshot {
   recentErrors: SyncErrorRecord[]
   dbRowCounts: Record<string, number>
   consecutiveErrors: Record<SyncOp, number>
+  /**
+   * Reason the engine is currently paused, or null if not paused / paused
+   * by an unstructured reason (e.g. legacy migration "Decide later"). Added
+   * by fix-doctor-retire-cloud-resurrection-v2 startup whitelist probe —
+   * format is `whitelist_missing:<postgres_table>` when the engine refused
+   * to enter `idle` state because `upsert_lww` doesn't whitelist a required
+   * table. Exposed for bug-report context + DEV introspection.
+   */
+  pausedReason: string | null
 }
 
 export interface CreateSyncEngineOptions {
@@ -157,6 +166,7 @@ export interface RowPayload {
   subject_id?: string
   ticket_id?: string  // targeted_ticket_history composite pk (with event)
   event?: 'obtained' | 'assigned' | 'consumed'  // targeted_ticket_history composite pk
+  doctor_id?: string  // retirement_log logical pk (Dexie physical pk is auto-incr id)
   // payloads:
   data?: unknown
   correct?: number
@@ -175,6 +185,7 @@ export interface CloudRow {
   subject_id?: string
   ticket_id?: string  // targeted_ticket_history
   event?: 'obtained' | 'assigned' | 'consumed'  // targeted_ticket_history
+  doctor_id?: string  // retirement_log logical pk
   correct?: number
   total?: number
   added_at?: string  // ISO string (question_bookmarks only)

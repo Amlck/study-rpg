@@ -32,7 +32,7 @@ beforeEach(async () => {
   await db.open()
 })
 
-describe('m2 bundle schema_version 3 — daily_study_log round-trip', () => {
+describe('m2 bundle schema_version (currently 4) — daily_study_log round-trip', () => {
   it('snapshot includes daily_study_log table with all rows', async () => {
     const db = getHospitalDB()
     await db.dailyStudyLog.bulkPut([
@@ -40,7 +40,10 @@ describe('m2 bundle schema_version 3 — daily_study_log round-trip', () => {
       { date: '2026-05-26', minutesAdded: 8, updatedAt: 2000 },
     ])
     const snapshot = await buildBundleSnapshot(db, M2_ADAPTERS, USER_ID)
-    expect(snapshot.meta.schema_version).toBe(3)
+    // v3 added daily_study_log; v4 (fix-doctor-retire-cloud-resurrection-v2)
+    // added retirement_log. This test exercises daily_study_log round-trip,
+    // which is unchanged by v4 — only the SCHEMA_VERSION constant moved.
+    expect(snapshot.meta.schema_version).toBe(4)
     expect(snapshot.data.daily_study_log).toBeDefined()
     expect(snapshot.data.daily_study_log).toHaveLength(2)
     const ids = snapshot.data.daily_study_log.map((r) => r.id).sort()

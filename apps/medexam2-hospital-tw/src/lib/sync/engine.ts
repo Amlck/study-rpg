@@ -48,6 +48,14 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
   let userId: string | null = null
   let status: SyncStatus = 'unauthed'
   let paused = false
+  /**
+   * Structured pause reason, surfaced via getDiagnosticSnapshot. Set when the
+   * startup whitelist probe finds a missing upsert_lww entry — format
+   * `whitelist_missing:<postgres_table>`. Null when paused for other reasons
+   * (or not paused). Added by fix-doctor-retire-cloud-resurrection-v2
+   * (Decision 10 / codex Attack 3 mitigation).
+   */
+  let pausedReason: string | null = null
 
   // Observability state (fix-sync-sign-in-lifecycle M3) — ring buffer of last
   // N errors + per-op consecutive failure count. Drives sync_metadata
@@ -206,6 +214,8 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
   async function pushNow(): Promise<void> {
     if (!userId) return
     if (status === 'disabled') return
+    // Auto-resume from whitelist gate if owner finished the missing migration.
+    if (await tryResumeFromWhitelistGate()) return
     if (paused) return
     const totalDirty = Array.from(dirty.perTable.values()).reduce((s, set) => s + set.size, 0)
     if (totalDirty === 0) return
@@ -292,6 +302,10 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
   async function pullNow(opts?: { sinceIso?: string; force?: boolean }): Promise<void> {
     if (!userId) return
     if (status === 'disabled') return
+    // Auto-resume from whitelist gate if owner finished the missing migration.
+    // Force pulls (pullAllNow path) still respect the gate — if Supabase still
+    // can't accept upsert_lww we shouldn't burn a force-pull cycle either.
+    if (await tryResumeFromWhitelistGate()) return
     if (paused && !opts?.force) return
 
     status = 'pulling'
@@ -426,6 +440,69 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
     return pullNow({ sinceIso: new Date(0).toISOString(), force: opts?.force })
   }
 
+  /**
+   * Startup whitelist probe (fix-doctor-retire-cloud-resurrection-v2 Decision 10
+   * / codex Attack 3 mitigation). No-op `upsert_lww` per adapter; first
+   * `unknown table` error returns the offending table name so caller can pause
+   * with structured reason. Pure-R2 backends skip this entirely (no Supabase
+   * write path). Pure-Supabase + dual backends both run it.
+   */
+  async function runStartupProbe(): Promise<
+    { ok: true } | { ok: false; missingTable: string; err: unknown }
+  > {
+    for (const adapter of adapters) {
+      try {
+        const { error } = await supabase.rpc('upsert_lww', {
+          table_name: adapter.postgresTable,
+          rows: [],
+        })
+        if (error) {
+          const msg = (error as { message?: string }).message ?? String(error)
+          if (/unknown table/i.test(msg)) {
+            return { ok: false, missingTable: adapter.postgresTable, err: error }
+          }
+          // Other errors (RLS denied, network blip) — surface but don't treat
+          // as a whitelist miss; let normal push/pull error handling cover.
+          continue
+        }
+      } catch (err) {
+        const msg = ((err as { message?: string })?.message ?? String(err)).toLowerCase()
+        if (msg.includes('unknown table')) {
+          return { ok: false, missingTable: adapter.postgresTable, err }
+        }
+      }
+    }
+    return { ok: true }
+  }
+
+  /**
+   * Manual-action retry-on-resume gate. Called at the start of pullNow /
+   * pushNow when the engine is paused with a whitelist_missing reason. Re-runs
+   * the probe; on success transitions back to idle and clears pausedReason so
+   * the caller can proceed. Returns true if engine remains paused (caller
+   * should early-return). Spec: cloud-sync "Probe passes on re-attempt after
+   * owner finishes migration".
+   */
+  async function tryResumeFromWhitelistGate(): Promise<boolean> {
+    if (!paused || !pausedReason?.startsWith('whitelist_missing:')) return paused
+    if (!backendConfig.writeSupabase) {
+      // Backend has been reconfigured to skip Supabase since last probe —
+      // gate no longer applicable.
+      paused = false
+      pausedReason = null
+      status = 'idle'
+      return false
+    }
+    const probe = await runStartupProbe()
+    if (probe.ok) {
+      paused = false
+      pausedReason = null
+      status = 'idle'
+      return false
+    }
+    return true
+  }
+
   function pause(): void {
     paused = true
     if (pushTimer) {
@@ -471,6 +548,7 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
       recentErrors: recentErrors.slice(),
       dbRowCounts,
       consecutiveErrors: { ...consecutiveErrors },
+      pausedReason,
     }
   }
 
@@ -481,7 +559,29 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
       status = paused ? 'paused' : 'idle'
       installHooks()
       installVisibilityListener()
-      if (!paused) {
+      if (paused) return
+
+      // Run startup probe BEFORE cold-start force-pull. If a required
+      // upsert_lww table is missing, transition to paused with structured
+      // reason — never invoke pullAllNow (cold-start force-pull) and never
+      // install the debounce timer for pushes. This prevents pushAllNow
+      // from running and burning dirty markers via its unconditional
+      // dirty.perTable.values().clear() (codex Attack 3). Async IIFE so
+      // start() stays sync-callable per the SyncEngine interface.
+      ;(async () => {
+        if (backendConfig.writeSupabase) {
+          const probe = await runStartupProbe()
+          if (!probe.ok) {
+            paused = true
+            status = 'paused'
+            pausedReason = `whitelist_missing:${probe.missingTable}`
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[sync] startup probe failed: upsert_lww whitelist missing ${probe.missingTable}; sync paused until backend migration completes`,
+            )
+            return
+          }
+        }
         // Cold-start ALWAYS force-pulls (fix-account-switch-data-loss C1) —
         // see 一階 engine.ts comments for full rationale.
         if (import.meta.env.DEV) {
@@ -489,7 +589,7 @@ export function createSyncEngine(opts: CreateSyncEngineOptions): SyncEngine {
           console.log('[sync.start]', { phase: 'force-pull-on-cold-start', userId: uid })
         }
         pullAllNow({ force: true }).catch((err) => onError(err, 'startupPullForce'))
-      }
+      })().catch((err) => onError(err, 'startupProbe'))
     },
     stop() {
       if (pushTimer) {

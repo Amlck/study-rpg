@@ -27,6 +27,7 @@ import {
   setLastSignedInUserId,
 } from './account-switch'
 import { checkAssignmentInvariants } from '../assignment'
+import { reconcileRetiredDoctors } from '../retirement-reconcile'
 import { getBackendConfig } from './backend-config'
 import { pushLeaderboardIfOptedIn } from './leaderboard'
 import { deleteLeaderboardMe } from '../leaderboard/api'
@@ -260,6 +261,30 @@ export function useSync(): UseSyncReturn {
             //      pull cycle (per spec scenario "Backfill error does not
             //      break the pull cycle").
             onPullComplete: async () => {
+              // Step 1: Reconcile retired-doctor tombstones BEFORE any other
+              // post-pull repair. checkAssignmentInvariants reads the doctor
+              // roster to detect orphan room pointers — reconcile MUST clean
+              // ghost rows first so the repair observes correct state. Per
+              // spec cloud-sync "reconcile SHALL run BEFORE
+              // checkAssignmentInvariants" (fix-doctor-retire-cloud-
+              // resurrection-v2). Wrapped in its own try/catch so a transient
+              // Dexie failure here cannot block achievement / invariant repair
+              // downstream.
+              try {
+                const { cleaned } = await reconcileRetiredDoctors()
+                if (cleaned > 0) {
+                  // eslint-disable-next-line no-console
+                  console.info(
+                    `[retirement-reconcile] cleaned ${cleaned} ghost doctor rows after pull`,
+                  )
+                }
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[retirement-reconcile] failed, will retry on next pull cycle:',
+                  err,
+                )
+              }
               try {
                 await checkAssignmentInvariants()
                 // Counter backfill MUST run first — achievement-backfill's

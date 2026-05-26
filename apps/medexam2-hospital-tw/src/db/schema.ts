@@ -205,6 +205,19 @@ export interface FateCardHistoryRow {
   pityTriggered: boolean
 }
 
+/**
+ * Retirement log — one row per AAD doctor retire event.
+ *
+ * pk is auto-incr `id`; `doctorId` is a unique secondary index — DO NOT change
+ * pk (Dexie 4.x rejects pk changes with `UpgradeError Not yet support for
+ * changing primary key`, bricking every existing user). See
+ * `~/.claude/imports/dexie_pk_change_pitfall.md` for the full incident record
+ * (v1 commit dac4eae was prod-reverted for exactly this reason).
+ *
+ * `_updatedAt` is the LWW timestamp added in Dexie v19 (additive migration).
+ * Optional in TS because pre-v19 rows are backfilled by the upgrade callback
+ * (set to `retiredAt`); post-v19 rows always have it populated.
+ */
 export interface RetirementLogRow {
   id?: number
   retiredAt: number
@@ -212,6 +225,8 @@ export interface RetirementLogRow {
   subjectId: string
   rarity: Rarity
   refund: number
+  /** LWW timestamp (epoch ms). Added v19. Backfilled to retiredAt for pre-v19 rows. */
+  _updatedAt?: number
 }
 
 export type TargetedTicketStatus = 'pending' | 'assigned' | 'consumed'
@@ -890,6 +905,86 @@ export class HospitalDB extends Dexie {
       hospitalEquipment: '&equipmentId, updatedAt',
       dailyStudyLog: '&date, updatedAt',
     })
+    // v19: fix-doctor-retire-cloud-resurrection-v2 — upgrade retirementLog into
+    // a cloud-synced collection. ADDITIVE migration — pk stays `++id`; we keep
+    // `doctorId` as a plain (non-unique) secondary index and add new
+    // `_updatedAt` LWW field index. v1 (commit dac4eae) tried to change pk to
+    // `&doctorId` and was prod-reverted because Dexie 4.x throws
+    // `UpgradeError Not yet support for changing primary key` — leaving every
+    // v18 user stuck on "啟動中…". DO NOT touch the pk in any future bump.
+    // See ~/.claude/imports/dexie_pk_change_pitfall.md.
+    //
+    // v2-design-take-2 (Path A, validated by §8.12 fixture 2026-05-27):
+    // originally Decision 2 promoted `doctorId` to `&doctorId` (unique). Codex
+    // adversarial review Attack 1 predicted — and the fixture confirmed — that
+    // Dexie 4.x activates the new unique index BEFORE the upgrade callback
+    // runs. Existing v18 data with duplicate doctorId (from ghost-resurrection
+    // bug) aborts the versionchange tx with AbortError. So we drop the unique
+    // constraint and rely on:
+    //   (1) services/retire.ts — destructive retire; can't re-retire a deleted doctor
+    //   (2) Supabase composite pk (user_id, doctor_id) — server-side guarantee
+    //   (3) crypto.randomUUID() 128-bit doctorId — collision-free
+    //   (4) Adapter snapshotDirty / snapshotAll emit per-doctorId via .where().first()
+    //
+    // Upgrade callback still does defensive dedup-by-doctorId (keep smallest
+    // retiredAt) as a one-shot cleanup of any existing ghost-resurrection
+    // duplicates, even though it's no longer required to make the index build
+    // succeed. Cheaper to dedup once than to ship stale duplicates to cloud.
+    this.version(19)
+      .stores({
+        affinity: '&subjectId',
+        doctors: '&id, subjectId, rarity, obtainedAt',
+        gachaStats: '&id',
+        tickets: '&id',
+        rooms: '&id, type, slot',
+        gameCounters: '&id',
+        mastery: '&subjectId',
+        questionHistory:
+          '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt], everWrong',
+        meta: '&key',
+        localBackup: '&key, takenAt',
+        monotonicCounters: '&id',
+        trainingHistory: '++id, doctorId, attemptedAt',
+        eventLog: '++id, triggeredAt',
+        fateCardHistory: '++id, drawnAt',
+        retirementLog: '++id, retiredAt, doctorId, _updatedAt',
+        bookmarks: '&questionId, addedAt',
+        bannerUnlockBonusLog: '&subjectId',
+        targetedTickets: '&id, status, subjectId, obtainedAt',
+        targetedTicketHistory: '++id, ticketId, at, event',
+        erConsultLog: '++id, triggeredAt, subjectId',
+        leaderboardProfile: '&user_id',
+        achievements: '&id, unlockedAt',
+        hospitalEquipment: '&equipmentId, updatedAt',
+        dailyStudyLog: '&date, updatedAt',
+      })
+      .upgrade(async (tx) => {
+        const table = tx.table<RetirementLogRow & { id?: number }, number>('retirementLog')
+        const oldRows = await table.toArray()
+        if (oldRows.length === 0) return // fresh / never-retired user — nothing to do
+        // Group by doctorId, keep row with smallest retiredAt (oldest retire event wins).
+        const byDoctor = new Map<string, RetirementLogRow>()
+        for (const row of oldRows) {
+          const existing = byDoctor.get(row.doctorId)
+          if (!existing || row.retiredAt < existing.retiredAt) {
+            byDoctor.set(row.doctorId, row)
+          }
+        }
+        await table.clear()
+        // Omit `id` field so Dexie auto-assigns new ++id values; backfill
+        // _updatedAt to the original retiredAt so first cloud LWW push has a
+        // sensible timestamp anchored to when the retire actually happened.
+        await table.bulkAdd(
+          Array.from(byDoctor.values()).map((r) => ({
+            doctorId: r.doctorId,
+            retiredAt: r.retiredAt,
+            subjectId: r.subjectId,
+            rarity: r.rarity,
+            refund: r.refund,
+            _updatedAt: r.retiredAt,
+          })),
+        )
+      })
   }
 }
 
