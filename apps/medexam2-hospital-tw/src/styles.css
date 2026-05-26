@@ -2546,7 +2546,7 @@ body:has(.modal-backdrop) {
 
 .quiz-modal__foot {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   margin-top: 8px;
 }
@@ -2632,9 +2632,14 @@ body:has(.modal-backdrop) {
 .quiz-modal__foot .quiz-bug-trigger--in-footer {
   flex: 0 0 auto;
 }
+/* Pin 下一題 to the right edge so the left-side chips (🐞 + ⭐, plus
+ * quality buttons when present) cluster on the left. With quality buttons
+ * (flex: 1 1 auto) the auto margin collapses; without them, it pushes 下一題
+ * all the way right and keeps 🐞 + ⭐ neighbouring on the left. */
 .quiz-modal__foot .quiz-modal__next {
   flex: 0 0 auto;
   white-space: nowrap;
+  margin-left: auto;
 }
 
 @media (max-width: 600px) {
