@@ -98,14 +98,35 @@ interface BarChartProps {
   barColor: string
   title: string
   yLabel: string
+  /** Baseline Y-axis max (e.g. 600 min, 500 題). Auto-extends if any data point exceeds. */
+  yMax: number
+  /** Y gridline interval (e.g. 120 for every 2 hours). Lines drawn at yGridStep, 2×yGridStep, … up to yMax. */
+  yGridStep: number
+  /** Number of X-axis segments — gridlines drawn at each segment boundary. Default 4. */
+  xGridSegments?: number
 }
 
-function BarChart({ data, barColor, title, yLabel }: BarChartProps) {
-  const maxValue = Math.max(0, ...data.map((d) => d.value))
-  const yMax = maxValue > 0 ? maxValue * 1.1 : 1
-  const yMid = yMax / 2
+function BarChart({
+  data,
+  barColor,
+  title,
+  yLabel,
+  yMax: baselineMax,
+  yGridStep,
+  xGridSegments = 4,
+}: BarChartProps) {
+  const dataMax = Math.max(0, ...data.map((d) => d.value))
+  // Auto-extend if data exceeds baseline (rounded up to next gridline step)
+  const yMax =
+    dataMax > baselineMax
+      ? Math.ceil((dataMax * 1.1) / yGridStep) * yGridStep
+      : baselineMax
+  // Intermediate Y gridline values: yGridStep, 2×yGridStep, … up to but not including yMax
+  const yGridlines: number[] = []
+  for (let v = yGridStep; v < yMax; v += yGridStep) yGridlines.push(v)
+
   const chartHeight = 160
-  const padding = { top: 8, right: 8, bottom: 24, left: 36 }
+  const padding = { top: 8, right: 8, bottom: 24, left: 50 }
   const innerWidth = 600 // viewBox base; SVG scales via width=100%
   const innerHeight = chartHeight - padding.top - padding.bottom
   const plotWidth = innerWidth - padding.left - padding.right
@@ -118,6 +139,17 @@ function BarChart({ data, barColor, title, yLabel }: BarChartProps) {
   const fmt = (n: number): string =>
     Number.isInteger(n) ? n.toString() : n.toFixed(1).replace(/\.0$/, '')
 
+  // X gridline indices (segment boundaries, excluding 0 and last)
+  const xGridIndices: number[] = []
+  if (barCount > 0 && xGridSegments > 1) {
+    for (let i = 1; i < xGridSegments; i++) {
+      const idx = Math.floor((barCount * i) / xGridSegments)
+      if (idx > 0 && idx < barCount) xGridIndices.push(idx)
+    }
+  }
+  const xPosForIndex = (i: number): number =>
+    padding.left + i * (barWidth + barGap)
+
   return (
     <figure className="stats-panel__chart">
       <figcaption className="stats-panel__chart-title">{title}</figcaption>
@@ -128,32 +160,53 @@ function BarChart({ data, barColor, title, yLabel }: BarChartProps) {
         aria-label={`${title} 長條圖，最近 ${barCount} 天`}
         className="stats-panel__chart-svg"
       >
-        {/* Y axis ticks (max + mid) */}
+        {/* Y gridlines (light) + their labels */}
+        {yGridlines.map((v) => (
+          <g key={`yg-${v}`}>
+            <line
+              x1={padding.left}
+              y1={yToPx(v)}
+              x2={padding.left + plotWidth}
+              y2={yToPx(v)}
+              className="stats-panel__chart-gridline"
+            />
+            <text
+              x={padding.left - 6}
+              y={yToPx(v) + 3}
+              textAnchor="end"
+              className="stats-panel__chart-y-label"
+            >
+              {fmt(v)}
+            </text>
+          </g>
+        ))}
+        {/* Y max label (top) */}
         <text
           x={padding.left - 6}
-          y={padding.top + 4}
+          y={padding.top + 8}
           textAnchor="end"
           className="stats-panel__chart-y-label"
         >
           {fmt(yMax)} {yLabel}
         </text>
-        <text
-          x={padding.left - 6}
-          y={yToPx(yMid) + 4}
-          textAnchor="end"
-          className="stats-panel__chart-y-label"
-        >
-          {fmt(yMid)}
-        </text>
-        {/* Axis line */}
+        {/* X gridlines (light) at segment boundaries */}
+        {xGridIndices.map((i) => (
+          <line
+            key={`xg-${i}`}
+            x1={xPosForIndex(i)}
+            y1={padding.top}
+            x2={xPosForIndex(i)}
+            y2={padding.top + innerHeight}
+            className="stats-panel__chart-gridline"
+          />
+        ))}
+        {/* X axis baseline */}
         <line
           x1={padding.left}
           y1={padding.top + innerHeight}
           x2={padding.left + plotWidth}
           y2={padding.top + innerHeight}
-          stroke="currentColor"
-          strokeOpacity={0.3}
-          strokeWidth={1}
+          className="stats-panel__chart-axis"
         />
         {/* Bars */}
         {data.map((d, i) => {
@@ -177,7 +230,7 @@ function BarChart({ data, barColor, title, yLabel }: BarChartProps) {
             </g>
           )
         })}
-        {/* X axis end labels (first + last date) */}
+        {/* X axis date labels: first / segment boundaries / last */}
         {data.length > 0 && (
           <>
             <text
@@ -188,6 +241,17 @@ function BarChart({ data, barColor, title, yLabel }: BarChartProps) {
             >
               {data[0].date.slice(5)}
             </text>
+            {xGridIndices.map((i) => (
+              <text
+                key={`xl-${i}`}
+                x={xPosForIndex(i)}
+                y={chartHeight - 6}
+                textAnchor="middle"
+                className="stats-panel__chart-x-label"
+              >
+                {data[i].date.slice(5)}
+              </text>
+            ))}
             <text
               x={padding.left + plotWidth}
               y={chartHeight - 6}
@@ -308,12 +372,16 @@ export function StatsPanel() {
             barColor={STUDY_COLOR}
             title="每日唸書分鐘"
             yLabel="min"
+            yMax={600}
+            yGridStep={120}
           />
           <BarChart
             data={correctData}
             barColor={CORRECT_COLOR}
             title="每日答對題數（以最近一次答題狀態統計）"
             yLabel="題"
+            yMax={500}
+            yGridStep={100}
           />
         </>
       )}
