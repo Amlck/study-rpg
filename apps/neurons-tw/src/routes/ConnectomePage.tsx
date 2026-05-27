@@ -77,6 +77,19 @@ export default function ConnectomePage({ pack }: Props): JSX.Element {
         </p>
       </header>
 
+      {snapshot.synapses.length === 0 && (
+        <section role="region" aria-label="新手指引" style={emptyStateCalloutStyle}>
+          <strong style={emptyStateOpenerStyle}>👋 第一次打開 connectome？</strong>
+          <p style={emptyStateBodyStyle}>
+            向下捲動找到操作面板 <span aria-hidden="true">↓</span> 挑一個 neuron family → 按
+            「<code>+1 答對</code>」。同一天讓 <strong>兩個 family 各答對 5 題</strong>，就能 wire 出你的第一條 synapse。
+          </p>
+          <p style={emptyStateFlavorStyle}>
+            Hebbian rule — &ldquo;Neurons that fire together, wire together.&rdquo;
+          </p>
+        </section>
+      )}
+
       <ConnectomeTreeSvg pack={pack} />
 
       <section style={sectionStyle}>
@@ -302,4 +315,34 @@ const errorStyle: React.CSSProperties = {
   padding: '0.85rem 1rem',
   borderRadius: '4px',
   color: '#c44d4d',
+}
+
+const emptyStateCalloutStyle: React.CSSProperties = {
+  background: 'linear-gradient(135deg, #fdf2e8 0%, #f5e6d3 100%)',
+  border: '2px solid #d4a04d',
+  borderRadius: '8px',
+  padding: '0.9rem 1.1rem',
+  marginBottom: '1rem',
+  boxShadow: '0 2px 6px rgba(212, 160, 77, 0.15)',
+}
+
+const emptyStateOpenerStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '1.05rem',
+  color: '#5a3f29',
+  marginBottom: '0.4rem',
+}
+
+const emptyStateBodyStyle: React.CSSProperties = {
+  margin: '0 0 0.45rem',
+  fontSize: '0.92rem',
+  lineHeight: 1.55,
+  color: '#3a2a1a',
+}
+
+const emptyStateFlavorStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: '0.8rem',
+  fontStyle: 'italic',
+  color: '#8c6d4a',
 }
