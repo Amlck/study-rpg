@@ -101,10 +101,12 @@ pnpm -r typecheck
 
 Key handles for R2 path:
 - Worker: `https://study-rpg-sync-worker.tony85314.workers.dev` (source at `cloudflare/sync-worker/`)
-- Blob layout: `users/<user_id>/<bundle>-snapshot.json.gz` (gzipped JSON, schema_version 1)
+- Blob layout: `users/<user_id>/<bundle>-snapshot.json.gz` (gzipped JSON body holds `meta.schema_version`; R2 `customMetadata['schema-version']` is the **server-authoritative** copy as of `add-bundle-schema-version-guard` 2026-05-27)
 - Migration banner: `apps/<app>/src/components/MigrationBanner.tsx`
 - R2 client adapter: `apps/<app>/src/lib/sync/r2/{client,bundles,engine-r2,migrate-from-supabase}.ts`
 - Reconcile script: `scripts/reconcile.ts` (run via `pnpm reconcile --session <path>`)
+
+**Worker-side schema_version downgrade guard** (Phase 1 opt-in, shipped 2026-05-27 via `add-bundle-schema-version-guard`): PUT presign requests SHOULD include `schema_version: <N>` in the body. When present, the Worker HEADs the existing R2 blob's `customMetadata['schema-version']` (legacy / absent treated as 0), refuses 409 `r2_schema_downgrade_refused` if `incoming < existing`, otherwise mints a presigned URL with `x-amz-meta-schema-version: <N>` baked into the SigV4 `X-Amz-SignedHeaders` scope. Client MUST send the exact header at PUT time (response `requiredHeaders` field tells it what to send) — omission or tampering causes R2 to reject with 403 SignatureDoesNotMatch. Client-side localStorage guard remains active during P1; legacy clients omitting `schema_version` get the pre-change behaviour (no enforcement) for grace period. Smoke: `bash cloudflare/sync-worker/scripts/smoke-presign-sv.sh`. Spec: [`openspec/specs/dexie-schema-guards/spec.md`](openspec/specs/dexie-schema-guards/spec.md). Follow-ups: `require-bundle-schema-version-in-presign` (P2 — make required), `remove-client-side-sv-downgrade-guard` (P3 — single source of truth).
 
 ### Project + env
 
