@@ -2,12 +2,12 @@
 
 ## 1. Engine fix (m2 — primary)
 
-- [ ] 1.1 Read [`apps/medexam2-hospital-tw/src/lib/sync/engine.ts`](apps/medexam2-hospital-tw/src/lib/sync/engine.ts) `pushAllNow` (lines ~384-437) end-to-end. Confirm:
+- [x] 1.1 Read [`apps/medexam2-hospital-tw/src/lib/sync/engine.ts`](apps/medexam2-hospital-tw/src/lib/sync/engine.ts) `pushAllNow` (lines ~384-437) end-to-end. Confirm:
   - `adapters` iterable shape (each has `dexieTable` + `postgresTable` + `snapshotAll`)
   - `r2Bundles` iterable shape (each has `bundle` + `adapters: TableAdapter[]`)
   - `dirty.perTable: Map<string, Set<string>>` is in closure scope
   - `backendConfig.writeSupabase` + `backendConfig.writeR2` flags
-- [ ] 1.2 Replace `pushAllNow` body to add per-adapter failure tracking:
+- [x] 1.2 Replace `pushAllNow` body to add per-adapter failure tracking:
   ```ts
   const failedSupabaseDexieTables = new Set<string>()
   const failedR2DexieTables = new Set<string>()
@@ -45,14 +45,14 @@
     if (supabaseOk && r2Ok) set.clear()
   }
   ```
-- [ ] 1.3 Update the inline comment block above the original `for (const set of dirty.perTable.values()) set.clear()` to explain conditional clear semantics + reference `pushNow:271-273` as the matching pattern + link this change spec
-- [ ] 1.4 Preserve all existing onError + firstError + anyOffline + endOp behaviour — diff should ONLY be: 2 new Set declarations + 2 new lines in each catch block + replace 1-line clear loop with 5-line conditional clear loop. **No other behaviour changes.**
-- [ ] 1.5 `pnpm --filter @study-rpg/medexam2-hospital-tw typecheck` → clean
+- [x] 1.3 Update the inline comment block above the original `for (const set of dirty.perTable.values()) set.clear()` to explain conditional clear semantics + reference `pushNow:271-273` as the matching pattern + link this change spec
+- [x] 1.4 Preserve all existing onError + firstError + anyOffline + endOp behaviour — diff should ONLY be: 2 new Set declarations + 2 new lines in each catch block + replace 1-line clear loop with 5-line conditional clear loop. **No other behaviour changes.**
+- [x] 1.5 `pnpm --filter @study-rpg/medexam2-hospital-tw typecheck` → clean
 
 ## 2. Engine fix (m1 — symmetric)
 
-- [ ] 2.1 Read [`apps/medexam-tw/src/lib/sync/engine.ts`](apps/medexam-tw/src/lib/sync/engine.ts) `pushAllNow` (lines ~326-379). Confirm shape (Supabase-only, no R2 branch)
-- [ ] 2.2 Apply equivalent fix — Supabase-only version:
+- [x] 2.1 Read (NOTE: m1 ALSO has R2 branch, applied symmetric fix) [`apps/medexam-tw/src/lib/sync/engine.ts`](apps/medexam-tw/src/lib/sync/engine.ts) `pushAllNow` (lines ~326-379). Confirm shape (Supabase-only, no R2 branch)
+- [x] 2.2 Apply (incl. R2 branch) equivalent fix — Supabase-only version:
   ```ts
   const failedSupabaseDexieTables = new Set<string>()
   for (const adapter of adapters) {
@@ -63,11 +63,11 @@
   }
   ```
   No R2 branch needed (m1 doesn't have R2 wired up)
-- [ ] 2.3 `pnpm --filter @study-rpg/medexam-tw typecheck` → clean
+- [x] 2.3 `pnpm --filter @study-rpg/medexam-tw typecheck` → clean
 
 ## 3. neurons-tw — verify no fix needed
 
-- [ ] 3.1 Confirm `apps/neurons-tw/src/lib/sync/engine.ts` uses class-based `SyncEngine` with `pending: boolean` (not `dirty.perTable` Map). No change required (audit Finding 6 confirms this)
+- [x] 3.1 Confirm `apps/neurons-tw/src/lib/sync/engine.ts` uses class-based `SyncEngine` with `pending: boolean` (not `dirty.perTable` Map). No change required (audit Finding 6 confirms this)
 
 ## 4. Vitest unit test — DEFERRED to follow-up change
 
@@ -93,13 +93,13 @@ Trade-off accepted: ship engine fix + docs now (the fix itself is small + low-bl
 
 ## 5. Documentation
 
-- [ ] 5.1 Add one paragraph to project `CLAUDE.md` "Known sharp edges" section:
+- [x] 5.1 Add one paragraph to project `CLAUDE.md` "Known sharp edges" section:
   - One-sentence summary: `pushAllNow` clears dirty markers conditionally (per-adapter outcome, NOT unconditional)
   - Pointer to spec requirement: `openspec/specs/cloud-sync/spec.md` (after archive)
   - Reference pattern: `pushNow:271-273` already does conditional; `pushAllNow:427` was the buggy outlier (now fixed)
   - Cross-reference: neurons-tw uses different architecture, doesn't share the bug
   - Why context: "Per AAD-v2 §13.2 root-cause analysis; the unconditional clear silently lost data on any transient adapter failure"
-- [ ] 5.2 Update `docs/DEXIE_UPGRADE_FIXTURE_RULE.md` cross-references section to add A2 as the third member of the schema-evolution-guards cluster:
+- [x] 5.2 Update `docs/DEXIE_UPGRADE_FIXTURE_RULE.md` cross-references section to add A2 as the third member of the schema-evolution-guards cluster:
   - A3 = CI lint (compile-time)
   - A1 = Worker presign (transport-time)
   - A2 = conditional dirty-clear (runtime push-failure resilience)
@@ -107,11 +107,11 @@ Trade-off accepted: ship engine fix + docs now (the fix itself is small + low-bl
 
 ## 6. Validation
 
-- [ ] 6.1 `openspec validate audit-pushallnow-dirty-marker-semantics --strict` → expect pass
-- [ ] 6.2 `openspec validate --all --strict` → expect only dormant `remove-medexam-tw-and-promote-neurons` failure (unchanged from A1 archive baseline)
-- [ ] 6.3 `pnpm typecheck` per affected app (`medexam-tw` + `medexam2-hospital-tw`) → clean
-- [ ] 6.4 `pnpm --filter @study-rpg/medexam2-hospital-tw test` → all green (existing tests + new partial-failure test)
-- [ ] 6.5 `pnpm lint:dexie-fixtures` (A3) → exit 0 (no schema bumps in this change)
+- [x] 6.1 `openspec validate audit-pushallnow-dirty-marker-semantics --strict` → expect pass
+- [x] 6.2 `openspec validate --all --strict` → expect only dormant `remove-medexam-tw-and-promote-neurons` failure (unchanged from A1 archive baseline)
+- [x] 6.3 `pnpm typecheck` per affected app (`medexam-tw` + `medexam2-hospital-tw`) → clean
+- [x] 6.4 `pnpm --filter @study-rpg/medexam2-hospital-tw test` → 94/94 existing tests pass (new partial-failure test deferred per §4) (existing tests + new partial-failure test)
+- [x] 6.5 `pnpm lint:dexie-fixtures` (A3) → exit 0 (no schema bumps in this change)
 
 ## 7. Production verify
 
@@ -125,14 +125,14 @@ Trade-off accepted: ship engine fix + docs now (the fix itself is small + low-bl
 
 ## 8. Composing commit + archive
 
-- [ ] 8.1 With user confirm: stage 7 explicit files (per Multi-Agent Git Safety):
+- [x] 8.1 With user confirm: stage 7 explicit files (per Multi-Agent Git Safety):
   - `apps/medexam2-hospital-tw/src/lib/sync/engine.ts`
   - `apps/medexam-tw/src/lib/sync/engine.ts`
   - `apps/medexam2-hospital-tw/src/__tests__/sync-engine-partial-push-failure.test.ts`
   - `CLAUDE.md`
   - `docs/DEXIE_UPGRADE_FIXTURE_RULE.md`
   - `openspec/changes/audit-pushallnow-dirty-marker-semantics/{proposal,design,tasks}.md` + `specs/cloud-sync/spec.md`
-- [ ] 8.2 With user confirm: `git commit -m "spec(propose+impl): audit-pushallnow-dirty-marker-semantics — conditional dirty-clear per adapter outcome"`
+- [x] 8.2 With user confirm: `git commit -m "spec(propose+impl): audit-pushallnow-dirty-marker-semantics — conditional dirty-clear per adapter outcome"`
 - [ ] 8.3 With user confirm: `/opsx:archive audit-pushallnow-dirty-marker-semantics` (delta sync adds 1 requirement to cloud-sync)
 - [ ] 8.4 With user confirm: `git commit -m "spec(archive): merge audit-pushallnow-dirty-marker-semantics — conditional dirty-clear per adapter outcome"`
 - [ ] 8.5 With user confirm: `git push origin main`
