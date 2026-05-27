@@ -53,13 +53,19 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
         await db.gameCounters.put({ ...counters, revenue: counters.revenue + refund })
       }
 
-      // Append retirementLog row
+      // Append retirementLog row.
+      // _updatedAt explicitly set here (not just relying on the Dexie creating
+      // hook auto-stamp) so the first cloud LWW push has a deterministic
+      // timestamp anchored to the retire moment. Added v19 by
+      // fix-doctor-retire-cloud-resurrection-v2.
+      const now = Date.now()
       const logRow: RetirementLogRow = {
-        retiredAt: Date.now(),
+        retiredAt: now,
         doctorId: doctor.id,
         subjectId: doctor.subjectId,
         rarity: doctor.rarity,
         refund,
+        _updatedAt: now,
       }
       await db.retirementLog.add(logRow)
 

@@ -27,6 +27,7 @@ import {
   type TicketsRow,
 } from '../../db/schema'
 import { HOSPITAL_ADAPTERS } from './tables'
+import { clearSchemaVersion } from './r2/etag'
 
 export type MigrationChoice =
   | 'keep-separate'
@@ -355,6 +356,7 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       db.equipmentTickets,
       db.equipmentGachaStats,
       db.equipmentMaterials,
+      db.retirementLog,
     ],
     async () => {
       await db.gameCounters.clear()
@@ -372,6 +374,16 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       await db.equipmentTickets.clear()
       await db.equipmentGachaStats.clear()
       await db.equipmentMaterials.clear()
+      // fix-doctor-retire-cloud-resurrection-v2: retirementLog is now cloud-
+      // synced; wiping it here mirrors clearLocalSyncTables (account-switch).
+      // 「Use cloud overwrites local」 path triggers force-pull, which then
+      // re-populates retirementLog from cloud — same as other synced tables.
+      await db.retirementLog.clear()
     },
   )
+  // Drop cached R2 schema_version for m2 + bookmarks bundles so the post-wipe
+  // force-pull + first push isn't blocked by stale cached cloud SV from before
+  // the wipe. Outside the Dexie tx since it touches localStorage.
+  clearSchemaVersion('m2')
+  clearSchemaVersion('bookmarks')
 }

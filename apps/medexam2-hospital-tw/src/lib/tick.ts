@@ -10,11 +10,17 @@
  * Spec: openspec/changes/redesign-hospital-economy/design.md D1/D5/D9
  *       openspec/specs/hospital-tycoon-engine/spec.md
  *       openspec/specs/clinic-level-up/spec.md
+ *
+ * 2026-05-26 — `rewire-hospital-events-to-non-reading-trigger`: removed the
+ * in-tick event roll + ER consult roll. Rolls now live in
+ * `services/non-reading-event-trigger.ts`, fired from quiz answers + page
+ * navigations (Hook A + Hook B). Tick keeps housekeeping only — malpractice
+ * 24-hr auto-resolve and ER consult expiry auto-skip — because those are
+ * time-based and need a periodic timer regardless of player interaction.
  */
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  EVENT_TICK_INTERVAL,
   MALPRACTICE_AUTO_RESOLVE_MS,
   MALPRACTICE_PENALTY_REP,
   MAX_OFFLINE_TICK_SEC,
@@ -30,19 +36,13 @@ import {
   createStudySessionController,
   getNextTier,
   rarityIsAtLeast,
-  rollEvent,
-  type EventDefinition,
   type HospitalTier,
-  type RollEventResult,
   type StudySessionController,
   type StudySessionState,
-  type ToastEventOutcome,
 } from '@study-rpg/content-medexam2-tw'
-import {
-  jitterTicksUntilNextERConsult,
-  shouldRollERConsult,
-} from '@study-rpg/core'
+import { shouldRollERConsult } from '@study-rpg/core'
 import { getHospitalDB, type ERConsultActiveState } from '../db/schema'
+import { formatYMD } from './util/date'
 import {
   appendERConsultLog,
   getERConsultSettings,
@@ -64,11 +64,6 @@ const TIER_UPGRADE_EQUIPMENT_TICKETS: Partial<Record<HospitalTier, number>> = {
 const EQUIPMENT_TICKET_STUDY_INTERVAL_MIN = 60
 import { computeThroughputMultiplier, computeUniqueEquipmentCount } from './equipment'
 
-export interface TickEventToastInfo {
-  event: EventDefinition
-  outcome: ToastEventOutcome
-}
-
 const TICK_INTERVAL_MS = 5000
 
 export interface TickResult {
@@ -79,16 +74,14 @@ export interface TickResult {
   elapsedSec: number
   wasCapped: boolean
   upgradedTo?: HospitalTier
-  /** Toast event applied this tick (immediate-resolution events only). */
-  toastEvent?: TickEventToastInfo
-  /** Modal event triggered this tick (caller renders modal). */
-  modalEvent?: EventDefinition
-  /**
-   * Set when the in-tx ER consult countdown reached 0 and roll mutex is clear.
-   * Caller (useStudySessionTick) runs the actual roll in a follow-up tx because
-   * picking a question requires a content-pack fetch that can't sit inside Dexie.
-   */
-  shouldRollERConsult?: boolean
+  // Note: pre-2026-05-26 `toastEvent` / `modalEvent` / `shouldRollERConsult`
+  // were emitted here by the in-tick roll loop. The
+  // `rewire-hospital-events-to-non-reading-trigger` change moved rolls onto
+  // interaction-based triggers in `services/non-reading-event-trigger.ts`,
+  // so the tick result no longer carries them. The malpractice 24-hr
+  // auto-resolve and ER consult expiry-auto-skip paths remain here (tick is
+  // the right home for time-based housekeeping) but they mutate Dexie
+  // directly without surfacing UI callbacks.
 }
 
 const ZERO_TICK: TickResult = {
@@ -145,6 +138,7 @@ export async function runTick(): Promise<TickResult> {
       db.equipment,
       db.equipmentTickets,
       db.hospitalEquipment,
+      db.dailyStudyLog,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -255,13 +249,14 @@ export async function runTick(): Promise<TickResult> {
         }
       }
 
-      // ─── Event rolling ───────────────────────────────────────────────────
-      let toastEvent: TickEventToastInfo | undefined
-      let modalEvent: EventDefinition | undefined
+      // ─── Time-based housekeeping (no rolling) ────────────────────────────
+      // Rolls moved to services/non-reading-event-trigger.ts; tick is now
+      // limited to housekeeping that legitimately wants periodic timer
+      // attention (malpractice 24-hr auto-resolve, ER consult expiry).
       let pendingEventId = counters.pendingEventId ?? null
       let pendingEventTriggeredAt = counters.pendingEventTriggeredAt ?? null
       let lastEventResolvedAt = counters.lastEventResolvedAt ?? null
-      let eventRollTickCounter = (counters.eventRollTickCounter ?? 0) + 1
+      let lastInteractionEventAt = counters.lastInteractionEventAt ?? null
 
       // Auto-resolve stuck 醫療糾紛 after MALPRACTICE_AUTO_RESOLVE_MS — applies the
       // accept-penalty branch (lose rep, no revenue cost) so the player can't be
@@ -272,7 +267,7 @@ export async function runTick(): Promise<TickResult> {
         now - pendingEventTriggeredAt >= MALPRACTICE_AUTO_RESOLVE_MS
       ) {
         // actual-delta after floor clamp — parity with player-action branch
-        // (services/event.ts:85-105) and toast branch below (tick.ts:225-243)
+        // (services/event.ts:85-105)
         const prevRep = newReputation
         newReputation = Math.max(0, prevRep - MALPRACTICE_PENALTY_REP)
         const actualRepDelta = newReputation - prevRep
@@ -286,60 +281,16 @@ export async function runTick(): Promise<TickResult> {
         pendingEventId = null
         pendingEventTriggeredAt = null
         lastEventResolvedAt = now
+        lastInteractionEventAt = now
       }
 
-      // Roll a new event every EVENT_TICK_INTERVAL ticks, but only if no modal
-      // event is pending. Toast events resolve here-and-now.
-      if (eventRollTickCounter >= EVENT_TICK_INTERVAL && pendingEventId === null) {
-        eventRollTickCounter = 0
-        const result: RollEventResult = rollEvent({
-          tier: currentTier,
-          reputation: newReputation,
-          totalThroughput,
-          lastResolvedAt: lastEventResolvedAt,
-          nowSessionMs: now,
-          hasPendingEvent: false,
-          rng: Math.random,
-        })
-        if (result.kind === 'triggered') {
-          if (result.toastOutcome) {
-            // Apply toast outcome immediately.
-            // Compute actualRepDelta after floor clamp so eventLog + toast UI reflect
-            // realized impact, parity with services/event.ts:85-105 (malpractice / audit).
-            const delta = result.toastOutcome
-            const intentDelta =
-              delta.kind === 'reputation-loss' ? -delta.amount : delta.amount
-            const prevRep = newReputation
-            newReputation = Math.max(0, newReputation + intentDelta)
-            const actualRepDelta = newReputation - prevRep
-            await db.eventLog.add({
-              triggeredAt: now,
-              eventKey: result.event.id,
-              outcome: delta.kind,
-              reputationDelta: actualRepDelta,
-              revenueDelta: 0,
-            })
-            lastEventResolvedAt = now
-            toastEvent = {
-              event: result.event,
-              outcome: { kind: delta.kind, amount: Math.abs(actualRepDelta) },
-            }
-          } else {
-            // Modal event — set pending state, app renders modal
-            pendingEventId = result.event.id
-            pendingEventTriggeredAt = now
-            modalEvent = result.event
-          }
-        }
-      }
-
-      // ─── ER consult timing — Phase 1 (in-tx) ─────────────────────────────
-      // Auto-skip expired active consult + decrement countdown. The actual roll
-      // (subject + question pick) happens in a follow-up tx because content-pack
-      // fetch can't await inside a Dexie transaction.
+      // ─── ER consult expiry auto-skip (housekeeping only) ─────────────────
+      // The actual roll for a NEW consult is no longer triggered by tick —
+      // see services/non-reading-event-trigger.ts. Expiry auto-skip still
+      // belongs here because it's purely time-based: a consult that the
+      // player ignores for ER_CONSULT_AUTO_SKIP_MS expires regardless of
+      // whether they're interacting.
       let erConsultActive = counters.erConsultActive ?? null
-      let erConsultTicksUntilRoll = counters.erConsultTicksUntilRoll ?? 0
-      let shouldRollERConsultFlag = false
 
       if (erConsultActive && isERConsultExpired(erConsultActive, now)) {
         await appendERConsultLog({
@@ -352,19 +303,9 @@ export async function runTick(): Promise<TickResult> {
           reactionTimeMs: null,
         })
         erConsultActive = null
-      }
-
-      if (erConsultActive === null) {
-        erConsultTicksUntilRoll -= 1
-        if (erConsultTicksUntilRoll <= 0) {
-          // Re-randomize for next attempt regardless of whether this roll fires.
-          erConsultTicksUntilRoll = jitterTicksUntilNextERConsult()
-          // Pre-check mutex (settings re-checked in Phase 2 tx so toggle-off
-          // mid-tick still wins). If mutex passes, signal caller to run roll.
-          if (pendingEventId === null) {
-            shouldRollERConsultFlag = true
-          }
-        }
+        // Auto-skip is a resolution event for cooldown purposes — stamp
+        // so the next nav doesn't fire a popup the moment the dialog clears.
+        lastInteractionEventAt = now
       }
 
       await db.gameCounters.put({
@@ -376,9 +317,8 @@ export async function runTick(): Promise<TickResult> {
         pendingEventId,
         pendingEventTriggeredAt,
         lastEventResolvedAt,
-        eventRollTickCounter,
+        lastInteractionEventAt,
         erConsultActive,
-        erConsultTicksUntilRoll,
       })
 
       let studyTicketsEarned = 0
@@ -418,6 +358,18 @@ export async function runTick(): Promise<TickResult> {
             available: Math.min(EQUIPMENT_TICKET_CAP, eqTickets.available + totalEquipmentGrant),
           })
         }
+      // tidy-tabs-add-study-stats-medexam2: per-day study-minute snapshot for
+      // the 成就 → 統計 sub-tab charts. Forward-only — pre-v18 lifetime
+      // minutes are NOT backfilled here; the stats UI surfaces a residual
+      // chip showing (totalStudyMinutes − Σ dailyStudyLog.minutesAdded).
+      if (deltaStudyMinutes > 0) {
+        const today = formatYMD(new Date(now))
+        const existingDay = await db.dailyStudyLog.get(today)
+        await db.dailyStudyLog.put({
+          date: today,
+          minutesAdded: (existingDay?.minutesAdded ?? 0) + deltaStudyMinutes,
+          updatedAt: now,
+        })
       }
 
       return {
@@ -428,9 +380,6 @@ export async function runTick(): Promise<TickResult> {
         elapsedSec,
         wasCapped,
         upgradedTo,
-        toastEvent,
-        modalEvent,
-        shouldRollERConsult: shouldRollERConsultFlag,
       }
     },
   )
@@ -549,14 +498,11 @@ async function markSessionEnd(): Promise<void> {
 export function useStudySessionTick(
   onCapped?: () => void,
   onUpgrade?: (tier: HospitalTier) => void,
-  onToastEvent?: (info: TickEventToastInfo) => void,
-  onModalEvent?: (event: EventDefinition) => void,
-  onERConsultTriggered?: (active: ERConsultActiveState) => void,
 ): StudySessionState {
   const controller = getStudySessionController()
   const [state, setState] = useState<StudySessionState>(controller.getState())
-  const cbRef = useRef({ onCapped, onUpgrade, onToastEvent, onModalEvent, onERConsultTriggered })
-  cbRef.current = { onCapped, onUpgrade, onToastEvent, onModalEvent, onERConsultTriggered }
+  const cbRef = useRef({ onCapped, onUpgrade })
+  cbRef.current = { onCapped, onUpgrade }
 
   useEffect(() => {
     // Re-read state on mount in case controller transitioned before mount.
@@ -577,17 +523,11 @@ export function useStudySessionTick(
 
     function tickOnce() {
       runTick()
-        .then(async (result) => {
+        .then((result) => {
           if (import.meta.env.DEV) console.debug('[tick]', result)
-          const { onCapped, onUpgrade, onToastEvent, onModalEvent, onERConsultTriggered } = cbRef.current
+          const { onCapped, onUpgrade } = cbRef.current
           if (result.wasCapped && onCapped) onCapped()
           if (result.upgradedTo && onUpgrade) onUpgrade(result.upgradedTo)
-          if (result.toastEvent && onToastEvent) onToastEvent(result.toastEvent)
-          if (result.modalEvent && onModalEvent) onModalEvent(result.modalEvent)
-          if (result.shouldRollERConsult) {
-            const active = await maybeRollAndPersistERConsult()
-            if (active && onERConsultTriggered) onERConsultTriggered(active)
-          }
         })
         .catch((err) => console.error('[tick] failed', err))
     }

@@ -6,9 +6,17 @@ import { RARITY_LABELS, getSpecialtyMultiplier } from '@study-rpg/content-medexa
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
 import { loadPoolSizeMap, pickQuestionById, pickRandomQuestion } from '../lib/quiz'
-import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
+import {
+  recordCorrectAnswer,
+  recordWrongAnswer,
+  applyQualityModifier,
+  restoreDefaultSrs,
+  type DefaultPathSnapshot,
+  type PrevSrsSnapshot,
+} from '../lib/mastery'
 import { emitGraceToast } from '../lib/grace-toast'
 import { applyQuizReward } from '../services/quiz-rewards'
+import { maybeRollNonReadingEvent } from '../services/non-reading-event-trigger'
 import { getNextDueCardForSubject } from '../lib/srs-scheduler'
 import { lookupSprite } from '../lib/sprite-lookup'
 import { toggleBookmark, useBookmark } from '../services/bookmarks'
@@ -22,11 +30,17 @@ import { EmojiIcon } from './EmojiIcon'
 import { ExplanationMarkdown } from './ExplanationMarkdown'
 import { QuizBugReportSheet } from './QuizBugReportSheet'
 import { buildQuestionSnapshot, type QuizQuestionSnapshot } from '../services/bug-report'
+import { incrementEasyClick, incrementGuessedClick } from '../lib/srs-telemetry'
+import { useQuizHotkeys } from '../lib/use-quiz-hotkeys'
 
 const ALL_SUBJECT_IDS: SubjectId[] = [
   '內科', '家醫科', '小兒科', '皮膚科', '神經內科', '精神科',
   '外科', '泌尿科', '骨科', '婦產科', '復健科', '眼科', '耳鼻喉科', '麻醉科',
 ]
+
+// Unicode subscript digits used for keyboard hotkey badges on choice + footer
+// buttons. Only ₁–₄ are needed (max 4 choices, max 3 modifier buttons).
+const HOTKEY_SUBSCRIPTS = ['₁', '₂', '₃', '₄'] as const
 
 interface QuizModalProps {
   initialSubject: SubjectId
@@ -54,7 +68,23 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
   const [picking, setPicking] = useState(false)
   const [skipSrs, setSkipSrs] = useState(false)
   const [toasts, setToasts] = useState<Array<{ id: number; text: string }>>([])
+  // SRS state captured BEFORE recordCorrectAnswer overwrites it. Used by the
+  // 「太簡單」/「我亂猜的」 button handlers to compute the modifier path from the
+  // correct baseline (not stacked on the default-path write). Reset on each pick.
+  const prevSrsRef = useRef<PrevSrsSnapshot | null>(null)
+  // SRS state captured AFTER the default-path recordCorrectAnswer commits.
+  // Restored when the player deselects a modifier by clicking the same
+  // ✨ / 🤔 button a second time. Reset on each pick.
+  const defaultPostSrsRef = useRef<DefaultPathSnapshot | null>(null)
+  // Tracks which opt-in modifier (if any) the player has clicked for the
+  // current reveal. Reset on each pick. Buttons toggle is-active visual based
+  // on this.
+  const [activeQuality, setActiveQuality] = useState<'easy' | 'guessed' | null>(null)
   const firedExhaustedRef = useRef<Set<SubjectId>>(new Set())
+  // Keyboard-only pre-submit highlight (mouse path stays one-step click=submit).
+  // Reset to null whenever the next question loads or the modal opens fresh.
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null)
+  const modalCardRef = useRef<HTMLDivElement | null>(null)
   const [bugSheetSnapshot, setBugSheetSnapshot] = useState<QuizQuestionSnapshot | null>(null)
   const [bugFullModalOpen, setBugFullModalOpen] = useState(false)
   const [bugFullModalPrefill, setBugFullModalPrefill] = useState<{
@@ -130,6 +160,7 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     setLoading(true)
     setSelectedOption(null)
     setRevealed(false)
+    setHighlightedKey(null)
     if (resetSeen) {
       seenIdsRef.current = new Set()
       consumedDueIdsRef.current = new Set()
@@ -241,6 +272,13 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Take focus on open so document keydown listener captures keystrokes from
+  // the moment the modal mounts (no autofocus on any button → Space-as-scroll
+  // doesn't trigger button click).
+  useEffect(() => {
+    modalCardRef.current?.focus()
+  }, [])
+
   function handleSubjectChange(next: SubjectId): void {
     if (next === subjectId) return
     setSubjectId(next)
@@ -251,11 +289,26 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     if (revealed || !question || !boundDoctor) return
     setSelectedOption(optionKey)
     setRevealed(true)
+    setActiveQuality(null) // reset modifier state for the new reveal
     // 送分題: 考選部判定全部給分 — 任何選項都算對
     const wasCorrect = question.disputed || optionKey === question.answer
     const payload = { subjectId, questionId: question.id }
     const capturedQuestion = question
     const capturedDoctor = boundDoctor
+
+    // Capture prev SRS state BEFORE recordCorrectAnswer overwrites it — used
+    // by the 「太簡單」/「我亂猜的」 buttons if the player clicks one. Only
+    // meaningful on correct answers (buttons hidden on wrong).
+    if (wasCorrect) {
+      const priorRow = await db.questionHistory.get(capturedQuestion.id)
+      prevSrsRef.current = {
+        interval: priorRow?.interval ?? 0,
+        easeFactor: priorRow?.easeFactor ?? 2.5,
+        nextDueAt: priorRow?.nextDueAt ?? null,
+      }
+    } else {
+      prevSrsRef.current = null
+    }
 
     // Atomic answer + reward — single Dexie transaction wrapping both helpers.
     // Inner `db.transaction(...)` calls inside recordCorrectAnswer / applyQuizReward
@@ -334,7 +387,31 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     // a fresh answer (avoids the 3-roll budget being wasted on a question we
     // just persisted to questionHistory).
     historyIdsRef.current.get(subjectId)?.add(capturedQuestion.id)
+
+    // Snapshot the post-default-write SRS state for potential modifier
+    // deselect (player toggling ✨ 太簡單 / 🤔 我亂猜的 off via a second click).
+    // Only meaningful on correct answers — modifier buttons are hidden on
+    // wrong, so wrong-path skips the snapshot entirely.
+    if (wasCorrect) {
+      const postRow = await db.questionHistory.get(capturedQuestion.id)
+      if (postRow) {
+        defaultPostSrsRef.current = {
+          interval: postRow.interval,
+          easeFactor: postRow.easeFactor,
+          nextDueAt: postRow.nextDueAt,
+          everWrong: postRow.everWrong,
+          lastAnsweredAt: postRow.lastAnsweredAt,
+        }
+      }
+    }
+
     for (const text of rewardResult.toastTexts) emitToast(text)
+
+    // Hook A — `rewire-hospital-events-to-non-reading-trigger`: every quiz
+    // answer commit is an interaction opportunity to roll a hospital event /
+    // ER consult. Service handles gates (reading-session / cooldown / mutex /
+    // probability) internally and is safe to call unconditionally.
+    void maybeRollNonReadingEvent('quiz')
   }
 
   async function handleNext(): Promise<void> {
@@ -347,7 +424,43 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
       await loadNextQuestion(subjectId, false)
     } finally {
       setPicking(false)
+      // Clear modifier state on advance — next reveal starts fresh.
+      setActiveQuality(null)
+      prevSrsRef.current = null
+      defaultPostSrsRef.current = null
     }
+  }
+
+  /**
+   * Click handler for 「太簡單」 / 「我亂猜的」 opt-in modifier buttons.
+   * Three-state UX: default (no modifier) / easy / guessed.
+   *
+   * - Click an inactive button → applies that modifier (replaces any prior).
+   * - Click the currently active button → deselects, restoring the SRS row
+   *   to the snapshot captured immediately after the default-path write.
+   *
+   * Deselect closes a real UX gap: default vs. modifier produce different
+   * SRS schedules, and a debounced no-op cannot express the player's intent
+   * to revert. The snapshot lives in `defaultPostSrsRef` (set by
+   * handlePickOption on the correct-answer path).
+   */
+  async function handleQualityClick(target: 'easy' | 'guessed'): Promise<void> {
+    if (!revealed || !question || picking) return
+    if (activeQuality === target) {
+      // Deselect: revert SRS row to default-path snapshot.
+      const snapshot = defaultPostSrsRef.current
+      if (!snapshot) return // safety: snapshot missing → can't restore
+      await restoreDefaultSrs(question.id, snapshot)
+      setActiveQuality(null)
+      return
+    }
+    const prev = prevSrsRef.current
+    if (!prev) return // safety: only on correct (captured set there)
+    await applyQualityModifier(question.id, target, prev)
+    setActiveQuality(target)
+    // DEV-only telemetry: count click on first selection per question.
+    if (target === 'easy') incrementEasyClick()
+    else incrementGuessedClick()
   }
 
   const optionKeys = useMemo(() => (question ? Object.keys(question.options).sort() : []), [question])
@@ -356,9 +469,41 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
     ? getSpecialtyMultiplier(boundDoctor.subjectId, boundDoctor.rarity, subjectId)
     : 1.0
 
+  // Keyboard hotkey wiring — see lib/use-quiz-hotkeys.ts for dispatch contract.
+  const phase = revealed ? 'answered' : 'asking'
+  const qualityAvailable =
+    revealed &&
+    question !== null &&
+    selectedOption !== null &&
+    (question.disputed || selectedOption === question.answer)
+  useQuizHotkeys({
+    isOpen: true,
+    phase,
+    optionKeys,
+    highlightedKey,
+    qualityAvailable,
+    scrollContainerRef: modalCardRef,
+    setHighlightedKey,
+    onSubmit: (key) => void handlePickOption(key),
+    onToggleBookmark: () => {
+      if (question) void toggleBookmark(question.id)
+    },
+    onToggleEasy: () => void handleQualityClick('easy'),
+    onToggleGuessed: () => void handleQualityClick('guessed'),
+    onAdvance: () => void handleNext(),
+  })
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card modal-card--quiz" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal-card modal-card--quiz"
+        onClick={(e) => e.stopPropagation()}
+        ref={modalCardRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="答題"
+      >
         <header className="quiz-modal__head">
           <h2 className="quiz-modal__title"><EmojiIcon char="📚" size={24} /> {subjectId}</h2>
           <button type="button" className="quiz-modal__close" onClick={onClose} aria-label="關閉">
@@ -488,17 +633,21 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
                 </p>
               )}
               <ul className="quiz-modal__options">
-                {optionKeys.map((key) => {
+                {optionKeys.map((key, idx) => {
                   // 送分題: 揭曉時所有選項都標 correct（任選都對）
                   const isSelected = key === selectedOption
                   const isCorrect = revealed && (question.disputed || key === question.answer)
                   const isWrongPick = revealed && isSelected && !question.disputed && key !== question.answer
+                  const isHighlighted = !revealed && highlightedKey === key
                   const className = [
                     'quiz-modal__option',
                     isCorrect ? 'quiz-modal__option--correct' : '',
                     isWrongPick ? 'quiz-modal__option--wrong' : '',
                     revealed && !isCorrect && !isSelected ? 'quiz-modal__option--dim' : '',
+                    isHighlighted ? 'quiz-modal__option--highlighted' : '',
                   ].filter(Boolean).join(' ')
+                  const hotkeyNum = idx + 1
+                  const subscript = HOTKEY_SUBSCRIPTS[idx]
                   return (
                     <li key={key}>
                       <button
@@ -506,9 +655,15 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
                         className={className}
                         onClick={() => void handlePickOption(key)}
                         disabled={revealed || !boundDoctor}
+                        aria-keyshortcuts={hotkeyNum <= 4 ? String(hotkeyNum) : undefined}
                       >
                         <span className="quiz-modal__option-key">{key}.</span>
                         <span className="quiz-modal__option-text">{question.options[key]}</span>
+                        {subscript && (
+                          <span className="quiz-hotkey-badge" aria-hidden="true">
+                            {subscript}
+                          </span>
+                        )}
                       </button>
                     </li>
                   )
@@ -522,16 +677,10 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
                 </div>
               )}
 
-              {revealed && (
-                <InlinePromote
-                  questionId={question.id}
-                  wasWrong={
-                    selectedOption !== null &&
-                    selectedOption !== question.answer &&
-                    !question.disputed
-                  }
-                />
-              )}
+              {revealed &&
+                selectedOption !== null &&
+                selectedOption !== question.answer &&
+                !question.disputed && <InlinePromoteHint />}
             </>
           )}
         </div>
@@ -547,13 +696,52 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
           >
             <EmojiIcon char="🐞" size={20} />
           </button>
+          {revealed && question && (
+            <FooterBookmarkToggle questionId={question.id} />
+          )}
+          {revealed && question && selectedOption !== null && (
+            (question.disputed || selectedOption === question.answer) && (
+              <>
+                <button
+                  type="button"
+                  className={`quiz-quality-btn quiz-quality-easy${activeQuality === 'easy' ? ' is-active' : ''}`}
+                  onClick={() => void handleQualityClick('easy')}
+                  title="這題很簡單 — 下次更晚再考"
+                  disabled={picking}
+                  aria-keyshortcuts="2"
+                >
+                  <EmojiIcon char="✨" size={16} />
+                  <span>太簡單</span>
+                  <span className="quiz-hotkey-badge" aria-hidden="true">₂</span>
+                </button>
+                <button
+                  type="button"
+                  className={`quiz-quality-btn quiz-quality-guessed${activeQuality === 'guessed' ? ' is-active' : ''}`}
+                  onClick={() => void handleQualityClick('guessed')}
+                  title="其實是亂猜 — 明天再考一次驗證"
+                  disabled={picking}
+                  aria-keyshortcuts="3"
+                >
+                  <EmojiIcon char="🤔" size={16} />
+                  <span>我亂猜的</span>
+                  <span className="quiz-hotkey-badge" aria-hidden="true">₃</span>
+                </button>
+              </>
+            )
+          )}
           <button
             type="button"
             className="quiz-modal__next"
             onClick={() => void handleNext()}
             disabled={!revealed || picking}
+            aria-keyshortcuts={revealed ? 'Enter' : undefined}
           >
             下一題
+            {revealed && (
+              <span className="quiz-hotkey-badge quiz-hotkey-badge--enter" aria-hidden="true">
+                ↵
+              </span>
+            )}
           </button>
         </footer>
 
@@ -612,38 +800,41 @@ function QuestionMetaRow({ questionId }: { questionId: string }) {
 }
 
 /**
- * Inline ★ promote affordance shown beside the answer-feedback region.
- * Shares state with the top-of-modal corner toggle via the same `bookmarks`
- * Dexie row; `useBookmark` is live-query so both render in sync.
- *
- * `wasWrong` only affects visual emphasis (hint text on wrong answers) — the
- * toggle behaviour is identical regardless.
+ * Wrong-answer hint banner — appears above the footer when the player answered
+ * wrong, pointing them at the ⭐ toggle now living in the footer row.
  */
-function InlinePromote({ questionId, wasWrong }: { questionId: string; wasWrong: boolean }) {
+function InlinePromoteHint() {
+  return (
+    <div className="quiz-modal__inline-promote quiz-modal__inline-promote--wrong">
+      <span className="quiz-modal__inline-promote-hint">
+        想之後再複習這題？點下方 ⭐ 加入手動收藏永久保留。
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Footer-row ★ bookmark toggle. Same Dexie row as the corner-of-modal toggle
+ * (`useBookmark` is live-query), so both render in sync. Sized to match the
+ * 46px 🐞 / 太簡單 / 我亂猜的 / 下一題 chips so the whole footer lines up.
+ */
+function FooterBookmarkToggle({ questionId }: { questionId: string }) {
   const bookmarked = !!useBookmark(questionId)
   return (
-    <div
-      className={`quiz-modal__inline-promote${
-        wasWrong ? ' quiz-modal__inline-promote--wrong' : ''
+    <button
+      type="button"
+      role="switch"
+      aria-pressed={bookmarked}
+      aria-label={bookmarked ? '取消手動收藏' : '加入手動收藏'}
+      aria-keyshortcuts="1"
+      className={`quiz-modal__footer-bookmark${
+        bookmarked ? ' quiz-modal__footer-bookmark--on' : ''
       }`}
+      onClick={() => void toggleBookmark(questionId)}
     >
-      {wasWrong && (
-        <span className="quiz-modal__inline-promote-hint">
-          想之後再複習這題？加入手動收藏永久保留。
-        </span>
-      )}
-      <button
-        type="button"
-        role="switch"
-        aria-pressed={bookmarked}
-        aria-label={bookmarked ? '取消手動收藏' : '加入手動收藏'}
-        className={`quiz-modal__inline-promote-btn${
-          bookmarked ? ' quiz-modal__inline-promote-btn--on' : ''
-        }`}
-        onClick={() => void toggleBookmark(questionId)}
-      >
-        <EmojiIcon char={bookmarked ? '⭐' : '☆'} size={18} /> {bookmarked ? '已收藏' : '加入收藏'}
-      </button>
-    </div>
+      <EmojiIcon char={bookmarked ? '⭐' : '☆'} size={18} />
+      <span>{bookmarked ? '已收藏' : '加入收藏'}</span>
+      <span className="quiz-hotkey-badge" aria-hidden="true">₁</span>
+    </button>
   )
 }
