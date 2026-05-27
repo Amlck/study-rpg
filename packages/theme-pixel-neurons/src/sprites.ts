@@ -1,15 +1,20 @@
 /**
  * Sprite registry — maps theme sprite keys to runtime URLs.
  *
- * Subject icons (11 neuron families): REAL sprites generated via codex CLI per
+ * Subject icons (11 neuron families): REAL sprites generated via Gemini MCP per
  * `generate-neurons-sprites` change (2026-05-25). See `../SPRITE_GENERATION.md`
- * for prompts + regen procedure. Bundled via Vite `import.meta.glob` with
- * `?url` for cache-busting hash URLs in production.
+ * for prompts + regen procedure.
  *
- * Other categories (core scaffold / items / cosmetics / skill placeholders)
- * still map to a 1×1 transparent PNG until their respective consumer
- * capabilities (variant gacha / achievements / dorm view / skill tree, etc.)
- * ship real assets in separate future changes.
+ * DMN fate-card sprites (20 cards + 1 shared card-back): REAL sprites generated
+ * via Gemini MCP per `generate-dmn-card-artworks` change (2026-05-28). See
+ * `../CARD_SPRITE_GENERATION.md` for prompts + regen procedure.
+ *
+ * Both bundled via Vite `import.meta.glob` with `?url` for cache-busting hash
+ * URLs in production.
+ *
+ * Other categories (core scaffold / items / cosmetics / skill placeholders /
+ * variant gacha) still map to a 1×1 transparent PNG until their respective
+ * consumer capabilities ship real assets in separate future changes.
  *
  * theme-pack-contract MUST-cover keys: character-base, slot-placeholder-{head,
  * body,weapon,charm}, plus every Item.artKey in itemCatalog. Engine boots cleanly
@@ -57,6 +62,26 @@ const rootSpriteModules = import.meta.glob('../sprites/root/*.png', {
 }) as Record<string, string>
 
 const rootSprite: string | undefined = Object.values(rootSpriteModules)[0]
+
+// DMN fate-card sprites — 20 individual cards + 1 shared card-back, generated
+// via Gemini MCP per `generate-dmn-card-artworks` change (2026-05-28). See
+// `../CARD_SPRITE_GENERATION.md` for prompts + regen procedure. Filenames map
+// directly to cardId (English kebab-case), e.g. `dmn-mpfc-reverberation-p2.png`
+// → key `dmn:card:dmn-mpfc-reverberation-p2`. The shared `card-back.png` →
+// key `dmn:card-back`.
+const cardSpriteModules = import.meta.glob('../sprites/cards/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const cardSprites: Record<string, string> = Object.fromEntries(
+  Object.entries(cardSpriteModules).map(([path, url]) => {
+    const stem = path.replace(/.*\/(.+)\.png$/, '$1')
+    const key = stem === 'card-back' ? 'dmn:card-back' : `dmn:card:${stem}`
+    return [key, url]
+  }),
+)
 
 // 11 subject icon keys (matched to FAMILY_BY_SUBJECT in content-neurons-tw build.ts)
 const SUBJECT_IDS = [
@@ -209,5 +234,6 @@ export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
   ...COSMETIC_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...SKILL_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...VARIANT_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
-  ...DMN_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
+  // DMN fate-card sprites: real PNG if file present, else defensive placeholder
+  ...DMN_ART_KEYS.map((k) => [k, cardSprites[k] ?? TRANSPARENT_PIXEL]),
 ])
