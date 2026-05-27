@@ -21,6 +21,7 @@ import {
 } from './mastery'
 import { incrementCurrentStreak, resetCurrentStreak } from './streak'
 import { buildAchievementStats, triggerAchievementCheck } from './achievement'
+import { getActiveFamilyBuffBonus } from './dmn-event-dispatcher'
 import type { ContentPack } from '@study-rpg/core'
 
 export const events = new ConnectomeEventEmitter()
@@ -97,7 +98,10 @@ export async function recordCorrectAnswer(familyId: string): Promise<void> {
   // the pre-mutation state. Read-only, no transaction needed.
   const prevStats = await buildAchievementStats()
 
-  await db.transaction('rw', db.synapses, db.familyAccrual, db.meta, db.familyMastery, async (tx) => {
+  await db.transaction(
+    'rw',
+    [db.synapses, db.familyAccrual, db.meta, db.familyMastery, db.dmnActiveBuffs],
+    async (tx) => {
     pending.push(...(await runDailyResetIfNeededInTx(today)))
     masteryUpdate = await recordAttemptInTx(tx, familyId, true)
     // Co-commit streak counter increment with mastery / synapse writes per
@@ -112,7 +116,10 @@ export async function recordCorrectAnswer(familyId: string): Promise<void> {
     }
 
     const prevAp = accrual.ap
-    const newAp = prevAp + 1
+    // DMN family-buff: +1 extra AP per correct answer while a family-buff
+    // targeting this familyId is active. Reads dmnActiveBuffs inside the tx.
+    const dmnApBonus = await getActiveFamilyBuffBonus(familyId)
+    const newAp = prevAp + 1 + dmnApBonus
     const prevFiredToday = accrual.firedToday
     const newSameDayCorrect = accrual.sameDayCorrect + 1
 

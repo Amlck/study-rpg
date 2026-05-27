@@ -25,6 +25,7 @@ import {
 import { db, type NeuronVariantRow } from '../db'
 import { subscribeConnectomeEvents } from './connectome'
 import { buildAchievementStats, triggerAchievementCheck } from './achievement'
+import { consumeVariantRateUpBuff } from './dmn-event-dispatcher'
 
 const GACHA_CONFIG: GachaConfig = {
   // rollGacha convention: tiers[0] is the LOWEST rarity (highest weight);
@@ -135,8 +136,27 @@ async function rollAndPersist(
   }
   const floor = SLOT_RARITY_FLOOR[slot]
   const initialStats = { totalRolls: 0, rollsSinceLast: {} }
+  // DMN variant-rate-up: if active, use boosted weights 20/30/30/15/5
+  // (vs default 60/25/10/4/1) for this single roll. Buff is consumed
+  // regardless of roll outcome.
+  const variantRateUpActive = await consumeVariantRateUpBuff()
+  const activeConfig = variantRateUpActive
+    ? {
+        ...GACHA_CONFIG,
+        tiers: [
+          { id: 'P5', weight: 20 },
+          { id: 'P4', weight: 30 },
+          { id: 'P3', weight: 30 },
+          { id: 'P2', weight: 15 },
+          { id: 'P1', weight: 5 },
+        ],
+      }
+    : GACHA_CONFIG
+  if (variantRateUpActive) {
+    console.info('[variant-gacha] DMN variant-rate-up buff consumed; using boosted weights')
+  }
   const result = rollGachaWithFloor(
-    GACHA_CONFIG,
+    activeConfig,
     initialStats,
     floor,
     VARIANT_REROLL_CAP,

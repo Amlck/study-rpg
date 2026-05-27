@@ -345,6 +345,42 @@ Each hook wrapped in try/catch (`[achievement]` channel) so failure doesn't brea
 
 Full change reference: `openspec/changes/archive/2026-05-25-add-neurons-achievements/`.
 
+## DMN fate cards (M_3rd ext, 2026-05-27)
+
+`apps/neurons-tw` ships a mixed-trigger (time-axis + behavior-axis) fate-card collection system themed on **Default Mode Network** — the brain's resting-state network that produces "spontaneous insight" while the player rests. Catalog = 20 cards × 4-tier rarity (P1 鑽石 × 2 / P2 金 × 4 / P3 銀 × 6 / P4 銅 × 8) with weights 2/10/30/58. Each card simultaneously triggers a one-time event + enters the permanent collection (Pokédex-style closed cap).
+
+Five event kinds (each ≥ 4 cards in catalog — build-time validator enforces ≥ 3 minimum):
+- `family-buff`: random family AP +2/correct for 1 hour
+- `variant-rate-up`: next variant slot unlock uses boosted weights 20/30/30/15/5 (single-consume)
+- `quick-review-batch`: surface 5 SRS-due questions (placeholder toast until SRS pipeline ships)
+- `streak-shield`: one-use immunity to next streak break
+- `hidden-reveal`: silhouette-hint next undrawn P1 card on `/dmn` page
+
+Trigger axes:
+- **Time axis** (cap 2 draws/day): +1 draw per 30 min accrued reading time. **Currently inactive** — `ReadingTimerSubscriber` interface is wired but no timer service publishes to it; will activate when `polish-neurons-pre-ship` ships the reading-timer
+- **Behavior axis** (cap 3 draws/day): listens to `connectome.variantSlotUnlocked` / `connectome.synapseFormed` / `connectome.synapseStrengthened` — each grants +1 bonus draw. (Spec amendment 2026-05-27 dropped `streak.dayIncreased` because neurons-tw has no daily-open streak service, and dropped `actionPotentialThresholdCrossed` because AP thresholds = variant slot thresholds → redundant.)
+
+Catalog + types + validator: `packages/content-neurons-tw/src/{dmn-types,dmn-cards,dmn-card-validator}.ts`. Smoke fixture: `scripts/verify-dmn-validator.ts` (7 cases pass). Catalog uses well-established DMN neuroscience anchors (mPFC / PCC / precuneus / angular gyrus / hippocampal sharp-wave ripples / REM consolidation per Buckner & DiNicola 2019, Raichle 2015).
+
+**Critical sync semantics — `dmnEventLog` uses MONOTONIC-UNION merge, NOT LWW.** `apps/neurons-tw/src/lib/sync/tables.ts` `dmnEventLogAdapter.apply()` carries the carve-out: rows present on either side stay in the union; both sides converge to the same set; earlier `dispatchedAt` wins as the provenance instant. This neutralizes the "fresh-state device pulls bundle and re-triggers all dispatched events" failure mode. Mirrors 二階 `everWrong` monotonic-OR discipline. **DO NOT replace with LWW** — locked by Vitest `dmn-event-idempotency.test.ts`.
+
+**R2 bundle schema bump v1 → v2 + reader tolerance.** `apps/neurons-tw/src/lib/sync/r2/bundles.ts`:
+- `SCHEMA_VERSION` 1 → 2 (additive: adds 3 new adapter keys `dmnCards` / `dmnEventLog` / `dmnActiveBuffs` + 8 new meta keys to the allowlist)
+- `validateBundleMeta` now `console.info(...)` + continues parse on `schema_version > SCHEMA_VERSION` (was: throw `unsupported_schema_version`). Defends `< 1` still. This is the **forward-compat tolerance pattern** that lets v1 clients pull v2 bundles without dying — unknown adapter keys silently drop because `applyBundleSnapshot` iterates only locally-registered adapters
+- v2 client reading v1 bundle: `dmn-*` fields absent → preserve-on-omission (empty local tables stay empty; non-empty local tables not overwritten with empty incoming)
+
+Worker is bundle-opaque (pure presigned-URL transport) — no Worker code change needed for the v2 bump.
+
+Dexie versions claimed in flight (neurons-tw): v6 = `add-neurons-dmn-fate-card` (adds `dmnCards` / `dmnEventLog` / `dmnActiveBuffs` tables).
+
+Trigger detector + draw orchestrator + event dispatcher + 3 consumer hooks (family-buff in `connectome.recordCorrectAnswer`, variant-rate-up in `variant-gacha`, streak-shield in `streak.resetCurrentStreak`) all in `apps/neurons-tw/src/lib/services/dmn-*.ts`. UI: `DmnDrawButton` (top nav), `DmnDrawModal` (modal + reveal inline), `DmnCollectionPage` (`/dmn` route, responsive grid), `DmnQuickReviewToast` (placeholder for quick-review-batch event).
+
+Test coverage: `apps/neurons-tw/src/__tests__/{db-v6-migration,dmn-draw-mechanics,dmn-event-idempotency,dmn-bundle-cross-version,dmn-trigger-counters}.test.ts` — 27 Vitest tests covering v6 migration, draw orchestrator, event log idempotency + monotonic-union, schema_version forward-compat, daily cap enforcement. Run via `pnpm --filter @study-rpg/neurons-tw test` (vitest infra newly bootstrapped in this change, mirroring 二階).
+
+Sprite assets ship as `dmn:card:<cardId>` × 20 + `dmn:card-back` × 1 placeholders (1×1 transparent PNG) — real pixel-art deferred to follow-up `generate-dmn-card-artworks` (codex CLI batch, ~1 hr; mirror `generate-neurons-sprites` pattern).
+
+Full change reference: `openspec/changes/add-neurons-dmn-fate-card/` (proposal / design / specs / tasks).
+
 ## Source data path
 
 題庫原始 .md 在使用者本機（**不在 repo 內**）：

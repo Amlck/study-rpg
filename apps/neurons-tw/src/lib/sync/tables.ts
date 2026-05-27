@@ -317,6 +317,18 @@ const SYNCED_META_KEYS: ReadonlySet<string> = new Set([
   'maxQuizCorrectStreak',
   'totalStudyMinutes',
   'currentQuizCorrectStreak',
+  // DMN fate-card trigger counters (per add-neurons-dmn-fate-card spec).
+  // Counter-style (drawsAvailable / lifetime) → first-write-wins below; daily
+  // axis counters reset at midnight so brief sync of stale values is OK.
+  'dmnDrawsAvailable',
+  'dmnLifetimeDrawsConsumed',
+  'dmnTimeAxisMinutesAccrued',
+  'dmnTimeAxisDrawsConsumedToday',
+  'dmnBehaviorAxisDrawsConsumedToday',
+  'dmnLastDailyResetDate',
+  // DMN dispatcher state (single-row flags).
+  'dmnStreakShieldAvailable',
+  'dmnHiddenRevealedArtworkIds',
 ])
 
 const metaAdapter: TableAdapter<'meta'> = {
@@ -357,6 +369,152 @@ const metaAdapter: TableAdapter<'meta'> = {
   },
 }
 
+// ---- DMN fate cards (closed-cap, first-write-wins per cardId) -------------
+
+const dmnCardsAdapter: TableAdapter<'dmnCards'> = {
+  name: 'dmnCards',
+  async snapshot(db) {
+    return await db.dmnCards.toArray()
+  },
+  async apply(db, rows) {
+    let applied = 0
+    let skipped = 0
+    await db.transaction('rw', db.dmnCards, async () => {
+      for (const incoming of rows) {
+        if (!incoming || typeof incoming !== 'object') {
+          skipped++
+          continue
+        }
+        const cardId = (incoming as Record<string, unknown>).cardId
+        if (typeof cardId !== 'string') {
+          skipped++
+          continue
+        }
+        const local = await db.dmnCards.get(cardId)
+        // Closed-cap collection — first draw wins. Keep the EARLIER obtainedAt
+        // if both sides have a row (parallels achievement first-unlock semantics).
+        if (local) {
+          const localAt = local.obtainedAt
+          const incomingAt = (incoming as Record<string, unknown>).obtainedAt
+          if (typeof incomingAt === 'number' && incomingAt < localAt) {
+            await db.dmnCards.put(incoming as never)
+            applied++
+          } else {
+            skipped++
+          }
+          continue
+        }
+        await db.dmnCards.put(incoming as never)
+        applied++
+      }
+    })
+    return { applied, skipped }
+  },
+}
+
+// ---- DMN event log (MONOTONIC-UNION merge — never overwrite "dispatched") -
+
+const dmnEventLogAdapter: TableAdapter<'dmnEventLog'> = {
+  name: 'dmnEventLog',
+  async snapshot(db) {
+    return await db.dmnEventLog.toArray()
+  },
+  async apply(db, rows) {
+    // Critical: this adapter uses MONOTONIC-UNION merge (NOT LWW). Once any
+    // device has logged a cardId as dispatched, that signal must propagate
+    // across all devices and never be overwritten — otherwise a fresh-state
+    // device would re-trigger the event when its bundle apply runs. Mirrors
+    // 二階 add-bookmarks-filters-and-wrong-history-medexam2's `everWrong`
+    // monotonic-OR discipline.
+    let applied = 0
+    let skipped = 0
+    await db.transaction('rw', db.dmnEventLog, async () => {
+      for (const incoming of rows) {
+        if (!incoming || typeof incoming !== 'object') {
+          skipped++
+          continue
+        }
+        const cardId = (incoming as Record<string, unknown>).cardId
+        if (typeof cardId !== 'string') {
+          skipped++
+          continue
+        }
+        const local = await db.dmnEventLog.get(cardId)
+        if (local) {
+          // Already logged here — preserve EARLIER dispatchedAt (provenance
+          // for first-dispatch instant).
+          const localAt = local.dispatchedAt
+          const incomingAt = (incoming as Record<string, unknown>).dispatchedAt
+          if (typeof incomingAt === 'number' && incomingAt < localAt) {
+            await db.dmnEventLog.put(incoming as never)
+            applied++
+          } else {
+            skipped++
+          }
+          continue
+        }
+        // Union: incoming had it, we didn't — record without re-triggering
+        // the side effect (dispatcher reads this log to short-circuit).
+        await db.dmnEventLog.put(incoming as never)
+        applied++
+      }
+    })
+    return { applied, skipped }
+  },
+}
+
+// ---- DMN active buffs (LWW on expiresAt; filter expired after merge) -----
+
+const dmnActiveBuffsAdapter: TableAdapter<'dmnActiveBuffs'> = {
+  name: 'dmnActiveBuffs',
+  async snapshot(db) {
+    // Only sync non-expired rows — no point pushing stale buffs.
+    const now = Date.now()
+    const all = await db.dmnActiveBuffs.toArray()
+    return all.filter((b) => b.expiresAt > now)
+  },
+  async apply(db, rows) {
+    let applied = 0
+    let skipped = 0
+    const now = Date.now()
+    await db.transaction('rw', db.dmnActiveBuffs, async () => {
+      for (const incoming of rows) {
+        if (!incoming || typeof incoming !== 'object') {
+          skipped++
+          continue
+        }
+        const row = incoming as Record<string, unknown>
+        const expiresAt = row.expiresAt
+        // Reject already-expired rows.
+        if (typeof expiresAt !== 'number' || expiresAt <= now) {
+          skipped++
+          continue
+        }
+        // Match by sourceCardId — same source card cannot dispatch buff twice
+        // (idempotent across devices via the event log; this adapter then
+        // dedups the buff row itself).
+        const sourceCardId = row.sourceCardId
+        if (typeof sourceCardId !== 'string') {
+          skipped++
+          continue
+        }
+        const all = await db.dmnActiveBuffs.toArray()
+        const existing = all.find((b) => b.sourceCardId === sourceCardId)
+        if (existing) {
+          skipped++
+          continue
+        }
+        // Strip incoming.id — let Dexie auto-assign locally so we don't
+        // collide with an existing auto-inc.
+        const { id: _id, ...payload } = row
+        await db.dmnActiveBuffs.add(payload as never)
+        applied++
+      }
+    })
+    return { applied, skipped }
+  },
+}
+
 // ---- Adapter registry -----------------------------------------------------
 
 export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
@@ -367,4 +525,7 @@ export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
   achievementsAdapter,
   leaderboardProfileAdapter,
   metaAdapter,
+  dmnCardsAdapter,
+  dmnEventLogAdapter,
+  dmnActiveBuffsAdapter,
 ]

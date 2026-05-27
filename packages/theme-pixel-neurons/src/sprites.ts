@@ -143,6 +143,43 @@ for (const subjectId of SUBJECT_IDS) {
   }
 }
 
+// DMN fate-card placeholder keys (20 cards + 1 shared card back = 21).
+// Real artwork deferred to follow-up generate-dmn-card-artworks change.
+// Keys MUST stay in sync with DMN_CARD_CATALOG in @study-rpg/content-neurons-tw
+// (cardId → 'dmn:card:<cardId>'). Hardcoded here to avoid cyclic dep on the
+// content pack.
+const DMN_CARD_IDS = [
+  // P1
+  'dmn-default-mode-awakening-p1',
+  'dmn-stream-of-consciousness-p1',
+  // P2
+  'dmn-hippocampal-ripples-p2',
+  'dmn-pcc-pulse-p2',
+  'dmn-mpfc-reverberation-p2',
+  'dmn-rem-pruning-p2',
+  // P3
+  'dmn-angular-association-p3',
+  'dmn-daydream-drift-p3',
+  'dmn-temporal-pole-anchor-p3',
+  'dmn-dln-switch-p3',
+  'dmn-resting-state-ripple-p3',
+  'dmn-spontaneous-discharge-p3',
+  // P4
+  'dmn-micro-mind-wander-p4',
+  'dmn-mini-self-reference-p4',
+  'dmn-posteromedial-pulse-p4',
+  'dmn-brief-swr-p4',
+  'dmn-micro-context-guard-p4',
+  'dmn-small-circuit-immunity-p4',
+  'dmn-cue-glimmer-p4',
+  'dmn-premonition-glow-p4',
+] as const
+
+const DMN_ART_KEYS: string[] = [
+  ...DMN_CARD_IDS.map((id) => `dmn:card:${id}`),
+  'dmn:card-back',
+]
+
 // Contract-required keys
 const CORE_KEYS = [
   'character-base',
@@ -172,4 +209,5 @@ export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
   ...COSMETIC_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...SKILL_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...VARIANT_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
+  ...DMN_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
 ])

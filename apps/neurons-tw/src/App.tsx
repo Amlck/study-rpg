@@ -14,9 +14,13 @@ import {
   registerVariantGachaSubscriber,
 } from './lib/services/variant-gacha'
 import { backfillAchievementsFromCurrentStats } from './lib/services/achievement'
+import { initializeDmnTrigger } from './lib/services/dmn-trigger'
 import AchievementsPage from './routes/AchievementsPage'
 import AchievementToastHost from './components/AchievementToastHost'
 import AchievementUnlockModal from './components/AchievementUnlockModal'
+import DmnCollectionPage from './routes/DmnCollectionPage'
+import DmnDrawButton from './components/DmnDrawButton'
+import DmnQuickReviewToast from './components/DmnQuickReviewToast'
 import { AuthProvider } from './lib/auth/AuthContext'
 import { AuthGate } from './components/AuthGate'
 import { SyncMount } from './lib/sync/SyncMount'
@@ -41,6 +45,10 @@ export default function App(): JSX.Element {
         const resolveFamilyDisplayName = (familyId: string): string =>
           familyById.get(familyId)?.displayName ?? familyId
         registerVariantGachaSubscriber(resolveFamilyDisplayName)
+        // Register DMN trigger detector — subscribes to connectome events for
+        // behavior-axis bonus draws. Idempotent on StrictMode double-mount.
+        // Time-axis (reading-timer) inactive until polish-neurons-pre-ship.
+        initializeDmnTrigger()
         // Backfill variants for slots the player already crossed AP threshold
         // for before this change shipped. Awaited (not fire-and-forget) so
         // chips mount with the correct count on first render. Silent inside —
@@ -74,6 +82,7 @@ export default function App(): JSX.Element {
         <VariantUnlockModal />
         <AchievementToastHost />
         <AchievementUnlockModal />
+        <DmnQuickReviewToast />
         <main style={pageStyle}>
           <nav style={navStyle}>
             <NavLink to="/" style={navLinkStyle} end>
@@ -94,12 +103,18 @@ export default function App(): JSX.Element {
                 <span style={isActive ? activeLinkStyle : undefined}>成就</span>
               )}
             </NavLink>
+            <NavLink to="/dmn" style={navLinkStyle}>
+              {({ isActive }) => (
+                <span style={isActive ? activeLinkStyle : undefined}>DMN 圖鑑</span>
+              )}
+            </NavLink>
             <NavLink to="/motion-demo" style={navLinkStyle}>
               {({ isActive }) => (
                 <span style={isActive ? activeLinkStyle : undefined}>動畫 demo</span>
               )}
             </NavLink>
-            <span style={{ marginLeft: 'auto' }}>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <DmnDrawButton />
               <AuthGate />
             </span>
           </nav>
@@ -108,6 +123,7 @@ export default function App(): JSX.Element {
             <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/achievements" element={<AchievementsPage />} />
+            <Route path="/dmn" element={<DmnCollectionPage />} />
             <Route path="/motion-demo" element={<MotionDemoPage />} />
           </Routes>
         </main>

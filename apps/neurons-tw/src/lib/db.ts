@@ -1,5 +1,10 @@
 import Dexie, { type EntityTable, type Table } from 'dexie'
 import type { ContentPack } from '@study-rpg/core'
+import type {
+  DmnActiveBuffRow,
+  DmnCardRow,
+  DmnEventLogRow,
+} from '@study-rpg/content-neurons-tw'
 
 export type SynapseState = 'dormant' | 'weak' | 'strong'
 
@@ -71,6 +76,12 @@ export class NeuronsDB extends Dexie {
   neuronVariants!: Table<NeuronVariantRow, [string, number]>
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
   achievements!: EntityTable<AchievementRow, 'id'>
+  // ─── DMN fate-card tables (Dexie v6+) ──────────────────────────────────
+  // Per add-neurons-dmn-fate-card spec. All additive — no PK change to existing
+  // tables (per dexie_pk_change_pitfall.md discipline).
+  dmnCards!: EntityTable<DmnCardRow, 'cardId'>
+  dmnEventLog!: EntityTable<DmnEventLogRow, 'cardId'>
+  dmnActiveBuffs!: Table<DmnActiveBuffRow, number>
 
   constructor() {
     super('neurons-rpg')
@@ -115,6 +126,27 @@ export class NeuronsDB extends Dexie {
       // for chronological queries on `/achievements` page. Per spec
       // openspec/specs/neurons-achievements/spec.md "Dexie v5" requirement.
       achievements: 'id, unlockedAt',
+    })
+    // Per add-neurons-dmn-fate-card. Additive: 3 new tables, existing tables
+    // unchanged. New `meta` keys (dmnDrawsAvailable / dmnTimeAxisMinutesAccrued
+    // / etc.) reuse the existing `meta` table — no schema entry needed.
+    this.version(6).stores({
+      synapses: 'pairKey, lastCoFireDate, state',
+      familyAccrual: 'familyId, lastFireDate, firedToday',
+      meta: 'key',
+      familyMastery: 'familyId',
+      neuronVariants: '[familyId+slotIndex], familyId, rolledAt',
+      leaderboardProfile: 'user_id, nickname_lower',
+      achievements: 'id, unlockedAt',
+      // DMN card persistence. PK = cardId (closed-cap catalog of 20 entries);
+      // secondary indices on obtainedAt + rarity for collection page queries.
+      dmnCards: 'cardId, obtainedAt, rarity',
+      // Idempotency log. PK = cardId — one row per dispatched card. Sync uses
+      // monotonic-union merge (see r2/tables.ts adapter).
+      dmnEventLog: 'cardId, dispatchedAt',
+      // Runtime buff rows (family-buff / variant-rate-up). Auto-inc PK; secondary
+      // indices on expiresAt for cleanup queries + buffKind for type filter.
+      dmnActiveBuffs: '++id, expiresAt, buffKind',
     })
   }
 }
