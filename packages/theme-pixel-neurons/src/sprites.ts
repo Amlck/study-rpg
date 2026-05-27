@@ -34,6 +34,30 @@ const subjectSprites: Record<string, string> = Object.fromEntries(
   }),
 )
 
+// 4 NT-branch hub icons (DA / 5HT / GABA / Glu). Same glob pattern as subjects.
+const branchSpriteModules = import.meta.glob('../sprites/branches/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const branchSprites: Record<string, string> = Object.fromEntries(
+  Object.entries(branchSpriteModules).map(([path, url]) => {
+    // Filename pattern: `<nt>-icon.png` → key `branch:<nt>` (e.g. da-icon.png → branch:da)
+    const stem = path.replace(/.*\/(.+)\.png$/, '$1').replace(/-icon$/, '')
+    return [`branch:${stem}`, url]
+  }),
+)
+
+// Root brain icon (central Neuron Connectome node). Single file.
+const rootSpriteModules = import.meta.glob('../sprites/root/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const rootSprite: string | undefined = Object.values(rootSpriteModules)[0]
+
 // 11 subject icon keys (matched to FAMILY_BY_SUBJECT in content-neurons-tw build.ts)
 const SUBJECT_IDS = [
   '藥理學',
@@ -119,6 +143,43 @@ for (const subjectId of SUBJECT_IDS) {
   }
 }
 
+// DMN fate-card placeholder keys (20 cards + 1 shared card back = 21).
+// Real artwork deferred to follow-up generate-dmn-card-artworks change.
+// Keys MUST stay in sync with DMN_CARD_CATALOG in @study-rpg/content-neurons-tw
+// (cardId → 'dmn:card:<cardId>'). Hardcoded here to avoid cyclic dep on the
+// content pack.
+const DMN_CARD_IDS = [
+  // P1
+  'dmn-default-mode-awakening-p1',
+  'dmn-stream-of-consciousness-p1',
+  // P2
+  'dmn-hippocampal-ripples-p2',
+  'dmn-pcc-pulse-p2',
+  'dmn-mpfc-reverberation-p2',
+  'dmn-rem-pruning-p2',
+  // P3
+  'dmn-angular-association-p3',
+  'dmn-daydream-drift-p3',
+  'dmn-temporal-pole-anchor-p3',
+  'dmn-dln-switch-p3',
+  'dmn-resting-state-ripple-p3',
+  'dmn-spontaneous-discharge-p3',
+  // P4
+  'dmn-micro-mind-wander-p4',
+  'dmn-mini-self-reference-p4',
+  'dmn-posteromedial-pulse-p4',
+  'dmn-brief-swr-p4',
+  'dmn-micro-context-guard-p4',
+  'dmn-small-circuit-immunity-p4',
+  'dmn-cue-glimmer-p4',
+  'dmn-premonition-glow-p4',
+] as const
+
+const DMN_ART_KEYS: string[] = [
+  ...DMN_CARD_IDS.map((id) => `dmn:card:${id}`),
+  'dmn:card-back',
+]
+
 // Contract-required keys
 const CORE_KEYS = [
   'character-base',
@@ -130,6 +191,9 @@ const CORE_KEYS = [
   'variant:default',
 ] as const
 
+// 4 NT-branch hub keys — `branch:da` / `branch:5ht` / `branch:gaba` / `branch:glu`.
+const BRANCH_KEYS = ['branch:da', 'branch:5ht', 'branch:gaba', 'branch:glu'] as const
+
 export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
   ...CORE_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   // Subject icons: real sprite if file present, else defensive fallback to placeholder
@@ -137,8 +201,13 @@ export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
     `subject:${id}`,
     subjectSprites[`subject:${id}`] ?? TRANSPARENT_PIXEL,
   ]),
+  // NT-branch hub icons: real sprite if file present, else placeholder
+  ...BRANCH_KEYS.map((k) => [k, branchSprites[k] ?? TRANSPARENT_PIXEL]),
+  // Root brain icon (central Neuron Connectome).
+  ['root:brain', rootSprite ?? TRANSPARENT_PIXEL],
   ...ITEM_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...COSMETIC_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...SKILL_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...VARIANT_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
+  ...DMN_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
 ])

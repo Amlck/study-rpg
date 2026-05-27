@@ -19,6 +19,7 @@ import {
   useRespectsReducedMotion,
   type Rarity,
 } from '../lib/motion'
+import { SynapseDemoSvg } from '../components/connectome/SynapseDemoSvg'
 
 type ActiveDemo =
   | { kind: 'none' }
@@ -89,6 +90,9 @@ export default function MotionDemoPage(): JSX.Element {
       <button style={btnStyle} onClick={() => setActive({ kind: 'achievement' })}>
         🏆 觸發 P1 鑽石解鎖
       </button>
+
+      <h3 style={h3Style}>Synapse tree animations</h3>
+      <SynapseDemoSvg />
 
       <AnimatePresence>
         {active.kind === 'toast' && (
