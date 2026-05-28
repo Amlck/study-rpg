@@ -7,6 +7,8 @@ import { initMasteryForPack } from '../lib/services/connectome'
 import MasteryChip from '../components/MasteryChip'
 import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
 import { QuizModal } from '../components/QuizModal'
+import { useReadingTimer } from '../lib/hooks/useReadingTimer'
+import { readTotalStudyMinutes } from '../lib/services/reading-timer'
 
 interface Props {
   pack: ContentPack
@@ -15,12 +17,43 @@ interface Props {
 export default function OverviewPage({ pack }: Props): JSX.Element {
   const ntCount = (br: string): number => pack.subjects.filter((s) => s.group === br).length
   const [quizOpen, setQuizOpen] = useState(false)
+  const [totalStudyMin, setTotalStudyMin] = useState(0)
+  const timer = useReadingTimer()
 
   useEffect(() => {
     initMasteryForPack(pack).catch(() => {
       // Non-fatal: chips fall back to 0/0 display until next load
     })
   }, [pack])
+
+  // Refresh totalStudyMinutes display whenever the timer fires a minute side-effect
+  // (signalled by minutesFired change) OR on mount.
+  useEffect(() => {
+    void readTotalStudyMinutes().then(setTotalStudyMin)
+  }, [timer.minutesFired])
+
+  const onTimerToggle = (): void => {
+    if (timer.status === 'idle') {
+      timer.start()
+    } else if (timer.status === 'paused') {
+      timer.resume()
+    } else {
+      timer.stop()
+    }
+  }
+
+  const timerButtonLabel = (() => {
+    if (timer.status === 'idle') return '📖 開始閱讀'
+    if (timer.status === 'reading') {
+      return `🟢 閱讀中 · ${timer.currentMinute} min · 點擊結束`
+    }
+    // paused
+    if (timer.pauseReason === 'visibility') return '⏸ 切到別的分頁 · 點擊繼續'
+    if (timer.pauseReason === 'idle') return '⏸ 90s 無動作 · 點擊繼續'
+    return '⏸ 已暫停 · 點擊繼續'
+  })()
+
+  const minutesUntilDmnDraw = totalStudyMin > 0 ? 30 - (totalStudyMin % 30) : 30
 
   return (
     <>
@@ -33,16 +66,28 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
       </header>
 
       <section style={quizCtaSectionStyle}>
-        <button
-          type="button"
-          style={quizCtaButtonStyle}
-          onClick={() => setQuizOpen(true)}
-          aria-label="開始答題"
-        >
-          🎯 開始答題
-        </button>
+        <div style={ctaButtonRowStyle}>
+          <button
+            type="button"
+            style={quizCtaButtonStyle}
+            onClick={() => setQuizOpen(true)}
+            aria-label="開始答題"
+          >
+            🎯 開始答題
+          </button>
+          <button
+            type="button"
+            style={timer.status === 'reading' ? readingActiveButtonStyle : readingCtaButtonStyle}
+            onClick={onTimerToggle}
+            aria-label="閱讀計時器"
+          >
+            {timerButtonLabel}
+          </button>
+        </div>
         <p style={quizCtaHintStyle}>
-          隨機抽 1 題 → 按選項 → 看詳解 → 下一題。答對會點火 family，同一天兩個 family 各答對 5 題即 wire 出 synapse。
+          答題 → 隨機 1 題 / 同一天兩 family 各答對 5 題 wire 出 synapse。
+          閱讀 → 累計每分鐘 +1 study min，每 30 min 觸發 DMN 抽卡。
+          今日累計 <strong>{totalStudyMin}</strong> min · 距下個 DMN 抽卡還剩 <strong>{minutesUntilDmnDraw}</strong> min。
         </p>
       </section>
 
@@ -215,6 +260,12 @@ const quizCtaSectionStyle: React.CSSProperties = {
   gap: '0.5rem',
 }
 
+const ctaButtonRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.5rem',
+}
+
 const quizCtaButtonStyle: React.CSSProperties = {
   padding: '0.65rem 1.4rem',
   borderRadius: '6px',
@@ -226,6 +277,26 @@ const quizCtaButtonStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   cursor: 'pointer',
   boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+}
+
+const readingCtaButtonStyle: React.CSSProperties = {
+  padding: '0.65rem 1.4rem',
+  borderRadius: '6px',
+  border: '1px solid #6a8c3f',
+  background: '#7fa84a',
+  color: '#fff',
+  fontSize: '1.05rem',
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+}
+
+const readingActiveButtonStyle: React.CSSProperties = {
+  ...readingCtaButtonStyle,
+  background: '#4d8c4d',
+  border: '1px solid #3a6a3a',
+  animation: 'pulse 2s ease-in-out infinite',
 }
 
 const quizCtaHintStyle: React.CSSProperties = {
