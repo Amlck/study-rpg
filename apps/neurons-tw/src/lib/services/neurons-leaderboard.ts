@@ -13,6 +13,7 @@
  */
 
 import { db, type LeaderboardProfileRow } from '../db'
+import { readTotalStudyMinutes } from './reading-timer'
 import {
   NEURONS_ACHIEVEMENTS,
   tierRank,
@@ -77,8 +78,8 @@ export interface NicknameCheckResponse {
  * - family_complete = count of families with all 5 slots filled
  * - total_AP = sum of familyAccrual.ap across all families
  * - synapse_strong = count of synapses with state='strong'
- * - total_study_min = 0 for now (placeholder — Phase 4.x will wire to existing
- *   study-minute accumulator when present)
+ * - total_study_min = sum of meta['totalStudyMinutes'] accrued by the
+ *   reading-timer service (wired 2026-05-28 via polish-neurons-final)
  */
 export async function buildLeaderboardPayload(
   nickname: string,
@@ -101,10 +102,10 @@ export async function buildLeaderboardPayload(
   const total_AP = accruals.reduce((sum, a) => sum + (a.ap ?? 0), 0)
   const synapse_strong = synapses.filter((s) => s.state === 'strong').length
 
-  // total_study_min: placeholder. The neurons-tw app does not yet ship a
-  // dedicated study-minute accumulator (the equivalent of 二階's existing
-  // counter). Future wiring lands in add-neurons-deploy alongside cloud sync.
-  const total_study_min = 0
+  // Wired to the reading-timer service's `meta['totalStudyMinutes']` counter.
+  // Returns 0 for users who have never started the timer (defensive fallback
+  // inside readTotalStudyMinutes for undefined meta key).
+  const total_study_min = await readTotalStudyMinutes()
 
   // Derive badges_csv from currently-unlocked achievements (hidden excluded).
   const badges_csv = await deriveBadgesCsvFromDexie()

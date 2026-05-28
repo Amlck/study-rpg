@@ -1,30 +1,74 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { liveQuery } from 'dexie'
 import type { ContentPack } from '@study-rpg/core'
-import { THEME_PIXEL_NEURONS, COSMETIC_CATALOG_SIZE } from '@study-rpg/theme-pixel-neurons'
-
-const SPRITE_MAP = THEME_PIXEL_NEURONS.sprites
-import { initMasteryForPack } from '../lib/services/connectome'
+import { initMasteryForPack, loadConnectome } from '../lib/services/connectome'
 import MasteryChip from '../components/MasteryChip'
 import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
 import { QuizModal } from '../components/QuizModal'
+import { FamilyPicker } from '../components/FamilyPicker'
 import { useReadingTimer } from '../lib/hooks/useReadingTimer'
 import { readTotalStudyMinutes } from '../lib/services/reading-timer'
+import { filterPoolByFamily } from '../lib/services/quiz-pool'
+import { db } from '../lib/db'
 
 interface Props {
   pack: ContentPack
 }
 
+interface ProgressStats {
+  variants: number
+  synapsesStrong: number
+  synapsesWeak: number
+  dmnOwned: number
+}
+
 export default function OverviewPage({ pack }: Props): JSX.Element {
-  const ntCount = (br: string): number => pack.subjects.filter((s) => s.group === br).length
   const [quizOpen, setQuizOpen] = useState(false)
   const [totalStudyMin, setTotalStudyMin] = useState(0)
+  const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null)
+  const [stats, setStats] = useState<ProgressStats>({
+    variants: 0,
+    synapsesStrong: 0,
+    synapsesWeak: 0,
+    dmnOwned: 0,
+  })
   const timer = useReadingTimer()
+
+  // Filter quiz pool by selected family. null → unrestricted (random pool).
+  const quizPool = useMemo(
+    () => filterPoolByFamily(pack.questions, selectedFamilyId),
+    [pack.questions, selectedFamilyId],
+  )
+  const selectedFamilyDisplayName = selectedFamilyId
+    ? pack.subjects.find((s) => s.id === selectedFamilyId)?.displayName
+    : null
 
   useEffect(() => {
     initMasteryForPack(pack).catch(() => {
       // Non-fatal: chips fall back to 0/0 display until next load
     })
   }, [pack])
+
+  // Subscribe to progress stats for the top status chip.
+  useEffect(() => {
+    const sub = liveQuery(async () => {
+      const [variants, dmn, snapshot] = await Promise.all([
+        db.neuronVariants.toArray(),
+        db.dmnCards.toArray(),
+        loadConnectome(),
+      ])
+      return {
+        variants: variants.length,
+        synapsesStrong: snapshot.synapses.filter((s) => s.state === 'strong').length,
+        synapsesWeak: snapshot.synapses.filter((s) => s.state === 'weak').length,
+        dmnOwned: dmn.length,
+      }
+    }).subscribe({
+      next: (val) => setStats(val),
+      error: (err) => console.warn('[OverviewPage] stats query failed:', err),
+    })
+    return () => sub.unsubscribe()
+  }, [])
 
   // Refresh totalStudyMinutes display whenever the timer fires a minute side-effect
   // (signalled by minutesFired change) OR on mount.
@@ -58,11 +102,44 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
   return (
     <>
       <LeaderboardPromoBanner />
-      <header style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>{pack.meta.displayName}</h1>
-        <p style={{ margin: 0, color: '#5a3f29', fontStyle: 'italic' }}>
-          "Neurons that fire together, wire together." — Donald Hebb
-        </p>
+
+      <section style={statusChipStyle} aria-label="進度狀態">
+        <div style={statusItemStyle}>
+          <span style={statusEmojiStyle}>🧬</span>
+          <span style={statusLabelStyle}>變體</span>
+          <span style={statusValueStyle}>{stats.variants}</span>
+          <span style={statusMaxStyle}>/ 55</span>
+        </div>
+        <span style={statusSepStyle}>·</span>
+        <div style={statusItemStyle}>
+          <span style={statusEmojiStyle}>🔗</span>
+          <span style={statusLabelStyle}>Synapse</span>
+          <span style={statusValueStyle}>{stats.synapsesStrong}</span>
+          <span style={statusMaxStyle}>強 / {stats.synapsesWeak} 弱</span>
+        </div>
+        <span style={statusSepStyle}>·</span>
+        <div style={statusItemStyle}>
+          <span style={statusEmojiStyle}>💎</span>
+          <span style={statusLabelStyle}>DMN</span>
+          <span style={statusValueStyle}>{stats.dmnOwned}</span>
+          <span style={statusMaxStyle}>/ 20</span>
+        </div>
+        <span style={statusSepStyle}>·</span>
+        <div style={statusItemStyle}>
+          <span style={statusEmojiStyle}>📖</span>
+          <span style={statusLabelStyle}>累積閱讀</span>
+          <span style={statusValueStyle}>{totalStudyMin}</span>
+          <span style={statusMaxStyle}>min</span>
+        </div>
+      </section>
+
+      <header style={heroStyle}>
+        <div>
+          <h1 style={heroTitleStyle}>{pack.meta.displayName}</h1>
+          <p style={heroSubtitleStyle}>
+            "Neurons that fire together, wire together." — Donald Hebb
+          </p>
+        </div>
       </header>
 
       <section style={quizCtaSectionStyle}>
@@ -72,8 +149,12 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
             style={quizCtaButtonStyle}
             onClick={() => setQuizOpen(true)}
             aria-label="開始答題"
+            disabled={quizPool.length === 0}
           >
             🎯 開始答題
+            {selectedFamilyDisplayName && (
+              <span style={ctaFamilyChipStyle}>· {selectedFamilyDisplayName}</span>
+            )}
           </button>
           <button
             type="button"
@@ -85,32 +166,26 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
           </button>
         </div>
         <p style={quizCtaHintStyle}>
-          答題 → 隨機 1 題 / 同一天兩 family 各答對 5 題 wire 出 synapse。
-          閱讀 → 累計每分鐘 +1 study min，每 30 min 觸發 DMN 抽卡。
+          {selectedFamilyDisplayName ? (
+            <>
+              答題 → 從 <strong>{selectedFamilyDisplayName}</strong> ({quizPool.length} 題) 抽題。
+            </>
+          ) : (
+            <>答題 → 跨 11 family 隨機抽題（共 {quizPool.length} 題）。</>
+          )}{' '}
+          同一天兩 family 各答對 5 題 wire 出 synapse。閱讀 → 累計每分鐘 +1 study min，每 30 min 觸發 DMN 抽卡。
+          <br />
           今日累計 <strong>{totalStudyMin}</strong> min · 距下個 DMN 抽卡還剩 <strong>{minutesUntilDmnDraw}</strong> min。
         </p>
       </section>
 
-      {quizOpen && <QuizModal pool={pack.questions} onClose={() => setQuizOpen(false)} />}
+      <FamilyPicker
+        pack={pack}
+        selectedFamilyId={selectedFamilyId}
+        onSelect={setSelectedFamilyId}
+      />
 
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>📊 內容總覽</h2>
-        <ul style={{ paddingLeft: '1.2rem', margin: 0 }}>
-          <li>
-            題目總數：<strong>{pack.questions.length}</strong>
-          </li>
-          <li>
-            科目（neuron family）：<strong>{pack.subjects.length}</strong>
-          </li>
-          <li>
-            NT branch 分布：DA {ntCount('DA')} / 5-HT {ntCount('5HT')} / GABA{' '}
-            {ntCount('GABA')} / Glu {ntCount('Glu')}
-          </li>
-          <li>
-            主題：{THEME_PIXEL_NEURONS.meta.displayName}（道具 {THEME_PIXEL_NEURONS.itemCatalog.length} 項、外觀 {COSMETIC_CATALOG_SIZE} 項）
-          </li>
-        </ul>
-      </section>
+      {quizOpen && <QuizModal pool={quizPool} onClose={() => setQuizOpen(false)} />}
 
       <section style={sectionStyle}>
         <h2 style={h2Style}>🎓 家族熟練度</h2>
@@ -122,89 +197,6 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
         <p style={{ margin: '0.5rem 0 0', fontSize: '0.78em', color: '#8c6d4a' }}>
           每答對 1 題 correct +1 + total +1；答錯 total +1。tier 在 5 題後評估，需同時通過題數與正確率雙閘門。
         </p>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>🧠 4 種神經傳導物質屬性</h2>
-        {pack.meta.statSchema && (
-          <ul style={{ paddingLeft: '1.2rem', margin: 0 }}>
-            {pack.meta.statSchema.order.map((key) => (
-              <li
-                key={key}
-                style={{
-                  borderLeft: `4px solid ${pack.meta.statSchema!.colors[key]}`,
-                  paddingLeft: '0.6rem',
-                  margin: '0.35rem 0',
-                }}
-              >
-                <strong>{pack.meta.statSchema!.labels[key]}</strong>
-                <span
-                  style={{ color: '#5a3f29', marginLeft: '0.5rem', fontSize: '0.85em' }}
-                >
-                  （鍵：<code>{key}</code>）
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>🧬 11 個 neuron family 科目</h2>
-        {(['DA', '5HT', 'GABA', 'Glu'] as const).map((branch) => {
-          const familiesInBranch = pack.subjects.filter((s) => s.group === branch)
-          if (familiesInBranch.length === 0) return null
-          return (
-            <div key={branch} style={{ marginBottom: '0.8rem' }}>
-              <h3
-                style={{
-                  fontSize: '0.95rem',
-                  margin: '0.4rem 0 0.25rem',
-                  color: familiesInBranch[0]?.color ?? '#000',
-                }}
-              >
-                {branch} 分支（{familiesInBranch.length} 個）
-              </h3>
-              <ul style={{ paddingLeft: '0', margin: 0, listStyle: 'none' }}>
-                {familiesInBranch.map((s) => (
-                  <li
-                    key={s.id}
-                    style={{
-                      margin: '0.4rem 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.6rem',
-                    }}
-                  >
-                    <img
-                      src={SPRITE_MAP[`subject:${s.id}`] ?? ''}
-                      alt={s.displayName}
-                      width={48}
-                      height={48}
-                      style={{
-                        imageRendering: 'pixelated',
-                        border: `2px solid ${s.color}`,
-                        borderRadius: '4px',
-                        background: '#fdf6e3',
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div>
-                      <div>
-                        <strong style={{ color: s.color }}>{s.displayName}</strong>
-                        <span
-                          style={{ color: '#5a3f29', marginLeft: '0.4rem', fontSize: '0.85em' }}
-                        >
-                          （{s.totalQuestions} 題、id：<code>{s.id}</code>）
-                        </span>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )
-        })}
       </section>
 
       <footer style={{ marginTop: '2rem', fontSize: '0.8em', color: '#5a3f29' }}>
@@ -225,11 +217,62 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
           ))}
         </p>
         <p style={{ margin: '0.25rem 0' }}>
-          Scaffold + content + theme + connectome 已就位。下一步：sprite + gacha + leaderboard + achievement + deploy。
+          開源 fork engine · AGPL-3.0 · content packs CC-BY-NC · 本站不收費、不放廣告。
+          <br />
+          回報問題 / 想法 → 從各頁設定面板的「回報問題」按鈕，或開 GitHub issue。
         </p>
       </footer>
     </>
   )
+}
+
+const statusChipStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.5rem',
+  justifyContent: 'center',
+  padding: '0.4rem 0.85rem',
+  marginBottom: '1rem',
+  background: '#3a2a1a',
+  color: '#fdf6e3',
+  border: '2px solid #5a3f29',
+  borderRadius: '6px',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+}
+
+const statusItemStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'baseline',
+  gap: '0.25rem',
+}
+
+const statusEmojiStyle: React.CSSProperties = { fontSize: '0.95rem' }
+const statusLabelStyle: React.CSSProperties = { color: '#d4c4a0', fontWeight: 500 }
+const statusValueStyle: React.CSSProperties = { color: '#fdf6e3', fontSize: '0.95rem', fontWeight: 700 }
+const statusMaxStyle: React.CSSProperties = { color: '#8c6d4a', fontWeight: 500 }
+const statusSepStyle: React.CSSProperties = { color: '#5a3f29' }
+
+const heroStyle: React.CSSProperties = {
+  marginBottom: '1rem',
+  padding: '0.85rem 1rem',
+  background: 'linear-gradient(135deg, #fdf6e3 0%, #f4ecd8 100%)',
+  border: '2px solid #8c6d4a',
+  borderRadius: '6px',
+}
+
+const heroTitleStyle: React.CSSProperties = {
+  fontSize: '1.35rem',
+  margin: '0 0 0.25rem',
+  color: '#3a2a1a',
+}
+
+const heroSubtitleStyle: React.CSSProperties = {
+  margin: 0,
+  color: '#5a3f29',
+  fontStyle: 'italic',
+  fontSize: '0.9rem',
 }
 
 const sectionStyle: React.CSSProperties = {
@@ -304,4 +347,13 @@ const quizCtaHintStyle: React.CSSProperties = {
   fontSize: '0.85rem',
   color: '#5a3f29',
   lineHeight: 1.55,
+}
+
+const ctaFamilyChipStyle: React.CSSProperties = {
+  marginLeft: '0.5rem',
+  padding: '0.15rem 0.5rem',
+  background: 'rgba(255,255,255,0.25)',
+  borderRadius: '4px',
+  fontSize: '0.78em',
+  fontWeight: 600,
 }

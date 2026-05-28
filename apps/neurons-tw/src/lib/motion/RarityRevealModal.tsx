@@ -122,6 +122,24 @@ export function RarityRevealModal({
       }}
     >
       <div style={{ position: 'relative', perspective: '1200px' }}>
+        {/*
+          Spin wrapper — Z-axis rotation layered over the card's existing
+          stage-based reveal. Per `neurons-mode` spec: P1 SHALL spin >= 3 turns
+          over >= 1500ms with ease-out cubic for the「快轉 → 減速 → 定位」 feel.
+          P2-P5 have spinTurns === 0 and this wrapper becomes a no-op
+          transition. Reduced-motion users get no rotation regardless of rarity.
+        */}
+        <motion.div
+          initial={{ rotate: 0 }}
+          animate={{
+            rotate: reduced ? 0 : 360 * timing.spinTurns,
+          }}
+          transition={{
+            duration: reduced || timing.spinTurns === 0 ? 0 : 1.5,
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          style={{ display: 'inline-block' }}
+        >
         <motion.div
           initial={reduced ? reducedVariants.envelope : cardVariants.envelope}
           animate={reduced ? reducedVariants[stage] : cardVariants[stage]}
@@ -167,6 +185,7 @@ export function RarityRevealModal({
               ✉︎
             </div>
           )}
+        </motion.div>
         </motion.div>
         <AnimatePresence>
           {!reduced && stage === 'particle' && (

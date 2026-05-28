@@ -17,14 +17,33 @@ export interface RarityTiming {
   glow: number
   particle?: number
   hold: number
+  /**
+   * Z-axis spin rotation turns layered over the reveal sequence. Per
+   * `neurons-mode` spec ("Rarity reveal animations SHALL share a centralized
+   * timing baseline ..."), P1 SHALL have `spinTurns >= 3`; P2–P5 SHALL be 0.
+   * Spin uses ease-out cubic (`cubic-bezier(.16,1,.3,1)`) producing a
+   * 「快轉 → 減速 → 定位」 three-stage feel.
+   */
+  spinTurns: number
 }
 
+/**
+ * Per-rarity reveal animation timings.
+ *
+ * Normative constraints (per `neurons-mode` spec):
+ *   - All 5 rarities `total >= 1000ms` (no rarity flashes faster than 1000ms)
+ *   - P1 `spinTurns >= 3` AND `total >= 1500ms` (multi-rotation spectacle)
+ *   - P2–P5 `spinTurns === 0` (no spin; fade + scale + flash only)
+ *
+ * Values below are the implementation tuning; the constraints above are the
+ * spec contract that may not be relaxed without a new change proposal.
+ */
 export const RARITY_TIMINGS: Record<Rarity, RarityTiming> = {
-  P5: { total: 250, envelope: 100, flip: 100, glow: 0, hold: 50 },
-  P4: { total: 400, envelope: 150, flip: 150, glow: 0, hold: 100 },
-  P3: { total: 600, envelope: 200, flip: 200, glow: 100, hold: 100 },
-  P2: { total: 1200, envelope: 300, flip: 300, glow: 300, hold: 300 },
-  P1: { total: 2800, envelope: 400, flip: 600, glow: 500, particle: 800, hold: 500 },
+  P5: { total: 1000, envelope: 250, flip: 250, glow: 200, hold: 300, spinTurns: 0 },
+  P4: { total: 1000, envelope: 250, flip: 250, glow: 200, hold: 300, spinTurns: 0 },
+  P3: { total: 1100, envelope: 300, flip: 300, glow: 200, hold: 300, spinTurns: 0 },
+  P2: { total: 1200, envelope: 300, flip: 300, glow: 300, hold: 300, spinTurns: 0 },
+  P1: { total: 2800, envelope: 400, flip: 600, glow: 500, particle: 800, hold: 500, spinTurns: 3 },
 } as const
 
 export const SKIP_THRESHOLD_MS = 1000
