@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { ContentPack } from '@study-rpg/core'
 import { THEME_PIXEL_NEURONS, COSMETIC_CATALOG_SIZE } from '@study-rpg/theme-pixel-neurons'
 
@@ -6,6 +6,7 @@ const SPRITE_MAP = THEME_PIXEL_NEURONS.sprites
 import { initMasteryForPack } from '../lib/services/connectome'
 import MasteryChip from '../components/MasteryChip'
 import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
+import { QuizModal } from '../components/QuizModal'
 
 interface Props {
   pack: ContentPack
@@ -13,6 +14,7 @@ interface Props {
 
 export default function OverviewPage({ pack }: Props): JSX.Element {
   const ntCount = (br: string): number => pack.subjects.filter((s) => s.group === br).length
+  const [quizOpen, setQuizOpen] = useState(false)
 
   useEffect(() => {
     initMasteryForPack(pack).catch(() => {
@@ -29,6 +31,22 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
           "Neurons that fire together, wire together." — Donald Hebb
         </p>
       </header>
+
+      <section style={quizCtaSectionStyle}>
+        <button
+          type="button"
+          style={quizCtaButtonStyle}
+          onClick={() => setQuizOpen(true)}
+          aria-label="開始答題"
+        >
+          🎯 開始答題
+        </button>
+        <p style={quizCtaHintStyle}>
+          隨機抽 1 題 → 按選項 → 看詳解 → 下一題。答對會點火 family，同一天兩個 family 各答對 5 題即 wire 出 synapse。
+        </p>
+      </section>
+
+      {quizOpen && <QuizModal pool={pack.questions} onClose={() => setQuizOpen(false)} />}
 
       <section style={sectionStyle}>
         <h2 style={h2Style}>📊 內容總覽</h2>
@@ -182,4 +200,37 @@ const h2Style: React.CSSProperties = {
   margin: '0 0 0.5rem',
   borderBottom: '1px solid #c4a878',
   paddingBottom: '0.25rem',
+}
+
+const quizCtaSectionStyle: React.CSSProperties = {
+  background: 'linear-gradient(135deg, #fdf2e8 0%, #f5e6d3 100%)',
+  border: '2px solid #d4a04d',
+  borderRadius: '8px',
+  padding: '1rem 1.1rem',
+  marginBottom: '1rem',
+  boxShadow: '0 2px 6px rgba(212, 160, 77, 0.15)',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: '0.5rem',
+}
+
+const quizCtaButtonStyle: React.CSSProperties = {
+  padding: '0.65rem 1.4rem',
+  borderRadius: '6px',
+  border: '1px solid #b8893a',
+  background: '#d4a04d',
+  color: '#fff',
+  fontSize: '1.05rem',
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+}
+
+const quizCtaHintStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: '0.85rem',
+  color: '#5a3f29',
+  lineHeight: 1.55,
 }
