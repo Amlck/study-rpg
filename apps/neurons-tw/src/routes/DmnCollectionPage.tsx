@@ -158,7 +158,11 @@ const subtitleStyle: React.CSSProperties = {
 
 const gridStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+  // 4 columns at 920px+, 3 at ~700-919, 2 at ~470-699, 1 at narrow mobile.
+  // Tile minmax tightened from 180px → 150px so locked silhouettes feel
+  // compact (less empty visual space) — major polish reduction of the
+  // previous「卡片太大、半成品感」symptom.
+  gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
   gap: '0.85rem',
   maxWidth: '1100px',
   margin: '0 auto',
@@ -169,12 +173,13 @@ const tileStyle: React.CSSProperties = {
   background: '#1c1838',
   border: '2px solid',
   borderRadius: '8px',
-  padding: '1.5rem 0.75rem 0.85rem',
+  padding: '1.3rem 0.65rem 0.7rem',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: '0.4rem',
-  minHeight: '240px',
+  gap: '0.35rem',
+  // Removed prior `minHeight: 240px` — let content drive height so locked
+  // tiles don't have ~80px of empty space below the silhouette.
 }
 
 const rarityChipStyle: React.CSSProperties = {
@@ -192,8 +197,8 @@ const rarityChipStyle: React.CSSProperties = {
 }
 
 const spriteWrapStyle: React.CSSProperties = {
-  width: '96px',
-  height: '96px',
+  width: '82px',
+  height: '82px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -203,13 +208,13 @@ const spriteWrapStyle: React.CSSProperties = {
 }
 
 const spriteStyle: React.CSSProperties = {
-  width: '80px',
-  height: '80px',
+  width: '68px',
+  height: '68px',
   imageRendering: 'pixelated',
 }
 
 const silhouetteStyle: React.CSSProperties = {
-  fontSize: '3rem',
+  fontSize: '2.5rem',
   color: '#3d3270',
   fontWeight: 700,
 }

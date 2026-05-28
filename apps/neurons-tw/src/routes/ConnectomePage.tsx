@@ -9,7 +9,6 @@ import {
   type ConnectomeSnapshot,
 } from '../lib/services/connectome'
 import { AP_THRESHOLDS, nextSlotThreshold } from '../lib/connectome'
-import ConnectomeDebugPanel from '../components/ConnectomeDebugPanel'
 import MasteryChip from '../components/MasteryChip'
 import { FamilyMasteryBadge } from '../components/FamilyMasteryBadge'
 import VariantCollectionChip from '../components/VariantCollectionChip'
@@ -81,8 +80,8 @@ export default function ConnectomePage({ pack }: Props): JSX.Element {
         <section role="region" aria-label="新手指引" style={emptyStateCalloutStyle}>
           <strong style={emptyStateOpenerStyle}>👋 第一次打開 connectome？</strong>
           <p style={emptyStateBodyStyle}>
-            向下捲動找到操作面板 <span aria-hidden="true">↓</span> 挑一個 neuron family → 按
-            「<code>+1 答對</code>」。同一天讓 <strong>兩個 family 各答對 5 題</strong>，就能 wire 出你的第一條 synapse。
+            到「總覽」頁按 <strong>🎯 開始答題</strong> 開始作答。同一天讓 <strong>兩個 family 各答對 5 題</strong>，
+            就能 wire 出你的第一條 synapse；想專練某一科就先用「📚 選科目練習」chip 選定 family。
           </p>
           <p style={emptyStateFlavorStyle}>
             Hebbian rule — &ldquo;Neurons that fire together, wire together.&rdquo;
@@ -125,7 +124,7 @@ export default function ConnectomePage({ pack }: Props): JSX.Element {
         <h2 style={h2Style}>🔗 Synapse 列表（共 {snapshot.synapses.length} 條）</h2>
         {snapshot.synapses.length === 0 ? (
           <p style={{ margin: 0, color: '#5a3f29' }}>
-            尚無 synapse — 同一天在兩個 family 各答對 5 題就會 wire（可用下方 debug panel 觸發）。
+            尚無 synapse — 同一天在兩個 family 各答對 5 題就會自動 wire 出來。
           </p>
         ) : (
           <table style={tableStyle}>
@@ -172,7 +171,6 @@ export default function ConnectomePage({ pack }: Props): JSX.Element {
         )}
       </section>
 
-      <ConnectomeDebugPanel pack={pack} onMutation={refresh} />
     </>
   )
 }

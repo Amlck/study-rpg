@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useRespectsReducedMotion } from '../lib/motion'
+import { useRespectsReducedMotion, RARITY_TIMINGS } from '../lib/motion'
 import { SPRITE_MAP } from '@study-rpg/theme-pixel-neurons'
 import { subscribeVariantGachaEvents, type VariantRolledPayload } from '../lib/services/variant-gacha'
 import type { VariantRarity } from '../lib/db'
@@ -51,6 +51,13 @@ export default function VariantUnlockModal(): JSX.Element {
   const { variant, familyDisplayName } = current.payload
   const spriteUrl = SPRITE_MAP[variant.spriteKey] ?? SPRITE_MAP['variant:default'] ?? ''
   const color = RARITY_COLOR[variant.rarity]
+  const timing = RARITY_TIMINGS[variant.rarity]
+  // Card entry duration (in seconds for Framer Motion) follows the centralized
+  // baseline. Reduced-motion users still get a brief opacity-only fade.
+  const cardDurationSec = reduced ? 0.18 : Math.max(timing.total, 1000) / 1000
+  // P1 spectacle spin per `neurons-mode` spec: 3 turns over 1.5s ease-out cubic.
+  // Non-P1 rarities have spinTurns === 0 and the wrapper is a no-op.
+  const spinTurns = reduced ? 0 : timing.spinTurns
 
   const overlayInitial = reduced ? { opacity: 0 } : { opacity: 0 }
   const overlayAnimate = { opacity: 1 }
@@ -58,7 +65,8 @@ export default function VariantUnlockModal(): JSX.Element {
   const cardInitial = reduced ? { opacity: 0 } : { opacity: 0, scale: 0.85 }
   const cardAnimate = reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }
   const cardExit = reduced ? { opacity: 0 } : { opacity: 0, scale: 0.95 }
-  const transition = { duration: reduced ? 0.18 : 0.35, ease: 'easeOut' as const }
+  const overlayTransition = { duration: reduced ? 0.18 : 0.35, ease: 'easeOut' as const }
+  const cardTransition = { duration: cardDurationSec, ease: 'easeOut' as const }
 
   return (
     <AnimatePresence>
@@ -70,15 +78,30 @@ export default function VariantUnlockModal(): JSX.Element {
         initial={overlayInitial}
         animate={overlayAnimate}
         exit={overlayExit}
-        transition={transition}
+        transition={overlayTransition}
         style={overlayStyle}
         onClick={dismissCurrent}
       >
+        {/*
+          Spin wrapper — P1 SHALL spin >= 3 turns over >= 1500ms ease-out cubic
+          per `neurons-mode` spec. P2-P5 have spinTurns === 0 → no-op wrapper.
+          Reduced-motion gets spinTurns 0 regardless of rarity.
+        */}
+        <motion.div
+          initial={{ rotate: 0 }}
+          animate={{ rotate: 360 * spinTurns }}
+          transition={{
+            duration: spinTurns === 0 ? 0 : 1.5,
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          style={{ display: 'inline-block' }}
+          onClick={(e) => e.stopPropagation()}
+        >
         <motion.div
           initial={cardInitial}
           animate={cardAnimate}
           exit={cardExit}
-          transition={transition}
+          transition={cardTransition}
           style={{ ...cardStyle, borderColor: color }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -104,6 +127,7 @@ export default function VariantUnlockModal(): JSX.Element {
           {queue.length > 1 && (
             <div style={queueHintStyle}>還有 {queue.length - 1} 個變體待揭曉</div>
           )}
+        </motion.div>
         </motion.div>
       </motion.div>
     </AnimatePresence>

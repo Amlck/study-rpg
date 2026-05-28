@@ -5,7 +5,7 @@ import { getContentPack } from '@study-rpg/content-neurons-tw'
 import { THEME_PIXEL_NEURONS } from '@study-rpg/theme-pixel-neurons'
 import OverviewPage from './routes/OverviewPage'
 import ConnectomePage from './routes/ConnectomePage'
-import MotionDemoPage from './routes/MotionDemoPage'
+import MotionDemoPage from './routes/MotionDemoPage' // dev self-verify only — not linked from prod navbar
 import LeaderboardPage from './routes/LeaderboardPage'
 import ConnectomeToastHost from './components/SynapseFormationToast'
 import VariantUnlockModal from './components/VariantUnlockModal'
@@ -84,40 +84,40 @@ export default function App(): JSX.Element {
         <AchievementUnlockModal />
         <DmnQuickReviewToast />
         <main style={pageStyle}>
-          <nav style={navStyle}>
-            <NavLink to="/" style={navLinkStyle} end>
-              {({ isActive }) => <span style={isActive ? activeLinkStyle : undefined}>總覽</span>}
-            </NavLink>
-            <NavLink to="/connectome" style={navLinkStyle}>
-              {({ isActive }) => (
-                <span style={isActive ? activeLinkStyle : undefined}>Connectome 連結組</span>
-              )}
-            </NavLink>
-            <NavLink to="/leaderboard" style={navLinkStyle}>
-              {({ isActive }) => (
-                <span style={isActive ? activeLinkStyle : undefined}>排名</span>
-              )}
-            </NavLink>
-            <NavLink to="/achievements" style={navLinkStyle}>
-              {({ isActive }) => (
-                <span style={isActive ? activeLinkStyle : undefined}>成就</span>
-              )}
-            </NavLink>
-            <NavLink to="/dmn" style={navLinkStyle}>
-              {({ isActive }) => (
-                <span style={isActive ? activeLinkStyle : undefined}>DMN 圖鑑</span>
-              )}
-            </NavLink>
-            <NavLink to="/motion-demo" style={navLinkStyle}>
-              {({ isActive }) => (
-                <span style={isActive ? activeLinkStyle : undefined}>動畫 demo</span>
-              )}
-            </NavLink>
+          <header style={topBarStyle}>
+            <h1 style={appTitleStyle}>神經元 RPG · LTP</h1>
+            <nav style={navStyle}>
+              <NavLink to="/" style={navLinkStyle} end>
+                {({ isActive }) => (
+                  <span style={isActive ? activeNavBoxStyle : navBoxStyle}>總覽 →</span>
+                )}
+              </NavLink>
+              <NavLink to="/connectome" style={navLinkStyle}>
+                {({ isActive }) => (
+                  <span style={isActive ? activeNavBoxStyle : navBoxStyle}>連結組 →</span>
+                )}
+              </NavLink>
+              <NavLink to="/dmn" style={navLinkStyle}>
+                {({ isActive }) => (
+                  <span style={isActive ? activeNavBoxStyle : navBoxStyle}>DMN →</span>
+                )}
+              </NavLink>
+              <NavLink to="/achievements" style={navLinkStyle}>
+                {({ isActive }) => (
+                  <span style={isActive ? activeNavBoxStyle : navBoxStyle}>成就 →</span>
+                )}
+              </NavLink>
+              <NavLink to="/leaderboard" style={navLinkStyle}>
+                {({ isActive }) => (
+                  <span style={isActive ? activeNavBoxStyle : navBoxStyle}>排名 →</span>
+                )}
+              </NavLink>
+            </nav>
             <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <DmnDrawButton />
               <AuthGate />
             </span>
-          </nav>
+          </header>
           <Routes>
             <Route path="/" element={<OverviewPage pack={pack} />} />
             <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
@@ -133,18 +133,33 @@ export default function App(): JSX.Element {
 }
 
 const pageStyle: React.CSSProperties = {
-  maxWidth: 820,
-  margin: '2rem auto',
+  maxWidth: 960,
+  margin: '1.5rem auto',
   padding: '0 1.25rem',
   fontFamily: "'Cubic 11', 'Noto Sans TC', sans-serif",
 }
 
+const topBarStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  marginBottom: '1.25rem',
+  flexWrap: 'wrap',
+}
+
+const appTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: '1.1rem',
+  fontWeight: 700,
+  color: '#3a2a1a',
+  letterSpacing: '0.05em',
+  whiteSpace: 'nowrap',
+}
+
 const navStyle: React.CSSProperties = {
   display: 'flex',
-  gap: '1rem',
-  marginBottom: '1.25rem',
-  borderBottom: '2px solid #8c6d4a',
-  paddingBottom: '0.5rem',
+  gap: '0.45rem',
+  flexWrap: 'wrap',
 }
 
 const navLinkStyle: React.CSSProperties = {
@@ -153,8 +168,23 @@ const navLinkStyle: React.CSSProperties = {
   fontWeight: 600,
 }
 
-const activeLinkStyle: React.CSSProperties = {
-  borderBottom: '2px solid #b58900',
-  paddingBottom: '0.25rem',
-  color: '#b58900',
+const navBoxStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '0.35rem 0.7rem',
+  border: '2px solid #8c6d4a',
+  borderRadius: '4px',
+  background: '#fdf6e3',
+  color: '#5a3f29',
+  fontSize: '0.88rem',
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  transition: 'background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease',
+}
+
+const activeNavBoxStyle: React.CSSProperties = {
+  ...navBoxStyle,
+  background: '#d4a04d',
+  color: '#fff',
+  borderColor: '#b8893a',
+  boxShadow: '0 2px 6px rgba(180, 137, 58, 0.4)',
 }

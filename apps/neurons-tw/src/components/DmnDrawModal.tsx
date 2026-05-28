@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SPRITE_MAP } from '@study-rpg/theme-pixel-neurons'
-import { useRespectsReducedMotion } from '../lib/motion'
+import { useRespectsReducedMotion, RARITY_TIMINGS } from '../lib/motion'
 import { drawDmnCard, type DrawDmnCardResult } from '../lib/services/dmn-fate-card'
 import { useDmnStatus } from '../lib/hooks/useDmnStatus'
 import type { DmnRarity, DmnEventKind } from '@study-rpg/content-neurons-tw'
@@ -130,7 +130,7 @@ export default function DmnDrawModal({ onClose }: Props): JSX.Element {
           )}
 
           {phase === 'revealed' && result && (
-            <DmnRevealCard result={result} onClose={onClose} />
+            <DmnRevealCard result={result} onClose={onClose} reduced={reduced} />
           )}
         </motion.div>
       </motion.div>
@@ -141,16 +141,35 @@ export default function DmnDrawModal({ onClose }: Props): JSX.Element {
 function DmnRevealCard({
   result,
   onClose,
+  reduced,
 }: {
   result: DrawDmnCardResult
   onClose: () => void
+  reduced: boolean
 }): JSX.Element {
   const { card, catalog } = result
   const color = RARITY_COLOR[card.rarity]
   const spriteUrl = SPRITE_MAP[card.artworkId] ?? SPRITE_MAP['variant:default'] ?? ''
+  const timing = RARITY_TIMINGS[card.rarity]
+  // P1 spectacle spin per `neurons-mode` spec. P2-P4 spinTurns === 0 →
+  // wrapper transition is no-op. Reduced-motion suppresses spin regardless.
+  const spinTurns = reduced ? 0 : timing.spinTurns
+  // Reveal fade-in duration follows rarity baseline (>= 1000ms per spec).
+  const revealDurationSec = reduced ? 0.18 : Math.max(timing.total, 1000) / 1000
 
   return (
-    <>
+    <motion.div
+      initial={{ rotate: 0, opacity: reduced ? 0 : 0 }}
+      animate={{ rotate: 360 * spinTurns, opacity: 1 }}
+      transition={{
+        rotate: {
+          duration: spinTurns === 0 ? 0 : 1.5,
+          ease: [0.16, 1, 0.3, 1],
+        },
+        opacity: { duration: revealDurationSec, ease: 'easeOut' },
+      }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.7rem' }}
+    >
       <div style={{ ...rarityBadgeStyle, color, borderColor: color }}>
         {RARITY_LABEL[card.rarity]}
       </div>
@@ -163,7 +182,7 @@ function DmnRevealCard({
       <button type="button" onClick={onClose} style={primaryBtnStyle}>
         收下 ✓
       </button>
-    </>
+    </motion.div>
   )
 }
 

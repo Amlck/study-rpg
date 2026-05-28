@@ -358,42 +358,6 @@ export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element
 
   const rootPos = positions.get('root') ?? { x: bounds.width / 2, y: bounds.height / 2 }
 
-  /** Spawn a single pulse along one edge with auto-cleanup on completion. */
-  function spawnPulse(
-    fromId: string,
-    toId: string,
-    color: string,
-    durationMs: number,
-    delayMs = 0,
-  ): void {
-    const from = positions.get(fromId)
-    const to = positions.get(toId)
-    if (!from || !to) return
-    const id = `${fromId}->${toId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    window.setTimeout(() => {
-      setPulses((prev) => [...prev, { id, from, to, color, durationMs }])
-    }, delayMs)
-  }
-
-  /**
-   * Fire a 3-leg cascade from a randomly-picked year → its leaf → its branch
-   * sub-root → root. Visualizes signal propagation up the connectome hierarchy.
-   * (Used by the demo button below.)
-   */
-  function fireRandomCascade(): void {
-    if (pack.subjects.length === 0) return
-    const fam = pack.subjects[Math.floor(Math.random() * pack.subjects.length)]
-    const years = yearsByFamily.get(fam.id) ?? []
-    if (years.length === 0) return
-    const year = years[Math.floor(Math.random() * years.length)]
-    const branch = fam.group
-    const color = fam.color ?? '#888'
-    const leg = 1100
-    spawnPulse(`year:${fam.id}:${year}`, `leaf:${fam.id}`, color, leg, 0)
-    spawnPulse(`leaf:${fam.id}`, `branch:${branch}`, color, leg, leg + 60)
-    spawnPulse(`branch:${branch}`, 'root', color, leg, (leg + 60) * 2)
-  }
-
   return (
     <section style={containerStyle} aria-label="Connectome 連結組樹狀視覺">
       <div style={zoomBarStyle}>
@@ -410,15 +374,6 @@ export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element
           aria-label="重置縮放與位置"
         >
           重置
-        </button>
-        <button
-          type="button"
-          style={zoomResetBtnStyle}
-          onClick={fireRandomCascade}
-          aria-label="觸發信號傳遞動畫"
-          title="從隨機年份節點發光 → leaf → branch → root（demo）"
-        >
-          ⚡ 觸發傳遞
         </button>
         <span style={hintStyle}>拖拉節點移動・捏合 / Ctrl+滾輪縮放</span>
       </div>
