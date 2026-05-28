@@ -133,8 +133,10 @@ export async function buildAchievementStats(): Promise<NeuronsAchievementStats> 
   const isFirstSaveDay = saveCreatedDate === today
   const todayCorrectCount = accruals.reduce((sum, a) => sum + a.sameDayCorrect, 0)
 
+  const totalStudyMinutes = await readMetaInt('totalStudyMinutes')
+
   return {
-    totalStudyMinutes: 0, // reading-timer not yet wired in neurons-tw
+    totalStudyMinutes,
     totalQuestionsAnswered,
     totalQuestionsCorrect,
     overallAccuracy,
