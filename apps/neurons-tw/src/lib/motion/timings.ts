@@ -76,3 +76,46 @@ export const SYNAPSE_TIMINGS: SynapseTimings = {
   decay: 600,
   slotUnlock: 500,
 } as const
+
+/**
+ * EEG spike-train firing timing (ms) — correct-answer feedback burst.
+ *
+ * Added by polish-neurons-clinical-machine-aesthetic (EEG anchor). Renders as a
+ * short peripheral spike-train burst; MUST NOT block answer resolution. Consumed
+ * by `SpikeTrainFiring` primitive + QuizModal.
+ *
+ * Spec: openspec/specs/neurons-motion-library/spec.md
+ *   "EEG-anchored motion timing tokens SHALL be exported as public constants"
+ */
+export interface SpikeTrainTiming {
+  /** Total burst duration (draw + decay) in ms. */
+  burst: number
+  /** Number of spikes in the train. */
+  spikes: number
+  /** Fade-out settle duration after the burst, ms. */
+  settle: number
+}
+
+export const SPIKE_TRAIN_TIMING: SpikeTrainTiming = {
+  burst: 280,
+  spikes: 4,
+  settle: 160,
+} as const
+
+/**
+ * Signal-oscillation timing (ms) — loading / pending sine-trace motif.
+ *
+ * Added by polish-neurons-clinical-machine-aesthetic (EEG anchor). Replaces /
+ * augments generic spinners with an oscillating signal trace.
+ */
+export interface OscillationTiming {
+  /** One full oscillation period in ms (loop duration). */
+  period: number
+  /** Peak vertical amplitude in px (svg units). */
+  amplitude: number
+}
+
+export const OSCILLATION_TIMING: OscillationTiming = {
+  period: 900,
+  amplitude: 10,
+} as const

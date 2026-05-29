@@ -33,10 +33,14 @@ interface StateStyle {
   drawShadow: boolean
 }
 
+// Edge colors source from the signal-layer `--synapse-*` tokens (clinical EEG
+// trace). 3 visually-distinct states: dim (hidden) / cyan signal / amber+glow.
+// Glow color uses the matching signal token. Per polish-neurons-clinical-machine-
+// aesthetic D7, no signal hex is hardcoded here — all via var().
 const STATE_STYLE: Record<SynapseState, StateStyle> = {
-  dormant: { strokeWidth: 1, stroke: '#999', opacity: 0, drawShadow: false },
-  weak: { strokeWidth: 3, stroke: '#b58900', opacity: 0.95, drawShadow: false },
-  strong: { strokeWidth: 5, stroke: '#268bd2', opacity: 1, drawShadow: true },
+  dormant: { strokeWidth: 1, stroke: 'var(--synapse-dormant)', opacity: 0, drawShadow: false },
+  weak: { strokeWidth: 3, stroke: 'var(--synapse-forming)', opacity: 0.95, drawShadow: false },
+  strong: { strokeWidth: 5, stroke: 'var(--synapse-mastered)', opacity: 1, drawShadow: true },
 }
 
 export function SynapseEdge({
@@ -74,16 +78,19 @@ export function SynapseEdge({
       fill="none"
       pathLength={1}
       strokeLinecap="round"
+      // stroke color is a CSS var (signal-layer token) — kept OUT of `animate`
+      // because framer-motion can't interpolate var() colors; it snaps on state
+      // change (a barely-perceptible cut under the 400ms width morph).
+      stroke={style.stroke}
       initial={
         isFreshlyFormed
-          ? { pathLength: reduced ? 1 : 0, opacity: 1, strokeWidth: style.strokeWidth, stroke: style.stroke }
+          ? { pathLength: reduced ? 1 : 0, opacity: 1, strokeWidth: style.strokeWidth }
           : false
       }
       animate={{
         pathLength: 1,
         opacity: targetOpacity,
         strokeWidth: style.strokeWidth,
-        stroke: style.stroke,
       }}
       transition={
         isFreshlyFormed
@@ -91,7 +98,7 @@ export function SynapseEdge({
           : { duration: morphDurationS, ease: 'easeInOut' }
       }
       style={{
-        filter: style.drawShadow ? 'drop-shadow(0 0 4px rgba(38, 139, 210, 0.55))' : 'none',
+        filter: style.drawShadow ? 'drop-shadow(0 0 5px var(--synapse-mastered))' : 'none',
       }}
       onAnimationComplete={() => {
         if (isFadingOut) onFadeOutComplete?.()

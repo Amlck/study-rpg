@@ -176,7 +176,7 @@ export function FamilyNode({
         y={11}
         fontSize={11}
         textAnchor={textAnchor}
-        fill="#5a3f29"
+        fill="var(--signal-ink)"
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
         {family.id}
@@ -185,8 +185,9 @@ export function FamilyNode({
         x={labelOffsetX}
         y={26}
         fontSize={10}
+        fontFamily="'VT323', monospace"
         textAnchor={textAnchor}
-        fill="#5a3f29"
+        fill="var(--signal-cyan)"
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
         AP {ap}
