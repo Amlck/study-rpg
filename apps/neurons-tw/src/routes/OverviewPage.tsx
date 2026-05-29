@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { liveQuery } from 'dexie'
 import type { ContentPack } from '@study-rpg/core'
 import { initMasteryForPack, loadConnectome } from '../lib/services/connectome'
-import MasteryChip from '../components/MasteryChip'
 import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
 import { QuizModal } from '../components/QuizModal'
 import { FamilyPicker } from '../components/FamilyPicker'
@@ -22,10 +21,14 @@ interface ProgressStats {
   dmnOwned: number
 }
 
+// QuizModal entry state. `null` 代表跨 family 隨機；`string` 代表特定 family；
+// `undefined` 代表 modal 未開。三態化讓 OverviewPage 不再保留「先選 family
+// 再點 CTA」 的中間狀態 — 對齊 二階 RecruitmentBanner 每張卡片自己開 modal 的 pattern。
+type QuizEntry = string | null | undefined
+
 export default function OverviewPage({ pack }: Props): JSX.Element {
-  const [quizOpen, setQuizOpen] = useState(false)
+  const [quizEntry, setQuizEntry] = useState<QuizEntry>(undefined)
   const [totalStudyMin, setTotalStudyMin] = useState(0)
-  const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null)
   const [stats, setStats] = useState<ProgressStats>({
     variants: 0,
     synapsesStrong: 0,
@@ -34,14 +37,11 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
   })
   const timer = useReadingTimer()
 
-  // Filter quiz pool by selected family. null → unrestricted (random pool).
   const quizPool = useMemo(
-    () => filterPoolByFamily(pack.questions, selectedFamilyId),
-    [pack.questions, selectedFamilyId],
+    () => (quizEntry === undefined ? [] : filterPoolByFamily(pack.questions, quizEntry)),
+    [pack.questions, quizEntry],
   )
-  const selectedFamilyDisplayName = selectedFamilyId
-    ? pack.subjects.find((s) => s.id === selectedFamilyId)?.displayName
-    : null
+  const totalPoolSize = pack.questions.length
 
   useEffect(() => {
     initMasteryForPack(pack).catch(() => {
@@ -49,7 +49,6 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
     })
   }, [pack])
 
-  // Subscribe to progress stats for the top status chip.
   useEffect(() => {
     const sub = liveQuery(async () => {
       const [variants, dmn, snapshot] = await Promise.all([
@@ -91,7 +90,6 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
     if (timer.status === 'reading') {
       return `🟢 閱讀中 · ${timer.currentMinute} min · 點擊結束`
     }
-    // paused
     if (timer.pauseReason === 'visibility') return '⏸ 切到別的分頁 · 點擊繼續'
     if (timer.pauseReason === 'idle') return '⏸ 90s 無動作 · 點擊繼續'
     return '⏸ 已暫停 · 點擊繼續'
@@ -142,20 +140,8 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
         </div>
       </header>
 
-      <section style={quizCtaSectionStyle}>
+      <section style={quizCtaSectionStyle} aria-label="核心循環入口">
         <div style={ctaButtonRowStyle}>
-          <button
-            type="button"
-            style={quizCtaButtonStyle}
-            onClick={() => setQuizOpen(true)}
-            aria-label="開始答題"
-            disabled={quizPool.length === 0}
-          >
-            🎯 開始答題
-            {selectedFamilyDisplayName && (
-              <span style={ctaFamilyChipStyle}>· {selectedFamilyDisplayName}</span>
-            )}
-          </button>
           <button
             type="button"
             style={timer.status === 'reading' ? readingActiveButtonStyle : readingCtaButtonStyle}
@@ -164,40 +150,29 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
           >
             {timerButtonLabel}
           </button>
+          <button
+            type="button"
+            style={randomQuizButtonStyle}
+            onClick={() => setQuizEntry(null)}
+            aria-label="跨 family 隨機答題"
+            title={`從全部 ${totalPoolSize} 題隨機抽題`}
+          >
+            🎲 隨機跨 family 答題
+            <span style={randomQuizCountStyle}>{totalPoolSize} 題</span>
+          </button>
         </div>
         <p style={quizCtaHintStyle}>
-          {selectedFamilyDisplayName ? (
-            <>
-              答題 → 從 <strong>{selectedFamilyDisplayName}</strong> ({quizPool.length} 題) 抽題。
-            </>
-          ) : (
-            <>答題 → 跨 11 family 隨機抽題（共 {quizPool.length} 題）。</>
-          )}{' '}
-          同一天兩 family 各答對 5 題 wire 出 synapse。閱讀 → 累計每分鐘 +1 study min，每 30 min 觸發 DMN 抽卡。
-          <br />
-          今日累計 <strong>{totalStudyMin}</strong> min · 距下個 DMN 抽卡還剩 <strong>{minutesUntilDmnDraw}</strong> min。
+          閱讀 → 每分鐘 +1 study min · 每 30 min 觸發 DMN 抽卡。今日累計{' '}
+          <strong>{totalStudyMin}</strong> min · 距下個 DMN 抽卡還剩{' '}
+          <strong>{minutesUntilDmnDraw}</strong> min。下方點任何 family 卡片即可指定範圍練習。
         </p>
       </section>
 
-      <FamilyPicker
-        pack={pack}
-        selectedFamilyId={selectedFamilyId}
-        onSelect={setSelectedFamilyId}
-      />
+      <FamilyPicker pack={pack} onStartQuiz={(familyId) => setQuizEntry(familyId)} />
 
-      {quizOpen && <QuizModal pool={quizPool} onClose={() => setQuizOpen(false)} />}
-
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>🎓 家族熟練度</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-          {pack.subjects.map((s) => (
-            <MasteryChip key={s.id} familyId={s.id} displayName={s.displayName} />
-          ))}
-        </div>
-        <p style={{ margin: '0.5rem 0 0', fontSize: '0.78em', color: '#8c6d4a' }}>
-          每答對 1 題 correct +1 + total +1；答錯 total +1。tier 在 5 題後評估，需同時通過題數與正確率雙閘門。
-        </p>
-      </section>
+      {quizEntry !== undefined && (
+        <QuizModal pool={quizPool} onClose={() => setQuizEntry(undefined)} />
+      )}
 
       <footer style={{ marginTop: '2rem', fontSize: '0.8em', color: '#5a3f29' }}>
         <p style={{ margin: '0.25rem 0' }}>
@@ -290,21 +265,6 @@ const heroSubtitleStyle: React.CSSProperties = {
   fontSize: '0.9rem',
 }
 
-const sectionStyle: React.CSSProperties = {
-  background: '#f4ecd8',
-  border: '2px solid #8c6d4a',
-  padding: '0.85rem 1rem',
-  marginBottom: '1rem',
-  borderRadius: '4px',
-}
-
-const h2Style: React.CSSProperties = {
-  fontSize: '1rem',
-  margin: '0 0 0.5rem',
-  borderBottom: '1px solid #c4a878',
-  paddingBottom: '0.25rem',
-}
-
 const quizCtaSectionStyle: React.CSSProperties = {
   background: 'linear-gradient(135deg, #fdf2e8 0%, #f5e6d3 100%)',
   border: '2px solid #d4a04d',
@@ -315,35 +275,24 @@ const quizCtaSectionStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'flex-start',
-  gap: '0.5rem',
+  gap: '0.55rem',
 }
 
 const ctaButtonRowStyle: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
   gap: '0.5rem',
-}
-
-const quizCtaButtonStyle: React.CSSProperties = {
-  padding: '0.65rem 1.4rem',
-  borderRadius: '6px',
-  border: '1px solid #b8893a',
-  background: '#d4a04d',
-  color: '#fff',
-  fontSize: '1.05rem',
-  fontWeight: 700,
-  fontFamily: 'inherit',
-  cursor: 'pointer',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+  width: '100%',
 }
 
 const readingCtaButtonStyle: React.CSSProperties = {
-  padding: '0.65rem 1.4rem',
+  flex: '1 1 220px',
+  padding: '0.65rem 1.2rem',
   borderRadius: '6px',
   border: '1px solid #6a8c3f',
   background: '#7fa84a',
   color: '#fff',
-  fontSize: '1.05rem',
+  fontSize: '1.02rem',
   fontWeight: 700,
   fontFamily: 'inherit',
   cursor: 'pointer',
@@ -357,18 +306,35 @@ const readingActiveButtonStyle: React.CSSProperties = {
   animation: 'pulse 2s ease-in-out infinite',
 }
 
+const randomQuizButtonStyle: React.CSSProperties = {
+  flex: '1 1 220px',
+  padding: '0.65rem 1.2rem',
+  borderRadius: '6px',
+  border: '1px solid #b8893a',
+  background: '#d4a04d',
+  color: '#fff',
+  fontSize: '1.02rem',
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.5rem',
+}
+
+const randomQuizCountStyle: React.CSSProperties = {
+  padding: '0.1rem 0.45rem',
+  background: 'rgba(255,255,255,0.25)',
+  borderRadius: '999px',
+  fontSize: '0.78em',
+  fontWeight: 600,
+}
+
 const quizCtaHintStyle: React.CSSProperties = {
   margin: 0,
   fontSize: '0.85rem',
   color: '#5a3f29',
   lineHeight: 1.55,
-}
-
-const ctaFamilyChipStyle: React.CSSProperties = {
-  marginLeft: '0.5rem',
-  padding: '0.15rem 0.5rem',
-  background: 'rgba(255,255,255,0.25)',
-  borderRadius: '4px',
-  fontSize: '0.78em',
-  fontWeight: 600,
 }

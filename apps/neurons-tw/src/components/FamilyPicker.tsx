@@ -1,17 +1,22 @@
 /**
- * Family subject picker — NT-branch-grouped portrait cards + 「全部」hero chip.
+ * Per-family quiz entry grid — NT-branch-grouped portrait cards with an
+ * embedded 「🎯 答題」 button per family. Mirrors the 二階 hospital app
+ * `RecruitmentBanner` pattern: every subject card is its own quiz entry,
+ * so the player picks a family AND starts answering in one click instead
+ * of selecting a filter then hitting a separate global CTA.
  *
- * Spec: openspec/specs/neurons-mode/spec.md
- *   "Overview SHALL surface a family subject picker that filters the active
- *   quiz pool"
+ * Spec parity: openspec/specs/neurons-mode/spec.md still upheld — Overview
+ * still surfaces a family subject picker that scopes the active quiz pool;
+ * the picker is now the action surface itself.
  *
- * Visual baseline: 二階 hospital app's specialty-grouped doctor roster
- * (門診 / 病房 / 開刀房 rows with portrait cards). For neurons, we group by
- * the 4 NT branches (DA / 5-HT / GABA / Glu) with each row labeled.
+ * Visual baseline: 二階 hospital `RecruitmentBanner` (per-subject card with
+ * 「📚 學習」 + 「🎫 招募」 action row). Neurons keeps NT-branch grouping
+ * (DA / 5-HT / GABA / Glu) since that's a teaching anchor the player needs.
  */
 
 import type { ContentPack, Subject } from '@study-rpg/core'
 import { THEME_PIXEL_NEURONS } from '@study-rpg/theme-pixel-neurons'
+import MasteryChip from './MasteryChip'
 
 const SPRITE_MAP = THEME_PIXEL_NEURONS.sprites
 
@@ -31,21 +36,17 @@ const BRANCH_ACCENT: Record<typeof NT_BRANCHES[number], string> = {
 
 interface Props {
   pack: ContentPack
-  selectedFamilyId: string | null
-  onSelect: (familyId: string | null) => void
+  onStartQuiz: (familyId: string) => void
 }
 
-export function FamilyPicker({ pack, selectedFamilyId, onSelect }: Props): JSX.Element {
-  const totalQuestions = pack.questions.length
+export function FamilyPicker({ pack, onStartQuiz }: Props): JSX.Element {
   return (
-    <section style={pickerSectionStyle} aria-label="選科目練習">
+    <section style={pickerSectionStyle} aria-label="選 family 直接答題">
       <header style={headerRowStyle}>
-        <h2 style={pickerHeaderStyle}>📚 選科目練習</h2>
-        <AllChip
-          selected={selectedFamilyId === null}
-          onClick={() => onSelect(null)}
-          totalCount={totalQuestions}
-        />
+        <h2 style={pickerHeaderStyle}>📚 選 family 直接練習</h2>
+        <span style={headerHintStyle}>
+          {pack.subjects.length} family · 4 NT 分支 · 同日跨 family 答對 5 題 → wire synapse
+        </span>
       </header>
 
       <div style={branchListStyle}>
@@ -58,15 +59,14 @@ export function FamilyPicker({ pack, selectedFamilyId, onSelect }: Props): JSX.E
               <div style={branchHeaderStyle}>
                 <span style={{ ...branchDotStyle, background: accent }} aria-hidden />
                 <span style={branchLabelTextStyle}>{BRANCH_LABEL[branch]}</span>
-                <span style={branchCountStyle}>{families.length} / 11</span>
+                <span style={branchCountStyle}>{families.length} family</span>
               </div>
               <div style={branchRowStyle}>
                 {families.map((s) => (
                   <FamilyCard
                     key={s.id}
                     family={s}
-                    selected={selectedFamilyId === s.id}
-                    onClick={() => onSelect(s.id)}
+                    onStartQuiz={() => onStartQuiz(s.id)}
                   />
                 ))}
               </div>
@@ -74,77 +74,51 @@ export function FamilyPicker({ pack, selectedFamilyId, onSelect }: Props): JSX.E
           )
         })}
       </div>
-
-      {selectedFamilyId && (() => {
-        const selected = pack.subjects.find((s) => s.id === selectedFamilyId)
-        if (!selected) return null
-        return (
-          <p style={selectedHintStyle}>
-            🎯 練習範圍鎖定：<strong>{selected.id}</strong>（{selected.displayName}）— 點「全部」恢復跨科隨機
-          </p>
-        )
-      })()}
     </section>
   )
 }
 
 function FamilyCard({
   family,
-  selected,
-  onClick,
+  onStartQuiz,
 }: {
   family: Subject
-  selected: boolean
-  onClick: () => void
+  onStartQuiz: () => void
 }): JSX.Element {
   const accent = family.color ?? '#8c6d4a'
   const spriteUrl = SPRITE_MAP[`subject:${family.id}`] ?? ''
+  const isEmpty = family.totalQuestions === 0
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={selected ? selectedCardStyle(accent) : familyCardStyle(accent)}
-      aria-pressed={selected}
-      title={`${family.id} · ${family.displayName} · ${family.totalQuestions} 題`}
-    >
-      <div style={spriteFrameStyle(accent, selected)}>
-        {spriteUrl ? (
-          <img src={spriteUrl} alt="" width={48} height={48} style={spriteStyle} />
-        ) : (
-          <span style={{ fontSize: '1.4rem', color: accent }} aria-hidden>🧬</span>
-        )}
-      </div>
-      <div style={primaryNameStyle(selected ? '#fff' : accent)}>{family.id}</div>
-      <div style={personaNameStyle(selected ? 'rgba(255,255,255,0.85)' : '#5a3f29')}>
-        {family.displayName}
-      </div>
-      <div style={countChipStyle(selected ? 'rgba(255,255,255,0.18)' : '#fdf6e3', accent, selected)}>
-        {family.totalQuestions} 題
-      </div>
-    </button>
-  )
-}
+    <article style={familyCardStyle(accent)} aria-label={`${family.id} · ${family.displayName}`}>
+      <header style={cardHeaderStyle}>
+        <div style={spriteFrameStyle(accent)}>
+          {spriteUrl ? (
+            <img src={spriteUrl} alt="" width={48} height={48} style={spriteStyle} />
+          ) : (
+            <span style={{ fontSize: '1.4rem', color: accent }} aria-hidden>🧬</span>
+          )}
+        </div>
+        <div style={cardHeadTextStyle}>
+          <div style={primaryNameStyle(accent)}>{family.id}</div>
+          <div style={personaNameStyle}>{family.displayName}</div>
+        </div>
+      </header>
 
-function AllChip({
-  selected,
-  onClick,
-  totalCount,
-}: {
-  selected: boolean
-  onClick: () => void
-  totalCount: number
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={selected ? allChipSelectedStyle : allChipStyle}
-      aria-pressed={selected}
-    >
-      <span style={{ fontSize: '1.05rem' }} aria-hidden>🎲</span>
-      <span>全部</span>
-      <span style={allChipCountStyle(selected)}>{totalCount}</span>
-    </button>
+      <div style={chipRowStyle}>
+        <MasteryChip familyId={family.id} displayName={family.displayName} />
+        <span style={countChipStyle(accent)}>{family.totalQuestions} 題</span>
+      </div>
+
+      <button
+        type="button"
+        onClick={onStartQuiz}
+        disabled={isEmpty}
+        style={isEmpty ? quizButtonDisabledStyle : quizButtonStyle(accent)}
+        title={isEmpty ? '本 family 目前無題目' : `從 ${family.id} 抽題答題`}
+      >
+        🎯 答題
+      </button>
+    </article>
   )
 }
 
@@ -162,9 +136,9 @@ const headerRowStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: '0.6rem',
+  marginBottom: '0.75rem',
   borderBottom: '1px solid #c4a878',
-  paddingBottom: '0.3rem',
+  paddingBottom: '0.35rem',
   gap: '0.5rem',
   flexWrap: 'wrap',
 }
@@ -175,17 +149,23 @@ const pickerHeaderStyle: React.CSSProperties = {
   color: '#3a2a1a',
 }
 
+const headerHintStyle: React.CSSProperties = {
+  fontSize: '0.72rem',
+  color: '#8c6d4a',
+  letterSpacing: '0.02em',
+}
+
 const branchListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '0.7rem',
+  gap: '0.9rem',
 }
 
 const branchHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '0.4rem',
-  marginBottom: '0.3rem',
+  marginBottom: '0.45rem',
 }
 
 const branchDotStyle: React.CSSProperties = {
@@ -203,54 +183,47 @@ const branchLabelTextStyle: React.CSSProperties = {
 }
 
 const branchCountStyle: React.CSSProperties = {
-  fontSize: '0.72rem',
+  fontSize: '0.7rem',
   color: '#8c6d4a',
   marginLeft: 'auto',
 }
 
 const branchRowStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '0.45rem',
-  flexWrap: 'wrap',
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+  gap: '0.55rem',
 }
 
 function familyCardStyle(accent: string): React.CSSProperties {
   return {
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
-    gap: '0.25rem',
-    padding: '0.45rem 0.4rem 0.4rem',
+    gap: '0.5rem',
+    padding: '0.6rem 0.65rem 0.65rem',
     background: '#fff',
     border: `2px solid ${accent}`,
     borderRadius: '6px',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    transition: 'transform 0.1s ease, box-shadow 0.12s ease, background 0.15s ease',
-    width: 102,
-    boxSizing: 'border-box',
+    boxShadow: '0 1px 2px rgba(58, 42, 26, 0.08)',
+    transition: 'transform 0.12s ease, box-shadow 0.12s ease',
   }
 }
 
-function selectedCardStyle(accent: string): React.CSSProperties {
-  return {
-    ...familyCardStyle(accent),
-    background: accent,
-    borderColor: accent,
-    transform: 'translateY(-2px)',
-    boxShadow: `0 4px 10px ${accent}50`,
-  }
+const cardHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.55rem',
 }
 
-function spriteFrameStyle(accent: string, selected: boolean): React.CSSProperties {
+function spriteFrameStyle(accent: string): React.CSSProperties {
   return {
-    width: 56,
-    height: 56,
+    width: 52,
+    height: 52,
+    flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: selected ? 'rgba(255,255,255,0.15)' : '#fdf6e3',
-    border: `1px solid ${selected ? 'rgba(255,255,255,0.35)' : accent}`,
+    background: '#fdf6e3',
+    border: `1px solid ${accent}`,
     borderRadius: '4px',
   }
 }
@@ -261,84 +234,79 @@ const spriteStyle: React.CSSProperties = {
   height: 48,
 }
 
+const cardHeadTextStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.1rem',
+  minWidth: 0,
+  flex: 1,
+}
+
 function primaryNameStyle(color: string): React.CSSProperties {
   return {
-    fontSize: '0.85rem',
+    fontSize: '0.92rem',
     fontWeight: 700,
     color,
-    textAlign: 'center',
     lineHeight: 1.15,
-    width: '100%',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   }
 }
 
-function personaNameStyle(color: string): React.CSSProperties {
-  return {
-    fontSize: '0.6rem',
-    color,
-    textAlign: 'center',
-    lineHeight: 1.2,
-    width: '100%',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  }
+const personaNameStyle: React.CSSProperties = {
+  fontSize: '0.68rem',
+  color: '#5a3f29',
+  lineHeight: 1.2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
-function countChipStyle(bg: string, accent: string, selected: boolean): React.CSSProperties {
-  return {
-    fontSize: '0.62rem',
-    padding: '0.05rem 0.35rem',
-    borderRadius: '999px',
-    background: bg,
-    color: selected ? '#fff' : accent,
-    border: `1px solid ${selected ? 'rgba(255,255,255,0.5)' : accent}`,
-    marginTop: '0.1rem',
-  }
-}
-
-const allChipStyle: React.CSSProperties = {
-  display: 'inline-flex',
+const chipRowStyle: React.CSSProperties = {
+  display: 'flex',
   alignItems: 'center',
-  gap: '0.4rem',
-  padding: '0.3rem 0.7rem',
-  background: '#fdf6e3',
-  border: '2px solid #5a3f29',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-  fontSize: '0.8rem',
-  fontWeight: 700,
-  color: '#3a2a1a',
+  gap: '0.35rem',
+  flexWrap: 'wrap',
 }
 
-const allChipSelectedStyle: React.CSSProperties = {
-  ...allChipStyle,
-  background: '#3a2a1a',
-  color: '#fff',
-  borderColor: '#3a2a1a',
-}
-
-function allChipCountStyle(selected: boolean): React.CSSProperties {
+function countChipStyle(accent: string): React.CSSProperties {
   return {
-    fontSize: '0.72rem',
-    padding: '0.05rem 0.45rem',
+    fontSize: '0.7rem',
+    padding: '0.1rem 0.45rem',
     borderRadius: '999px',
-    background: selected ? 'rgba(255,255,255,0.18)' : '#5a3f29',
-    color: selected ? '#fff' : '#fff',
+    background: '#fdf6e3',
+    color: accent,
+    border: `1px solid ${accent}`,
     fontWeight: 600,
   }
 }
 
-const selectedHintStyle: React.CSSProperties = {
-  margin: '0.7rem 0 0',
-  fontSize: '0.78rem',
-  color: '#5a3f29',
-  padding: '0.35rem 0.6rem',
-  background: '#fdf6e3',
-  border: '1px dashed #c4a878',
+function quizButtonStyle(accent: string): React.CSSProperties {
+  return {
+    width: '100%',
+    padding: '0.45rem 0.5rem',
+    background: accent,
+    color: '#fff',
+    border: `1px solid ${accent}`,
+    borderRadius: '4px',
+    fontSize: '0.9rem',
+    fontWeight: 700,
+    fontFamily: 'inherit',
+    cursor: 'pointer',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+  }
+}
+
+const quizButtonDisabledStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '0.45rem 0.5rem',
+  background: '#e8dcc0',
+  color: '#a89074',
+  border: '1px solid #c4a878',
   borderRadius: '4px',
+  fontSize: '0.9rem',
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  cursor: 'not-allowed',
 }
