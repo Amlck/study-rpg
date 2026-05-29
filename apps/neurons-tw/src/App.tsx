@@ -21,6 +21,7 @@ import AchievementUnlockModal from './components/AchievementUnlockModal'
 import DmnCollectionPage from './routes/DmnCollectionPage'
 import DmnDrawButton from './components/DmnDrawButton'
 import DmnQuickReviewToast from './components/DmnQuickReviewToast'
+import HelpMenu from './components/HelpMenu'
 import { AuthProvider } from './lib/auth/AuthContext'
 import { AuthGate } from './components/AuthGate'
 import { SyncMount } from './lib/sync/SyncMount'
@@ -83,6 +84,7 @@ export default function App(): JSX.Element {
         <AchievementToastHost />
         <AchievementUnlockModal />
         <DmnQuickReviewToast />
+        <HelpMenu />
         <main style={pageStyle}>
           <header style={topBarStyle}>
             <h1 style={appTitleStyle}>神經元 RPG · LTP</h1>

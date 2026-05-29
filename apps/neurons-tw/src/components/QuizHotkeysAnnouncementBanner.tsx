@@ -14,7 +14,10 @@
 
 import { useState } from 'react'
 
-const STORAGE_KEY = 'neurons-quiz-hotkeys-banner-dismissed-v1'
+// v1 → v2 bump (add-neurons-helpmenu, 2026-05-29): re-shows banner once for
+// previously-dismissed users so they see the new「詳見右下 ❓ →『⌨️
+// 鍵盤快捷鍵』」 HelpMenu reference appended to the copy.
+const STORAGE_KEY = 'neurons-quiz-hotkeys-banner-dismissed-v2'
 
 function isDismissed(): boolean {
   try {
@@ -116,6 +119,7 @@ export default function QuizHotkeysAnnouncementBanner(): JSX.Element | null {
           <kbd>Enter</kbd> 送出；答題後 <kbd>Enter</kbd> 或 <kbd>Space</kbd> 下一題；
           長題幹 <kbd>Space</kbd>/<kbd>Shift+Space</kbd> 翻頁、<kbd>↓</kbd><kbd>↑</kbd> 微捲、
           <kbd>Home</kbd>/<kbd>End</kbd> 跳邊；<kbd>Esc</kbd> 隨時關閉。
+          詳見右上 ❓ →「⌨️ 鍵盤快捷鍵」section。
         </span>
         <button
           type="button"
