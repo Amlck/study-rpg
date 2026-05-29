@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Question } from '@study-rpg/core'
 import { recordCorrectAnswer, recordIncorrectAnswer } from '../lib/services/connectome'
+import { SpikeTrainFiring } from '../lib/motion'
 
 interface Props {
   pool: Question[]
@@ -202,6 +203,11 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
               <p style={resultLineStyle}>
                 {isCorrect ? '✅ 答對' : '❌ 答錯'}
                 {!q.disputed && ` · 正解：${correctKey}`}
+                {isCorrect && (
+                  <span style={spikeFireStyle} aria-hidden>
+                    <SpikeTrainFiring key={`spike-${idx}`} width={120} />
+                  </span>
+                )}
               </p>
               {q.explanation && (
                 <details style={explanationStyle} open>
@@ -351,6 +357,19 @@ const resultLineStyle: React.CSSProperties = {
   fontSize: '1rem',
   fontWeight: 600,
   color: '#3a2a1a',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  flexWrap: 'wrap',
+}
+
+// Peripheral EEG spike-train burst on correct answer — sibling overlay, never
+// gates the reward / next-question flow. (polish-neurons-clinical-machine-aesthetic)
+const spikeFireStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  height: 24,
+  marginLeft: 'auto',
 }
 
 const explanationStyle: React.CSSProperties = {

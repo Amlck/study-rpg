@@ -15,6 +15,10 @@ import {
   NumberTickUp,
   RARITY_TIMINGS,
   RarityRevealModal,
+  SignalOscillation,
+  SpikeTrainFiring,
+  SPIKE_TRAIN_TIMING,
+  OSCILLATION_TIMING,
   Toast,
   useRespectsReducedMotion,
   type Rarity,
@@ -27,6 +31,7 @@ type ActiveDemo =
   | { kind: 'tickup'; nonce: number }
   | { kind: 'reveal'; rarity: Rarity }
   | { kind: 'achievement' }
+  | { kind: 'spike'; nonce: number }
 
 export default function MotionDemoPage(): JSX.Element {
   const reduced = useRespectsReducedMotion()
@@ -90,6 +95,37 @@ export default function MotionDemoPage(): JSX.Element {
       <button style={btnStyle} onClick={() => setActive({ kind: 'achievement' })}>
         🏆 觸發 P1 鑽石解鎖
       </button>
+
+      <h3 style={h3Style}>EEG spike-train firing（答對 firing）</h3>
+      <p style={{ margin: '0 0 0.4rem' }}>
+        模擬答對時的 spike-train burst（{SPIKE_TRAIN_TIMING.spikes} spikes ·{' '}
+        {SPIKE_TRAIN_TIMING.burst + SPIKE_TRAIN_TIMING.settle}ms）：
+        <span
+          style={{
+            display: 'inline-block',
+            minWidth: 160,
+            height: 32,
+            marginLeft: '0.5rem',
+            verticalAlign: 'middle',
+          }}
+        >
+          {active.kind === 'spike' && <SpikeTrainFiring key={active.nonce} width={160} />}
+        </span>
+      </p>
+      <button
+        style={btnStyle}
+        onClick={() => setActive({ kind: 'spike', nonce: Date.now() })}
+      >
+        ⚡ 觸發 spike-train firing
+      </button>
+
+      <h3 style={h3Style}>Signal-oscillation（loading / pending）</h3>
+      <p style={{ margin: '0 0 0.4rem' }}>
+        持續 loop 的訊號震盪（{OSCILLATION_TIMING.period}ms period）：
+        <span style={{ marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+          <SignalOscillation width={120} height={24} />
+        </span>
+      </p>
 
       <h3 style={h3Style}>Synapse tree animations</h3>
       <SynapseDemoSvg />

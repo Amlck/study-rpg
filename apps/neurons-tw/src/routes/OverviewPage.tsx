@@ -226,17 +226,25 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
   )
 }
 
+// EEG-monitor status readout — dark signal surface + grid/scanline backdrop +
+// monospace signal-cyan values. The single Overview data surface (D3 + D5); the
+// rest of the page stays warm. (polish-neurons-clinical-machine-aesthetic)
 const statusChipStyle: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
   alignItems: 'center',
   gap: '0.5rem',
   justifyContent: 'center',
-  padding: '0.4rem 0.85rem',
+  padding: '0.5rem 0.85rem',
   marginBottom: '1rem',
-  background: '#3a2a1a',
-  color: '#fdf6e3',
-  border: '2px solid #5a3f29',
+  background: 'var(--signal-bg)',
+  backgroundImage:
+    'linear-gradient(var(--grid-line) 1px, transparent 1px),' +
+    'linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),' +
+    'repeating-linear-gradient(0deg, var(--scanline) 0px, var(--scanline) 1px, transparent 1px, transparent 3px)',
+  backgroundSize: '18px 18px, 18px 18px, 100% 3px',
+  color: 'var(--signal-ink)',
+  border: '2px solid var(--signal-dim)',
   borderRadius: '6px',
   fontSize: '0.8rem',
   fontWeight: 600,
@@ -245,14 +253,21 @@ const statusChipStyle: React.CSSProperties = {
 const statusItemStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'baseline',
-  gap: '0.25rem',
+  gap: '0.3rem',
 }
 
 const statusEmojiStyle: React.CSSProperties = { fontSize: '0.95rem' }
-const statusLabelStyle: React.CSSProperties = { color: '#d4c4a0', fontWeight: 500 }
-const statusValueStyle: React.CSSProperties = { color: '#fdf6e3', fontSize: '0.95rem', fontWeight: 700 }
-const statusMaxStyle: React.CSSProperties = { color: '#8c6d4a', fontWeight: 500 }
-const statusSepStyle: React.CSSProperties = { color: '#5a3f29' }
+const statusLabelStyle: React.CSSProperties = { color: 'var(--signal-ink)', opacity: 0.75, fontWeight: 500 }
+const statusValueStyle: React.CSSProperties = {
+  color: 'var(--signal-cyan)',
+  fontFamily: "'VT323', monospace",
+  fontSize: '1.25rem',
+  lineHeight: 1,
+  fontWeight: 400,
+  letterSpacing: '0.5px',
+}
+const statusMaxStyle: React.CSSProperties = { color: 'var(--signal-ink)', opacity: 0.5, fontWeight: 500 }
+const statusSepStyle: React.CSSProperties = { color: 'var(--signal-ink)', opacity: 0.35 }
 
 const heroStyle: React.CSSProperties = {
   marginBottom: '1rem',

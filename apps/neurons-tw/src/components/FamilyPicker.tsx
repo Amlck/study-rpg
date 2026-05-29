@@ -75,13 +75,15 @@ export function FamilyPicker({ pack, selectedFamilyId, onSelect }: Props): JSX.E
         })}
       </div>
 
-      {selectedFamilyId && (
-        <p style={selectedHintStyle}>
-          🎯 練習範圍鎖定：
-          <strong>{pack.subjects.find((s) => s.id === selectedFamilyId)?.displayName}</strong>
-          （點「全部」恢復跨科隨機）
-        </p>
-      )}
+      {selectedFamilyId && (() => {
+        const selected = pack.subjects.find((s) => s.id === selectedFamilyId)
+        if (!selected) return null
+        return (
+          <p style={selectedHintStyle}>
+            🎯 練習範圍鎖定：<strong>{selected.id}</strong>（{selected.displayName}）— 點「全部」恢復跨科隨機
+          </p>
+        )
+      })()}
     </section>
   )
 }
@@ -97,18 +99,13 @@ function FamilyCard({
 }): JSX.Element {
   const accent = family.color ?? '#8c6d4a'
   const spriteUrl = SPRITE_MAP[`subject:${family.id}`] ?? ''
-  // Family displayName tends to be "VTA Dopaminergic — Thrill-Seeker" — too long.
-  // Split into two lines: primary (before —) + persona (after —).
-  const parts = family.displayName.split(/\s*—\s*/, 2)
-  const primary = parts[0] ?? family.displayName
-  const persona = parts[1] ?? ''
   return (
     <button
       type="button"
       onClick={onClick}
       style={selected ? selectedCardStyle(accent) : familyCardStyle(accent)}
       aria-pressed={selected}
-      title={`${family.displayName} · ${family.totalQuestions} 題`}
+      title={`${family.id} · ${family.displayName} · ${family.totalQuestions} 題`}
     >
       <div style={spriteFrameStyle(accent, selected)}>
         {spriteUrl ? (
@@ -117,12 +114,10 @@ function FamilyCard({
           <span style={{ fontSize: '1.4rem', color: accent }} aria-hidden>🧬</span>
         )}
       </div>
-      <div style={primaryNameStyle(selected ? '#fff' : accent)}>{primary}</div>
-      {persona && (
-        <div style={personaNameStyle(selected ? 'rgba(255,255,255,0.85)' : '#5a3f29')}>
-          {persona}
-        </div>
-      )}
+      <div style={primaryNameStyle(selected ? '#fff' : accent)}>{family.id}</div>
+      <div style={personaNameStyle(selected ? 'rgba(255,255,255,0.85)' : '#5a3f29')}>
+        {family.displayName}
+      </div>
       <div style={countChipStyle(selected ? 'rgba(255,255,255,0.18)' : '#fdf6e3', accent, selected)}>
         {family.totalQuestions} 題
       </div>
@@ -268,7 +263,7 @@ const spriteStyle: React.CSSProperties = {
 
 function primaryNameStyle(color: string): React.CSSProperties {
   return {
-    fontSize: '0.72rem',
+    fontSize: '0.85rem',
     fontWeight: 700,
     color,
     textAlign: 'center',
@@ -282,7 +277,7 @@ function primaryNameStyle(color: string): React.CSSProperties {
 
 function personaNameStyle(color: string): React.CSSProperties {
   return {
-    fontSize: '0.62rem',
+    fontSize: '0.6rem',
     color,
     textAlign: 'center',
     lineHeight: 1.2,

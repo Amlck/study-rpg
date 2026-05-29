@@ -215,15 +215,19 @@ const STATE_LABELS: Record<'dormant' | 'weak' | 'strong', string> = {
 }
 
 function stateBadge(state: 'dormant' | 'weak' | 'strong'): JSX.Element {
+  // Dark signal-chips so the synapse states read coherently with the tree's
+  // cyan/amber EEG edges (weak→cyan, strong→amber) while staying legible on the
+  // cream section bg. (polish-neurons-clinical-machine-aesthetic)
   const styles: Record<typeof state, React.CSSProperties> = {
-    dormant: { color: '#999', borderColor: '#999' },
-    weak: { color: '#b58900', borderColor: '#b58900' },
-    strong: { color: '#268bd2', borderColor: '#268bd2' },
+    dormant: { color: 'var(--signal-ink)', borderColor: 'var(--signal-dim)' },
+    weak: { color: 'var(--signal-cyan)', borderColor: 'var(--signal-cyan)' },
+    strong: { color: 'var(--signal-amber)', borderColor: 'var(--signal-amber)' },
   }
   return (
     <span
       style={{
         ...badgeStyle,
+        background: 'var(--signal-bg)',
         ...styles[state],
       }}
     >

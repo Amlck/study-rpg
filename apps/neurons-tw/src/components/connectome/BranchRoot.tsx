@@ -69,7 +69,7 @@ export function BranchRoot({ branch, pos, mode }: BranchRootProps): JSX.Element 
         textAnchor="middle"
         fontSize={12}
         fontWeight={700}
-        fill="#3b2a18"
+        fill="var(--signal-ink)"
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
         {label}

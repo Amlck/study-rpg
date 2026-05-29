@@ -399,7 +399,7 @@ export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element
             const isParentChild = e.kind === 'parent-child'
             const stroke = isParentChild
               ? guessEdgeColor(e.target, pack)
-              : '#8c6d4a'
+              : 'var(--signal-dim)'
             const strokeOpacity = isParentChild ? 0.45 : 0.6
             return (
               <path
@@ -521,7 +521,7 @@ export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element
             textAnchor="middle"
             fontSize={13}
             fontWeight={700}
-            fill="#3b2a18"
+            fill="var(--signal-ink)"
             style={{ userSelect: 'none' }}
           >
             Neuron Connectome
@@ -600,9 +600,18 @@ function guessEdgeColor(targetId: string, pack: ContentPack): string {
   return '#8c6d4a'
 }
 
+// Dim instrument canvas (EEG-monitor read) — dimmer than the deep #0c1418 stats
+// surface so the warm pixel tree labels (relit to --signal-ink) stay legible.
+// Grid + scanline via signal-layer overlay tokens. Thick warm frame keeps it
+// reading as an in-world device, not a second app. (polish-neurons-clinical-aesthetic)
 const containerStyle: React.CSSProperties = {
-  background: '#fefbf2',
-  border: '2px solid #8c6d4a',
+  background: 'var(--signal-bg-dim)',
+  backgroundImage:
+    'linear-gradient(var(--grid-line) 1px, transparent 1px),' +
+    'linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),' +
+    'repeating-linear-gradient(0deg, var(--scanline) 0px, var(--scanline) 1px, transparent 1px, transparent 3px)',
+  backgroundSize: '22px 22px, 22px 22px, 100% 3px',
+  border: '2px solid var(--frame-cell-dark)',
   padding: '0.85rem 1rem',
   borderRadius: '4px',
   marginBottom: '1rem',
@@ -614,7 +623,7 @@ const zoomBarStyle: React.CSSProperties = {
   gap: '0.4rem',
   marginBottom: '0.5rem',
   fontSize: '0.85rem',
-  color: '#5a3f29',
+  color: 'var(--signal-ink)',
   flexWrap: 'wrap',
 }
 
@@ -648,7 +657,8 @@ const zoomLabelStyle: React.CSSProperties = {
 
 const hintStyle: React.CSSProperties = {
   marginLeft: '0.5rem',
-  color: '#8c6d4a',
+  color: 'var(--signal-ink)',
+  opacity: 0.7,
   fontSize: '0.75rem',
   fontStyle: 'italic',
 }
