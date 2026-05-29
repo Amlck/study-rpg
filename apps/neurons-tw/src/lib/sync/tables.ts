@@ -611,6 +611,52 @@ const questionBookmarkTombstonesAdapter: TableAdapter<'questionBookmarkTombstone
   },
 }
 
+// ---- Question flags (Dexie v8 — add-neurons-srs-binary-modifiers) ----
+
+const questionFlagsAdapter: TableAdapter<'questionFlags'> = {
+  name: 'questionFlags',
+  async snapshot(db) {
+    return await db.questionFlags.toArray()
+  },
+  async apply(db, rows) {
+    let applied = 0
+    let skipped = 0
+    await db.transaction('rw', db.questionFlags, async () => {
+      for (const incoming of rows) {
+        if (!incoming || typeof incoming !== 'object') {
+          skipped++
+          continue
+        }
+        const row = incoming as Record<string, unknown>
+        const questionId = row.questionId
+        if (typeof questionId !== 'string') {
+          skipped++
+          continue
+        }
+        const updatedAt = pickUpdatedAt(row)
+        if (updatedAt === null) {
+          skipped++
+          continue
+        }
+        const existing = await db.questionFlags.get(questionId)
+        if (existing && existing.updatedAt >= updatedAt) {
+          skipped++
+          continue
+        }
+        // Coerce booleans defensively — older clients may not set both fields.
+        await db.questionFlags.put({
+          questionId,
+          easyMarked: !!row.easyMarked,
+          guessedMarked: !!row.guessedMarked,
+          updatedAt,
+        })
+        applied++
+      }
+    })
+    return { applied, skipped }
+  },
+}
+
 // ---- Adapter registry -----------------------------------------------------
 
 export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
@@ -626,4 +672,5 @@ export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
   dmnActiveBuffsAdapter,
   questionBookmarksAdapter,
   questionBookmarkTombstonesAdapter,
+  questionFlagsAdapter,
 ]

@@ -96,9 +96,12 @@ describe('dispatchKey — answered phase', () => {
     expect(dispatchKey('1', false, baseAnswered)).toEqual({ kind: 'toggle-bookmark' })
   })
 
-  it('reserved 2 / 3 are noop (sibling SRS change will wire)', () => {
-    expect(dispatchKey('2', false, baseAnswered)).toEqual({ kind: 'noop' })
-    expect(dispatchKey('3', false, baseAnswered)).toEqual({ kind: 'noop' })
+  it('answered-phase 2 returns toggle-easy (wired by add-neurons-srs-binary-modifiers)', () => {
+    expect(dispatchKey('2', false, baseAnswered)).toEqual({ kind: 'toggle-easy' })
+  })
+
+  it('answered-phase 3 returns toggle-guessed (wired by add-neurons-srs-binary-modifiers)', () => {
+    expect(dispatchKey('3', false, baseAnswered)).toEqual({ kind: 'toggle-guessed' })
   })
 })
 

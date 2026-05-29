@@ -92,6 +92,24 @@ export interface QuestionBookmarkTombstoneRow {
   updatedAt: number
 }
 
+/**
+ * Per-question binary modifier flags (Dexie v8+). Two flags coexist on one
+ * row — easyMarked (「✨ 太簡單」) and guessedMarked (「🤔 我亂猜的」).
+ *
+ * Both can be true simultaneously. Row is created lazily on first flag set;
+ * deletion is not supported (both flags → false keeps the row alive for
+ * cross-device LWW convergence). Per add-neurons-srs-binary-modifiers spec.
+ *
+ * Future `add-neurons-srs-pipeline` will consume these as SRS scheduling
+ * inputs (easy → longer interval, guessed → shorter / re-queue).
+ */
+export interface QuestionFlagRow {
+  questionId: string
+  easyMarked: boolean
+  guessedMarked: boolean
+  updatedAt: number
+}
+
 export class NeuronsDB extends Dexie {
   synapses!: EntityTable<SynapseRow, 'pairKey'>
   familyAccrual!: EntityTable<FamilyAccrualRow, 'familyId'>
@@ -111,6 +129,10 @@ export class NeuronsDB extends Dexie {
   // tables untouched. Tombstones table carries cross-device delete propagation.
   questionBookmarks!: EntityTable<QuestionBookmarkRow, 'questionId'>
   questionBookmarkTombstones!: EntityTable<QuestionBookmarkTombstoneRow, 'questionId'>
+  // ─── Question flags (Dexie v8+) ─────────────────────────────────────────
+  // Per add-neurons-srs-binary-modifiers. Additive — single composite row
+  // per question carries both easyMarked + guessedMarked flags.
+  questionFlags!: EntityTable<QuestionFlagRow, 'questionId'>
 
   constructor() {
     super('neurons-rpg')
@@ -195,6 +217,25 @@ export class NeuronsDB extends Dexie {
       dmnActiveBuffs: '++id, expiresAt, buffKind',
       questionBookmarks: 'questionId, family, addedAt, updatedAt',
       questionBookmarkTombstones: 'questionId, updatedAt',
+    })
+    // Per add-neurons-srs-binary-modifiers. Additive: 1 new table.
+    // questionFlags: PK = questionId (one row per question); secondary
+    //   indices on easyMarked / guessedMarked for filter queries +
+    //   updatedAt for LWW sync.
+    this.version(8).stores({
+      synapses: 'pairKey, lastCoFireDate, state',
+      familyAccrual: 'familyId, lastFireDate, firedToday',
+      meta: 'key',
+      familyMastery: 'familyId',
+      neuronVariants: '[familyId+slotIndex], familyId, rolledAt',
+      leaderboardProfile: 'user_id, nickname_lower',
+      achievements: 'id, unlockedAt',
+      dmnCards: 'cardId, obtainedAt, rarity',
+      dmnEventLog: 'cardId, dispatchedAt',
+      dmnActiveBuffs: '++id, expiresAt, buffKind',
+      questionBookmarks: 'questionId, family, addedAt, updatedAt',
+      questionBookmarkTombstones: 'questionId, updatedAt',
+      questionFlags: 'questionId, easyMarked, guessedMarked, updatedAt',
     })
   }
 }

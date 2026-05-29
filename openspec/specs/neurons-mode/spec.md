@@ -616,6 +616,8 @@ The neurons-tw QuizModal SHALL respond to keyboard input from the moment it open
 
 - Pressing `Enter` or `Space` SHALL advance to the next question (equivalent to clicking the existing「下一題」 advance button), provided at least 150ms have elapsed since the asking → answered phase transition. The 150ms cooldown SHALL prevent a single Enter keypress from both submitting an option AND advancing past the reveal.
 - **Pressing `1` SHALL toggle the bookmark for the current question** (wired by `add-neurons-question-bookmarks`). The hotkey hook SHALL accept an `onToggleBookmark: () => void` callback prop and dispatch `{ kind: 'toggle-bookmark' }`. The button-click + hotkey paths share the same `toggleBookmark(q)` service call.
+- **Pressing `2` SHALL toggle the「✨ 太簡單」 flag** (wired by `add-neurons-srs-binary-modifiers`). The hotkey hook SHALL accept a non-optional `onToggleEasy: () => void` callback prop and dispatch `{ kind: 'toggle-easy' }`. Button-click + hotkey paths share the same `toggleEasy(q.id)` service call.
+- **Pressing `3` SHALL toggle the「🤔 我亂猜的」 flag** (wired by `add-neurons-srs-binary-modifiers`). The hotkey hook SHALL accept a non-optional `onToggleGuessed: () => void` callback prop and dispatch `{ kind: 'toggle-guessed' }`. Same shared-callback pattern.
 
 **Both phases — scroll bindings**:
 
@@ -640,7 +642,7 @@ The neurons-tw QuizModal SHALL respond to keyboard input from the moment it open
 - The hotkey logic SHALL be implemented as a pure `dispatchKey(key, shift, ctx)` function that maps a keypress + context to a discriminated-union `HotkeyAction` (`highlight` / `submit` / `advance` / `scroll` / `noop` / `skip`). The function SHALL have no DOM access, no React state mutation — pure for full unit-test coverage.
 - A separate `useQuizHotkeys` hook SHALL own the `document.addEventListener('keydown')` lifecycle, gated on `isOpen`. The hook SHALL pass current phase / option keys / highlighted key / cooldown reference / scroll container ref into `dispatchKey` and execute the returned action via injected callbacks (`setHighlightedKey`, `onSubmit`, `onAdvance`) + DOM scroll on the container.
 - The hook SHALL unsubscribe the document listener on modal close / unmount.
-- The `HotkeyAction` union SHALL include a `toggle-bookmark` variant (now wired by `add-neurons-question-bookmarks`) and SHALL reserve `toggle-easy` / `toggle-guessed` as no-op returns until `add-neurons-srs-binary-modifiers` wires them.
+- The `HotkeyAction` union SHALL include `toggle-bookmark` / `toggle-easy` / `toggle-guessed` variants (all now wired — no reserved-noop placeholders remain).
 
 **Visual feedback on highlight**:
 
@@ -772,12 +774,21 @@ The neurons-tw QuizModal SHALL respond to keyboard input from the moment it open
 - **WHEN** the player presses `1` again
 - **THEN** the bookmark SHALL be removed (row deleted + tombstone written)
 
-#### Scenario: Reserved hotkey slots `2` / `3` stay no-op until SRS change wires them
+#### Scenario: Answered-phase `2` toggles ✨ easy flag (wired by add-neurons-srs-binary-modifiers)
 
-- **GIVEN** the QuizModal is open in answered phase
-- **WHEN** the player presses `2` or `3` (太簡單 / 我亂猜的 SRS quality slots reserved for `add-neurons-srs-binary-modifiers`)
-- **THEN** the dispatcher SHALL return `{kind:'noop'}` (no-op) and no action SHALL fire
-- **AND** when `add-neurons-srs-binary-modifiers` ships, pressing `2` / `3` SHALL toggle the SRS quality buttons per that change's spec
+- **GIVEN** the QuizModal is open in answered phase showing question Y (no easyMarked flag)
+- **WHEN** the player presses `2`
+- **THEN** the dispatcher SHALL return `{kind:'toggle-easy'}` and the hook SHALL invoke `onToggleEasy()`
+- **AND** Dexie `questionFlags` for Y SHALL set `easyMarked = true`
+- **AND** the「✨ 太簡單」 button in the modal footer SHALL render with yellow accent + `aria-pressed="true"`
+
+#### Scenario: Answered-phase `3` toggles 🤔 guessed flag (wired by add-neurons-srs-binary-modifiers)
+
+- **GIVEN** the QuizModal is open in answered phase showing question Z (no guessedMarked flag)
+- **WHEN** the player presses `3`
+- **THEN** the dispatcher SHALL return `{kind:'toggle-guessed'}` and the hook SHALL invoke `onToggleGuessed()`
+- **AND** Dexie `questionFlags` for Z SHALL set `guessedMarked = true`
+- **AND** the「🤔 我亂猜的」 button in the modal footer SHALL render with blue accent + `aria-pressed="true"`
 
 ### Requirement: Overview SHALL surface a dismissible hotkey announcement banner
 
@@ -785,30 +796,30 @@ Overview SHALL render a one-time announcement banner promoting the QuizModal key
 
 The banner SHALL:
 
-- Display a `⌨️` icon + headline「新功能：答題系統鍵盤快捷鍵」+ inline copy describing the asking-phase `1`–`4` highlight + `Enter` submit, answered-phase `Enter` / `Space` advance, **answered-phase `1` ⭐ bookmark toggle**, scroll keys (`Space` / `Shift+Space` / `↓↑` / `Home` / `End`), and `Esc` close — all using `<kbd>` semantic elements.
+- Display a `⌨️` icon + headline「新功能：答題系統鍵盤快捷鍵」+ inline copy describing the asking-phase `1`–`4` highlight + `Enter` submit, answered-phase `Enter` / `Space` advance, answered-phase `1` ⭐ bookmark toggle, **answered-phase `2` ✨ 太簡單**, **answered-phase `3` 🤔 我亂猜的**, scroll keys (`Space` / `Shift+Space` / `↓↑` / `Home` / `End`), and `Esc` close — all using `<kbd>` semantic elements.
 - **Append a HelpMenu reference at the end of the copy**: `... 詳見右上 ❓ →「⌨️ 鍵盤快捷鍵」section。` so players who dismiss the banner know where to find a permanent reference.
-- Render a ✕ dismiss button on the right that, when clicked, hides the banner immediately AND writes a localStorage key `neurons-quiz-hotkeys-banner-dismissed-v3` (BUMPED from `-v2` to `-v3` so previously-dismissed users see the new bookmark-key-mentioning copy ONCE) so the banner stays hidden on subsequent loads.
+- Render a ✕ dismiss button on the right that, when clicked, hides the banner immediately AND writes a localStorage key `neurons-quiz-hotkeys-banner-dismissed-v4` (BUMPED from `-v3` to `-v4` so previously-dismissed users see the new SRS flag key-mentioning copy ONCE) so the banner stays hidden on subsequent loads.
 - Use CSS media query `@media (hover: hover) and (pointer: fine)` to render only on devices with a precise pointer (desktop + tablet with mouse) — touch-only devices SHALL not see the banner since they have no physical keyboard for hotkeys.
 - Carry `role="region"` + `aria-label="新功能公告：鍵盤快捷鍵"` for screen-reader navigation; the dismiss button SHALL carry `aria-label="關閉公告"`.
 
 The banner SHALL handle localStorage failures gracefully: if `localStorage.setItem` throws (private browsing / quota exceeded), the in-memory `hidden` state SHALL still update so the banner disappears for the current session; the banner re-renders on next page load, which is acceptable degraded behavior.
 
-The localStorage key version suffix (currently `-v3`) SHALL be bumped (`-v4`, `-v5`, …) by future changes whenever banner copy revises materially, so re-discovery happens without migration code.
+The localStorage key version suffix (currently `-v4`) SHALL be bumped (`-v5`, `-v6`, …) by future changes whenever banner copy revises materially, so re-discovery happens without migration code.
 
-#### Scenario: Banner shows on first Overview load OR after v2→v3 key bump
+#### Scenario: Banner shows on first Overview load OR after v3→v4 key bump
 
-- **GIVEN** a user lands on Overview for the first time after `add-neurons-question-bookmarks` ships (no `neurons-quiz-hotkeys-banner-dismissed-v3` localStorage key — either fresh user OR user who dismissed v1 / v2 banner previously)
+- **GIVEN** a user lands on Overview for the first time after `add-neurons-srs-binary-modifiers` ships (no `neurons-quiz-hotkeys-banner-dismissed-v4` localStorage key — either fresh user OR user who dismissed v1 / v2 / v3 banner previously)
 - **WHEN** Overview renders
 - **THEN** the announcement banner SHALL appear above `LeaderboardPromoBanner`
-- **AND** the banner content SHALL include `⌨️` icon + headline + hotkey hint copy + **mention of `1` for ⭐ bookmark** + the「詳見右上 ❓ →『⌨️ 鍵盤快捷鍵』section。」 trailing reference + dismiss button
+- **AND** the banner content SHALL include `⌨️` icon + headline + hotkey hint copy + **mentions of `1` ⭐ bookmark, `2` ✨ 太簡單, `3` 🤔 我亂猜的** + the「詳見右上 ❓ →『⌨️ 鍵盤快捷鍵』section。」 trailing reference + dismiss button
 
-#### Scenario: Dismiss persists across reload via v3 key
+#### Scenario: Dismiss persists across reload via v4 key
 
 - **GIVEN** the banner is visible and the player clicks the ✕ dismiss button
 - **WHEN** the player reloads the page
 - **THEN** the banner SHALL NOT render
-- **AND** the localStorage key `neurons-quiz-hotkeys-banner-dismissed-v3` SHALL equal `'true'`
-- **AND** the legacy `-v1` / `-v2` keys (if present from prior dismissals) SHALL be ignored — only `-v3` gates display now
+- **AND** the localStorage key `neurons-quiz-hotkeys-banner-dismissed-v4` SHALL equal `'true'`
+- **AND** the legacy `-v1` / `-v2` / `-v3` keys (if present from prior dismissals) SHALL be ignored — only `-v4` gates display now
 
 #### Scenario: Banner is hidden on touch-only devices
 
@@ -855,8 +866,8 @@ The neurons-tw app SHALL render a floating ❓ FAB at the top-right corner that 
 
 **Accordion sections** (7 sections after `add-neurons-question-bookmarks`, identified by stable `id`):
 
-1. **id=`hotkeys`, icon=⌨️, title=「鍵盤快捷鍵」** — body covers full hotkey reference matching the `QuizModal SHALL accept keyboard hotkeys` requirement (asking-phase 1-4 highlight + Enter, answered-phase Enter/Space + 150ms cooldown, **answered-phase `1` bookmark toggle**, scroll keys, Esc, mouse-click bypass).
-2. **id=`bookmark`, icon=⭐, title=「收藏題目」** — body covers the bookmark feature: 「答題時按 ⭐ 按鈕或 <kbd>1</kbd> 鍵收藏題目，到 <a href="/bookmarks">收藏</a> 頁面隨時複習。收藏會跨裝置同步（需登入）。」
+1. **id=`hotkeys`, icon=⌨️, title=「鍵盤快捷鍵」** — body covers full hotkey reference matching the `QuizModal SHALL accept keyboard hotkeys` requirement (asking-phase 1-4 highlight + Enter, answered-phase Enter/Space + 150ms cooldown, **answered-phase `1` bookmark toggle, `2` ✨ 太簡單, `3` 🤔 我亂猜的**, scroll keys, Esc, mouse-click bypass).
+2. **id=`bookmark`, icon=⭐, title=「收藏題目」** — body covers the bookmark feature: 「答題時按 ⭐ 按鈕或 <kbd>1</kbd> 鍵收藏題目，到 <a href="/bookmarks">收藏</a> 頁面隨時複習。卡片可顯示 ✨ / 🤔 標記，BookmarksPage 也可按 family + ✨ / 🤔 篩選。收藏會跨裝置同步（需登入）。」
 3. **id=`variant-unlock`, icon=🧬, title=「變體解鎖」** — body covers per-family AP threshold ladder + auto-pull on threshold + `/connectome` link.
 4. **id=`synapse-formation`, icon=🔗, title=「Synapse 形成」** — body covers cross-family 同日各答對 5 題 → wire + weak→strong tier + 7-day decay.
 5. **id=`dmn-draws`, icon=💎, title=「DMN 抽卡」** — body covers time-axis (30 min/draw, cap 2) + behavior-axis (variant slot unlock / synapse form / synapse strengthen, cap 3) + 20-card closed cap at `/dmn` + 5 event kinds.
@@ -1007,13 +1018,16 @@ The neurons-tw app SHALL provide a per-question bookmark feature so players can 
 - Top nav link「收藏 →」 added to the App-level header between「DMN →」 and「成就 →」.
 - Page lists all bookmarked questions in `addedAt` desc order.
 - Each row renders as an `<li>`:
-  - Family badge (matching NT branch accent color)
+  - Family badge (matching NT branch accent color) + **✨ chip when `easyMarked`, 🤔 chip when `guessedMarked`** (wired by `add-neurons-srs-binary-modifiers`)
   - Question stem (truncated to 100 chars + ellipsis)
   - Added timestamp (relative format: 「剛剛」 / 「3 分鐘前」 / 「2 小時前」 / 「昨天」 / `YYYY-MM-DD`)
   - 「★ 取消」 unbookmark button (immediate remove — no separate confirm modal since the action is reversible)
   - 「🎯 重新作答」 button → opens QuizModal scoped to a 1-question pool of that question
 - Empty state: 「📭 目前沒有收藏的題目。在答題時按 ⭐ 收藏 按鈕或鍵盤 <kbd>1</kbd> 加入收藏。」 + link back to `/`.
-- Family filter bar at top: chips of all 11 families grouped by NT branch; click toggles exclusion. Default: all families included.
+- Filter bars at top (two rows):
+  - Row 1 (flag filter, per `add-neurons-srs-binary-modifiers`): 2 toggle chips「✨ 只看太簡單」 + 「🤔 只看我亂猜的」. Default both off (show all). AND-combined when both on.
+  - Row 2 (family filter): chips of all 11 families grouped by NT branch; click toggles exclusion. Default: all families included.
+- Both filter rows AND together (flag filter AND family filter).
 - Cap at 200 visible rows (warns when > 200 — dogfood scope guard).
 
 **Sync via R2 LWW**:
@@ -1097,6 +1111,96 @@ The neurons-tw app SHALL provide a per-question bookmark feature so players can 
 - **THEN** it SHALL log an info message about unknown fields but SHALL NOT throw
 - **AND** the v2 client SHALL silently drop the `questionBookmarks` and `questionBookmarkTombstones` fields
 - **AND** the v2 client SHALL still apply all other v2-known adapters normally
+
+### Requirement: Neurons-tw SHALL persist per-question binary modifier flags with cross-device sync
+
+The neurons-tw app SHALL provide two binary modifier flags per question — `easyMarked` (「✨ 太簡單」) and `guessedMarked` (「🤔 我亂猜的」) — so players can self-label questions for later targeted review. Flags SHALL persist locally (Dexie) and SHALL sync across devices via the existing R2 LWW bundle pipeline.
+
+When a future `add-neurons-srs-pipeline` change ships an SRS scheduler, the engine SHALL consume these flags as scheduling inputs (easy → longer interval, guessed → shorter / re-queue). Until then the flags' user-facing value is: BookmarksPage filter for「only review the questions I marked ✨ / 🤔」 + at-a-glance visual badges on bookmark cards.
+
+**Schema** (Dexie v8):
+
+- Table name: `questionFlags`
+- Primary key: `questionId` (string — one row per question, regardless of which flags are set)
+- Indexed columns: `easyMarked`, `guessedMarked` (for filter queries), `updatedAt` (for LWW sync)
+- Row shape: `{ questionId: string, easyMarked: boolean, guessedMarked: boolean, updatedAt: number }`
+- Both flags coexist on the same row — a question CAN be both easy and guessed (semantically unusual but not forbidden; user can flip their mind).
+- Row is created lazily: if a question has never been flagged, no row exists. Reading missing row → both flags treated as `false`.
+
+**Service surface** (`apps/neurons-tw/src/lib/services/question-flags.ts`):
+
+- `getFlag(questionId): Promise<QuestionFlagRow | null>` — returns row if exists, else null.
+- `setEasy(questionId, value: boolean)` / `setGuessed(questionId, value: boolean)` — upsert; refreshes `updatedAt` (preserves the other flag).
+- `toggleEasy(questionId): Promise<boolean>` / `toggleGuessed(questionId): Promise<boolean>` — convenience returning new flag state.
+- `useFlag(questionId): { easyMarked, guessedMarked }` — React hook via liveQuery+subscribe.
+- `useAllFlags(): QuestionFlagRow[]` — React hook for filter queries.
+
+**QuizModal buttons** (visible only in answered phase):
+
+- 「✨ 太簡單」 button: yellow accent (`#d4a04d`) when `easyMarked === true`; outline when not. `aria-pressed` reflects state. Tooltip: 「標記 ✨ 太簡單（鍵盤 2）」 / 「取消 ✨ 標記（鍵盤 2）」.
+- 「🤔 我亂猜的」 button: blue accent (`#6a9bc4`) when `guessedMarked === true`; outline when not. `aria-pressed` reflects state. Tooltip: 「標記 🤔 我亂猜的（鍵盤 3）」 / 「取消 🤔 標記（鍵盤 3）」.
+- Layout: `[⭐ 收藏] [✨ 太簡單] [🤔 我亂猜的]    [結束] [下一題]` (flag/bookmark group left with margin-right: auto on first, action buttons right).
+- Mobile (`@media (max-width: 600px)`): both buttons collapse to icon-only via `.flag-btn-label { display: none }`.
+- These buttons SHALL render in answered phase only — the semantic「太簡單 / 我亂猜的」 requires having seen the answer.
+
+**Hotkey `2` and `3` in answered phase** (covered by the main hotkey requirement above).
+
+**BookmarksPage integration** (covered by the bookmarks requirement above): row badges + flag filter chips, AND-combined with family filter.
+
+**Sync via R2 LWW**:
+
+- New `questionFlagsAdapter` in `apps/neurons-tw/src/lib/sync/tables.ts` (LWW per `questionId` using `updatedAt`).
+- Bundle `SCHEMA_VERSION` bumps from `3` → `4` in `apps/neurons-tw/src/lib/sync/r2/bundles.ts`.
+- No tombstones needed — flag rows are mergeable not deletable (setting both flags to `false` keeps the row alive with `easyMarked=false, guessedMarked=false`).
+- Forward-compat: existing v3 clients silently drop the `questionFlags` field per existing `validateBundleMeta` tolerance.
+
+#### Scenario: Click ✨ button toggles easyMarked and updates icon
+
+- **GIVEN** the QuizModal is open in answered phase showing question X (no flags set)
+- **WHEN** the player clicks the「✨ 太簡單」 button
+- **THEN** the button SHALL render with yellow accent + `aria-pressed="true"`
+- **AND** a row SHALL appear in Dexie `questionFlags` with `questionId === X.id`, `easyMarked === true`, `guessedMarked === false`
+- **WHEN** the player clicks the「✨ 太簡單」 button again
+- **THEN** the button SHALL revert to outline style + `aria-pressed="false"`
+- **AND** the row SHALL update with `easyMarked === false` (row persists; both flags now false)
+
+#### Scenario: Both flags can coexist on same question
+
+- **GIVEN** the QuizModal is open in answered phase showing question Y
+- **WHEN** the player clicks both「✨ 太簡單」 and「🤔 我亂猜的」
+- **THEN** the `questionFlags` row for Y SHALL have `easyMarked === true` AND `guessedMarked === true`
+- **AND** both buttons SHALL render in active accent style
+
+#### Scenario: BookmarksPage shows flag badges on rows
+
+- **GIVEN** the player has bookmarked question X with `easyMarked === true` and question Y with `guessedMarked === true`
+- **WHEN** the player navigates to `/bookmarks`
+- **THEN** X's row SHALL display ✨ badge next to family badge
+- **AND** Y's row SHALL display 🤔 badge next to family badge
+- **AND** rows without flags SHALL show only the family badge
+
+#### Scenario: BookmarksPage filter chip ✨ restricts to easy-marked bookmarks
+
+- **GIVEN** the player has 3 bookmarks: A (✨), B (🤔), C (no flags)
+- **WHEN** the player clicks「✨ 只看太簡單」 filter chip
+- **THEN** the page SHALL show only row A
+- **AND** the chip SHALL render in `aria-pressed="true"` accented state
+- **WHEN** the player clicks the chip again
+- **THEN** the filter SHALL clear; all 3 rows SHALL reappear
+
+#### Scenario: Both flag filters AND together
+
+- **GIVEN** the player has bookmarks: A (✨ only), B (🤔 only), C (both ✨ + 🤔), D (no flags)
+- **WHEN** the player toggles both「✨ 只看太簡單」 AND「🤔 只看我亂猜的」 chips ON
+- **THEN** the page SHALL show only row C (the only bookmark with BOTH flags)
+
+#### Scenario: v3 client tolerates v4 bundle (forward-compat)
+
+- **GIVEN** a v3 client (pre-`add-neurons-srs-binary-modifiers`) pulls a v4 bundle from R2
+- **WHEN** `validateBundleMeta` runs
+- **THEN** it SHALL log an info message about unknown fields but SHALL NOT throw
+- **AND** the v3 client SHALL silently drop the `questionFlags` field
+- **AND** the v3 client SHALL still apply all other v3-known adapters normally
 
 ### Requirement: Rarity reveal animations SHALL share a centralized timing baseline with rarity-tiered minimums
 

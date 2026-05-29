@@ -111,8 +111,9 @@ export function dispatchKey(
   }
   // Bookmark toggle — wired by add-neurons-question-bookmarks.
   if (key === '1') return { kind: 'toggle-bookmark' }
-  // 2 / 3 reserved for sibling-change wiring (太簡單 / 我亂猜的 SRS quality buttons).
-  // Currently no-op; add-neurons-srs-binary-modifiers will wire them.
+  // SRS binary modifiers — wired by add-neurons-srs-binary-modifiers.
+  if (key === '2') return { kind: 'toggle-easy' }
+  if (key === '3') return { kind: 'toggle-guessed' }
   return { kind: 'noop' }
 }
 
@@ -127,6 +128,10 @@ export interface UseQuizHotkeysOptions {
   onAdvance: () => void
   /** Wired by add-neurons-question-bookmarks — toggles ⭐ for current question. */
   onToggleBookmark: () => void
+  /** Wired by add-neurons-srs-binary-modifiers — toggles ✨ easy flag. */
+  onToggleEasy: () => void
+  /** Wired by add-neurons-srs-binary-modifiers — toggles 🤔 guessed flag. */
+  onToggleGuessed: () => void
 }
 
 export function useQuizHotkeys(options: UseQuizHotkeysOptions): void {
@@ -162,14 +167,18 @@ export function useQuizHotkeys(options: UseQuizHotkeysOptions): void {
       switch (action.kind) {
         case 'skip':
         case 'noop':
-        case 'toggle-easy':
-        case 'toggle-guessed':
-          // Reserved variants — dispatcher never returns these yet; sibling
-          // change `add-neurons-srs-binary-modifiers` will replace them.
           return
         case 'toggle-bookmark':
           event.preventDefault()
           opts.onToggleBookmark()
+          return
+        case 'toggle-easy':
+          event.preventDefault()
+          opts.onToggleEasy()
+          return
+        case 'toggle-guessed':
+          event.preventDefault()
+          opts.onToggleGuessed()
           return
         case 'highlight':
           opts.setHighlightedKey(action.key)

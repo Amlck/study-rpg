@@ -4,6 +4,7 @@ import { recordCorrectAnswer, recordIncorrectAnswer } from '../lib/services/conn
 import { SpikeTrainFiring } from '../lib/motion'
 import { useQuizHotkeys, type QuizPhase } from '../lib/hooks/useQuizHotkeys'
 import { toggleBookmark, useIsBookmarked } from '../lib/services/bookmarks'
+import { toggleEasy, toggleGuessed, useFlag } from '../lib/services/question-flags'
 
 interface Props {
   pool: Question[]
@@ -86,6 +87,16 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
     if (!cur) return
     void toggleBookmark(cur)
   }, [sessionPool, idx])
+  const handleToggleEasy = useCallback(() => {
+    const cur = sessionPool[idx]
+    if (!cur) return
+    void toggleEasy(cur.id)
+  }, [sessionPool, idx])
+  const handleToggleGuessed = useCallback(() => {
+    const cur = sessionPool[idx]
+    if (!cur) return
+    void toggleGuessed(cur.id)
+  }, [sessionPool, idx])
   useQuizHotkeys({
     isOpen: sessionPool[idx] !== undefined && idx < sessionPool.length,
     phase,
@@ -99,6 +110,8 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
     },
     onAdvance: handleNext,
     onToggleBookmark: handleToggleBookmark,
+    onToggleEasy: handleToggleEasy,
+    onToggleGuessed: handleToggleGuessed,
   })
 
   if (exhausted) {
@@ -182,6 +195,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
         <style>{`
           @media (max-width: 600px) {
             .bookmark-btn-label { display: none; }
+            .flag-btn-label { display: none; }
           }
         `}</style>
         <header style={headerStyle}>
@@ -273,6 +287,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
 
         <footer style={footerStyle}>
           <BookmarkButton question={q} />
+          {revealed && <FlagButtons questionId={q.id} />}
           {revealed ? (
             <>
               <button style={secondaryBtnStyle} onClick={onClose}>
@@ -290,6 +305,40 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
         </footer>
       </div>
     </div>
+  )
+}
+
+/**
+ * ✨ 太簡單 + 🤔 我亂猜的 toggle buttons — answered phase only.
+ * Future SRS pipeline will consume these flags as scheduling inputs.
+ */
+function FlagButtons({ questionId }: { questionId: string }): JSX.Element {
+  const { easyMarked, guessedMarked } = useFlag(questionId)
+  return (
+    <>
+      <button
+        type="button"
+        style={easyMarked ? flagEasyActiveStyle : flagEasyStyle}
+        onClick={() => void toggleEasy(questionId)}
+        aria-pressed={easyMarked}
+        aria-label={easyMarked ? '取消 ✨ 標記 (2)' : '標記 ✨ 太簡單 (2)'}
+        title={easyMarked ? '取消 ✨ 標記（鍵盤 2）' : '標記 ✨ 太簡單（鍵盤 2）'}
+      >
+        <span aria-hidden>✨</span>
+        <span className="flag-btn-label">太簡單</span>
+      </button>
+      <button
+        type="button"
+        style={guessedMarked ? flagGuessedActiveStyle : flagGuessedStyle}
+        onClick={() => void toggleGuessed(questionId)}
+        aria-pressed={guessedMarked}
+        aria-label={guessedMarked ? '取消 🤔 標記 (3)' : '標記 🤔 我亂猜的 (3)'}
+        title={guessedMarked ? '取消 🤔 標記（鍵盤 3）' : '標記 🤔 我亂猜的（鍵盤 3）'}
+      >
+        <span aria-hidden>🤔</span>
+        <span className="flag-btn-label">我亂猜的</span>
+      </button>
+    </>
   )
 }
 
@@ -498,6 +547,49 @@ const bookmarkBtnActiveStyle: React.CSSProperties = {
   background: '#fdf2e0',
   borderColor: '#d4a04d',
   color: '#d4a04d',
+}
+
+// FlagButtons — ✨ 太簡單 / 🤔 我亂猜的 toggle buttons in answered phase.
+// Share base layout with bookmark btn but use category-specific accent colors.
+const flagBtnBaseStyle: React.CSSProperties = {
+  padding: '0.4rem 0.7rem',
+  borderRadius: '6px',
+  fontSize: '0.88rem',
+  fontFamily: 'inherit',
+  fontWeight: 600,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  lineHeight: 1,
+}
+
+const flagEasyStyle: React.CSSProperties = {
+  ...flagBtnBaseStyle,
+  background: 'transparent',
+  color: '#8c6d4a',
+  border: '1px solid #c4a878',
+}
+
+const flagEasyActiveStyle: React.CSSProperties = {
+  ...flagBtnBaseStyle,
+  background: '#fdf2e0',
+  color: '#d4a04d',
+  border: '1px solid #d4a04d',
+}
+
+const flagGuessedStyle: React.CSSProperties = {
+  ...flagBtnBaseStyle,
+  background: 'transparent',
+  color: '#5a7a99',
+  border: '1px solid #aabfcf',
+}
+
+const flagGuessedActiveStyle: React.CSSProperties = {
+  ...flagBtnBaseStyle,
+  background: '#e6eef5',
+  color: '#6a9bc4',
+  border: '1px solid #6a9bc4',
 }
 
 const baseBtnStyle: React.CSSProperties = {

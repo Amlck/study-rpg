@@ -41,7 +41,8 @@ const SECTIONS: Section[] = [
         </p>
         <p>
           <strong>答題後階段</strong>：按 <kbd>Enter</kbd> 或 <kbd>Space</kbd> 進入下一題；
-          按 <kbd>1</kbd> 收藏 / 取消收藏目前題目。
+          按 <kbd>1</kbd> 收藏、<kbd>2</kbd> 標 ✨ 太簡單、<kbd>3</kbd> 標 🤔 我亂猜的
+          （✨ / 🤔 之後用來篩選複習）。
           按答案後 150 ms 內的 Enter 會被忽略，避免「送出 + 立刻 advance」二連跳。
         </p>
         <p>
@@ -68,7 +69,8 @@ const SECTIONS: Section[] = [
         </p>
         <p>
           收藏會跨裝置同步（需登入 Google）。每張卡片附「重新作答」按鈕可單題複習。
-          支援以 family 篩選查看。
+          卡片可顯示 ✨ / 🤔 標記，<a href="/bookmarks">收藏</a> 頁面可按 family
+          + ✨ / 🤔 篩選。
         </p>
       </>
     ),

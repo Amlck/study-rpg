@@ -14,11 +14,14 @@
 //   v3 — add-neurons-question-bookmarks 2026-05-29: adds questionBookmarks
 //        and questionBookmarkTombstones adapters. Additive — v2 clients drop
 //        the new keys, no breaking changes.
+//   v4 — add-neurons-srs-binary-modifiers 2026-05-29: adds questionFlags
+//        adapter (✨ 太簡單 / 🤔 我亂猜的 binary flags). Additive — v3
+//        clients drop the new field.
 
 import type { NeuronsDB } from '../../db'
 import { NEURONS_ADAPTERS } from '../tables'
 
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 export const BUNDLE_APP_VERSION = '0.4.0'
 
 const CLIENT_ID_KEY = 'neurons-rpg.sync.clientId'

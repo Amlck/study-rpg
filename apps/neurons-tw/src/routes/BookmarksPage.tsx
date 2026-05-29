@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react'
 import type { ContentPack, Question } from '@study-rpg/core'
 import { QuizModal } from '../components/QuizModal'
 import { useAllBookmarks, removeBookmark } from '../lib/services/bookmarks'
+import { useAllFlags } from '../lib/services/question-flags'
 
 interface Props {
   pack: ContentPack
@@ -24,8 +25,20 @@ const NT_BRANCHES = ['DA', '5HT', 'GABA', 'Glu'] as const
 
 export default function BookmarksPage({ pack }: Props): JSX.Element {
   const bookmarks = useAllBookmarks()
+  const flags = useAllFlags()
   const [excludedFamilies, setExcludedFamilies] = useState<Set<string>>(new Set())
+  const [filterEasyOnly, setFilterEasyOnly] = useState<boolean>(false)
+  const [filterGuessedOnly, setFilterGuessedOnly] = useState<boolean>(false)
   const [replayQuestion, setReplayQuestion] = useState<Question | null>(null)
+
+  // Lookup map: questionId → flag row (or undefined if no flags set)
+  const flagMap = useMemo(() => {
+    const m = new Map<string, { easyMarked: boolean; guessedMarked: boolean }>()
+    for (const f of flags) {
+      m.set(f.questionId, { easyMarked: f.easyMarked, guessedMarked: f.guessedMarked })
+    }
+    return m
+  }, [flags])
 
   // Map for fast question lookup by id (avoids re-scanning pack.questions per row).
   const questionMap = useMemo(() => {
@@ -48,8 +61,16 @@ export default function BookmarksPage({ pack }: Props): JSX.Element {
   }, [pack.subjects])
 
   const filteredBookmarks = useMemo(() => {
-    return bookmarks.filter((b) => !excludedFamilies.has(b.family))
-  }, [bookmarks, excludedFamilies])
+    return bookmarks.filter((b) => {
+      if (excludedFamilies.has(b.family)) return false
+      if (filterEasyOnly || filterGuessedOnly) {
+        const flag = flagMap.get(b.questionId)
+        if (filterEasyOnly && !flag?.easyMarked) return false
+        if (filterGuessedOnly && !flag?.guessedMarked) return false
+      }
+      return true
+    })
+  }, [bookmarks, excludedFamilies, flagMap, filterEasyOnly, filterGuessedOnly])
 
   const truncatedBookmarks = filteredBookmarks.slice(0, MAX_RENDER)
   const truncated = filteredBookmarks.length > MAX_RENDER
@@ -83,10 +104,47 @@ export default function BookmarksPage({ pack }: Props): JSX.Element {
         </p>
       </header>
 
+      {/* Flag filter — ✨ 太簡單 / 🤔 我亂猜的 toggle chips. */}
+      <section style={filterBarStyle} aria-label="標記篩選">
+        <div style={filterHeaderStyle}>
+          <span style={filterLabelStyle}>🏷️ 依標記篩選</span>
+          {(filterEasyOnly || filterGuessedOnly) && (
+            <button
+              type="button"
+              style={resetBtnStyle}
+              onClick={() => {
+                setFilterEasyOnly(false)
+                setFilterGuessedOnly(false)
+              }}
+            >
+              清除標記篩選
+            </button>
+          )}
+        </div>
+        <div style={chipRowStyle}>
+          <button
+            type="button"
+            onClick={() => setFilterEasyOnly((v) => !v)}
+            style={filterEasyOnly ? flagFilterChipActiveStyle('#d4a04d') : flagFilterChipStyle('#d4a04d')}
+            aria-pressed={filterEasyOnly}
+          >
+            ✨ 只看太簡單
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterGuessedOnly((v) => !v)}
+            style={filterGuessedOnly ? flagFilterChipActiveStyle('#6a9bc4') : flagFilterChipStyle('#6a9bc4')}
+            aria-pressed={filterGuessedOnly}
+          >
+            🤔 只看我亂猜的
+          </button>
+        </div>
+      </section>
+
       {/* Family filter — chips grouped by NT branch, click toggles exclusion. */}
       <section style={filterBarStyle} aria-label="科目篩選">
         <div style={filterHeaderStyle}>
-          <span style={filterLabelStyle}>📚 篩選</span>
+          <span style={filterLabelStyle}>📚 依科目篩選</span>
           {excludedFamilies.size > 0 && (
             <button
               type="button"
@@ -135,12 +193,31 @@ export default function BookmarksPage({ pack }: Props): JSX.Element {
             return (
               <li key={b.questionId} style={rowStyle}>
                 <header style={rowHeaderStyle}>
-                  <span
-                    style={familyBadgeStyle(family?.color ?? '#8c6d4a')}
-                    title={family?.displayName ?? b.family}
-                  >
-                    {b.family}
-                  </span>
+                  <div style={badgeGroupStyle}>
+                    <span
+                      style={familyBadgeStyle(family?.color ?? '#8c6d4a')}
+                      title={family?.displayName ?? b.family}
+                    >
+                      {b.family}
+                    </span>
+                    {(() => {
+                      const f = flagMap.get(b.questionId)
+                      return (
+                        <>
+                          {f?.easyMarked && (
+                            <span style={flagChipDisplayStyle('#d4a04d')} title="✨ 太簡單" aria-label="標記為太簡單">
+                              ✨
+                            </span>
+                          )}
+                          {f?.guessedMarked && (
+                            <span style={flagChipDisplayStyle('#6a9bc4')} title="🤔 我亂猜的" aria-label="標記為我亂猜的">
+                              🤔
+                            </span>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
                   <span style={timeStyle}>{relativeTime(b.addedAt)}</span>
                 </header>
                 <p style={stemStyle}>
@@ -350,6 +427,50 @@ function familyBadgeStyle(color: string): React.CSSProperties {
     borderRadius: '4px',
     fontSize: '0.78rem',
     fontWeight: 700,
+  }
+}
+
+const badgeGroupStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  flexWrap: 'wrap',
+}
+
+function flagChipDisplayStyle(color: string): React.CSSProperties {
+  return {
+    padding: '0.1rem 0.35rem',
+    background: '#fdf6e3',
+    color,
+    border: `1px solid ${color}`,
+    borderRadius: '4px',
+    fontSize: '0.78rem',
+    lineHeight: 1,
+  }
+}
+
+function flagFilterChipStyle(color: string): React.CSSProperties {
+  return {
+    padding: '0.25rem 0.7rem',
+    background: 'transparent',
+    color: '#8c6d4a',
+    border: `1px dashed ${color}`,
+    borderRadius: '999px',
+    fontSize: '0.78rem',
+    fontWeight: 600,
+    fontFamily: 'inherit',
+    cursor: 'pointer',
+    opacity: 0.7,
+  }
+}
+
+function flagFilterChipActiveStyle(color: string): React.CSSProperties {
+  return {
+    ...flagFilterChipStyle(color),
+    background: color,
+    color: '#fff',
+    border: `1px solid ${color}`,
+    opacity: 1,
   }
 }
 
