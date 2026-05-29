@@ -20,6 +20,7 @@ import AchievementToastHost from './components/AchievementToastHost'
 import AchievementUnlockModal from './components/AchievementUnlockModal'
 import DmnCollectionPage from './routes/DmnCollectionPage'
 import DmnDrawButton from './components/DmnDrawButton'
+import BookmarksPage from './routes/BookmarksPage'
 import DmnQuickReviewToast from './components/DmnQuickReviewToast'
 import HelpMenu from './components/HelpMenu'
 import { AuthProvider } from './lib/auth/AuthContext'
@@ -104,6 +105,11 @@ export default function App(): JSX.Element {
                   <span style={isActive ? activeNavBoxStyle : navBoxStyle}>DMN →</span>
                 )}
               </NavLink>
+              <NavLink to="/bookmarks" style={navLinkStyle}>
+                {({ isActive }) => (
+                  <span style={isActive ? activeNavBoxStyle : navBoxStyle}>收藏 →</span>
+                )}
+              </NavLink>
               <NavLink to="/achievements" style={navLinkStyle}>
                 {({ isActive }) => (
                   <span style={isActive ? activeNavBoxStyle : navBoxStyle}>成就 →</span>
@@ -126,6 +132,7 @@ export default function App(): JSX.Element {
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/dmn" element={<DmnCollectionPage />} />
+            <Route path="/bookmarks" element={<BookmarksPage pack={pack} />} />
             <Route path="/motion-demo" element={<MotionDemoPage />} />
           </Routes>
         </main>

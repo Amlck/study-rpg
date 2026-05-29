@@ -11,11 +11,14 @@
 //        dmnActiveBuffs adapters + 8 new dmn-* keys to the meta allowlist.
 //        Schema is additive — v1 clients pulling v2 bundles silently drop
 //        unknown adapter keys (see validateBundleMeta below).
+//   v3 — add-neurons-question-bookmarks 2026-05-29: adds questionBookmarks
+//        and questionBookmarkTombstones adapters. Additive — v2 clients drop
+//        the new keys, no breaking changes.
 
 import type { NeuronsDB } from '../../db'
 import { NEURONS_ADAPTERS } from '../tables'
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 export const BUNDLE_APP_VERSION = '0.4.0'
 
 const CLIENT_ID_KEY = 'neurons-rpg.sync.clientId'

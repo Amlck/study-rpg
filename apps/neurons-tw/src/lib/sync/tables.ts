@@ -515,6 +515,102 @@ const dmnActiveBuffsAdapter: TableAdapter<'dmnActiveBuffs'> = {
   },
 }
 
+// ---- Question bookmarks (Dexie v7 — add-neurons-question-bookmarks) ----
+
+const questionBookmarksAdapter: TableAdapter<'questionBookmarks'> = {
+  name: 'questionBookmarks',
+  async snapshot(db) {
+    return await db.questionBookmarks.toArray()
+  },
+  async apply(db, rows) {
+    let applied = 0
+    let skipped = 0
+    await db.transaction('rw', db.questionBookmarks, db.questionBookmarkTombstones, async () => {
+      for (const incoming of rows) {
+        if (!incoming || typeof incoming !== 'object') {
+          skipped++
+          continue
+        }
+        const row = incoming as Record<string, unknown>
+        const questionId = row.questionId
+        if (typeof questionId !== 'string') {
+          skipped++
+          continue
+        }
+        const updatedAt = pickUpdatedAt(row)
+        if (updatedAt === null) {
+          skipped++
+          continue
+        }
+        // Check tombstone: if local tombstone is newer than incoming bookmark,
+        // the bookmark was deleted later — keep deleted (skip the incoming row).
+        const tomb = await db.questionBookmarkTombstones.get(questionId)
+        if (tomb && tomb.updatedAt > updatedAt) {
+          skipped++
+          continue
+        }
+        const existing = await db.questionBookmarks.get(questionId)
+        if (existing && existing.updatedAt >= updatedAt) {
+          skipped++
+          continue
+        }
+        // Re-add un-deletes — clear stale tombstone since incoming bookmark
+        // post-dates it.
+        if (tomb && tomb.updatedAt <= updatedAt) {
+          await db.questionBookmarkTombstones.delete(questionId)
+        }
+        await db.questionBookmarks.put(row as never)
+        applied++
+      }
+    })
+    return { applied, skipped }
+  },
+}
+
+const questionBookmarkTombstonesAdapter: TableAdapter<'questionBookmarkTombstones'> = {
+  name: 'questionBookmarkTombstones',
+  async snapshot(db) {
+    return await db.questionBookmarkTombstones.toArray()
+  },
+  async apply(db, rows) {
+    let applied = 0
+    let skipped = 0
+    await db.transaction('rw', db.questionBookmarks, db.questionBookmarkTombstones, async () => {
+      for (const incoming of rows) {
+        if (!incoming || typeof incoming !== 'object') {
+          skipped++
+          continue
+        }
+        const row = incoming as Record<string, unknown>
+        const questionId = row.questionId
+        if (typeof questionId !== 'string') {
+          skipped++
+          continue
+        }
+        const updatedAt = pickUpdatedAt(row)
+        if (updatedAt === null) {
+          skipped++
+          continue
+        }
+        const existing = await db.questionBookmarkTombstones.get(questionId)
+        if (existing && existing.updatedAt >= updatedAt) {
+          skipped++
+          continue
+        }
+        await db.questionBookmarkTombstones.put({ questionId, updatedAt })
+        // Delete propagation: if incoming tombstone post-dates a local
+        // bookmark, remove that local bookmark.
+        const bookmark = await db.questionBookmarks.get(questionId)
+        if (bookmark && bookmark.updatedAt < updatedAt) {
+          await db.questionBookmarks.delete(questionId)
+        }
+        applied++
+      }
+    })
+    return { applied, skipped }
+  },
+}
+
 // ---- Adapter registry -----------------------------------------------------
 
 export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
@@ -528,4 +624,6 @@ export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
   dmnCardsAdapter,
   dmnEventLogAdapter,
   dmnActiveBuffsAdapter,
+  questionBookmarksAdapter,
+  questionBookmarkTombstonesAdapter,
 ]

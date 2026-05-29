@@ -3,6 +3,7 @@ import type { Question } from '@study-rpg/core'
 import { recordCorrectAnswer, recordIncorrectAnswer } from '../lib/services/connectome'
 import { SpikeTrainFiring } from '../lib/motion'
 import { useQuizHotkeys, type QuizPhase } from '../lib/hooks/useQuizHotkeys'
+import { toggleBookmark, useIsBookmarked } from '../lib/services/bookmarks'
 
 interface Props {
   pool: Question[]
@@ -80,6 +81,11 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
     const cur = sessionPool[idx]
     return cur ? Object.keys(cur.options) : []
   }, [sessionPool, idx])
+  const handleToggleBookmark = useCallback(() => {
+    const cur = sessionPool[idx]
+    if (!cur) return
+    void toggleBookmark(cur)
+  }, [sessionPool, idx])
   useQuizHotkeys({
     isOpen: sessionPool[idx] !== undefined && idx < sessionPool.length,
     phase,
@@ -92,6 +98,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
       void handlePick(key)
     },
     onAdvance: handleNext,
+    onToggleBookmark: handleToggleBookmark,
   })
 
   if (exhausted) {
@@ -172,6 +179,11 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
       aria-label="答題中"
     >
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+        <style>{`
+          @media (max-width: 600px) {
+            .bookmark-btn-label { display: none; }
+          }
+        `}</style>
         <header style={headerStyle}>
           <span>
             第 {idx + 1} / {sessionPool.length} 題 · {q.subject}
@@ -260,6 +272,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
         </div>
 
         <footer style={footerStyle}>
+          <BookmarkButton question={q} />
           {revealed ? (
             <>
               <button style={secondaryBtnStyle} onClick={onClose}>
@@ -277,6 +290,24 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
         </footer>
       </div>
     </div>
+  )
+}
+
+/** ⭐ bookmark toggle button — lives in QuizModal footer, both phases. */
+function BookmarkButton({ question }: { question: Question }): JSX.Element {
+  const bookmarked = useIsBookmarked(question.id)
+  return (
+    <button
+      type="button"
+      style={bookmarked ? bookmarkBtnActiveStyle : bookmarkBtnStyle}
+      onClick={() => void toggleBookmark(question)}
+      aria-pressed={bookmarked}
+      aria-label={bookmarked ? '取消收藏 (1)' : '收藏 (1)'}
+      title={bookmarked ? '取消收藏（鍵盤 1）' : '收藏題目（鍵盤 1）'}
+    >
+      <span aria-hidden>{bookmarked ? '★' : '☆'}</span>
+      <span className="bookmark-btn-label">{bookmarked ? '已收藏' : '收藏'}</span>
+    </button>
   )
 }
 
@@ -436,8 +467,37 @@ const footerStyle: React.CSSProperties = {
   borderTop: '1px solid #d4c4a0',
   display: 'flex',
   justifyContent: 'flex-end',
+  alignItems: 'center',
   gap: '0.6rem',
   background: '#fdf8ee',
+  flexWrap: 'wrap',
+}
+
+// BookmarkButton — left-aligned in footer, gets `margin-right: auto` to push
+// the action buttons (結束 / 下一題) to the right. Subtle visual weight so it
+// doesn't compete with the primary action.
+const bookmarkBtnStyle: React.CSSProperties = {
+  marginRight: 'auto',
+  padding: '0.4rem 0.9rem',
+  borderRadius: '6px',
+  border: '1px solid #c4a878',
+  background: 'transparent',
+  color: '#8c6d4a',
+  fontSize: '0.92rem',
+  fontFamily: 'inherit',
+  fontWeight: 600,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  lineHeight: 1,
+}
+
+const bookmarkBtnActiveStyle: React.CSSProperties = {
+  ...bookmarkBtnStyle,
+  background: '#fdf2e0',
+  borderColor: '#d4a04d',
+  color: '#d4a04d',
 }
 
 const baseBtnStyle: React.CSSProperties = {

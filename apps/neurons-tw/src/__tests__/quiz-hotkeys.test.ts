@@ -92,8 +92,11 @@ describe('dispatchKey — answered phase', () => {
     ).toEqual({ kind: 'noop' })
   })
 
-  it('reserved 1 / 2 / 3 are noop (sibling changes will wire)', () => {
-    expect(dispatchKey('1', false, baseAnswered)).toEqual({ kind: 'noop' })
+  it('answered-phase 1 returns toggle-bookmark (wired by add-neurons-question-bookmarks)', () => {
+    expect(dispatchKey('1', false, baseAnswered)).toEqual({ kind: 'toggle-bookmark' })
+  })
+
+  it('reserved 2 / 3 are noop (sibling SRS change will wire)', () => {
     expect(dispatchKey('2', false, baseAnswered)).toEqual({ kind: 'noop' })
     expect(dispatchKey('3', false, baseAnswered)).toEqual({ kind: 'noop' })
   })

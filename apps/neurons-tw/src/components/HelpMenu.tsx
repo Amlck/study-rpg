@@ -40,7 +40,8 @@ const SECTIONS: Section[] = [
           標記後再按其他數字鍵會切換標記，不會自動送出。
         </p>
         <p>
-          <strong>答題後階段</strong>：按 <kbd>Enter</kbd> 或 <kbd>Space</kbd> 進入下一題。
+          <strong>答題後階段</strong>：按 <kbd>Enter</kbd> 或 <kbd>Space</kbd> 進入下一題；
+          按 <kbd>1</kbd> 收藏 / 取消收藏目前題目。
           按答案後 150 ms 內的 Enter 會被忽略，避免「送出 + 立刻 advance」二連跳。
         </p>
         <p>
@@ -51,6 +52,23 @@ const SECTIONS: Section[] = [
         <p>
           <strong>關閉</strong>：任何時候按 <kbd>Esc</kbd> 直接關掉答題視窗。
           滑鼠點選項仍維持「click 即送出」的原本行為（不需要先標記）。
+        </p>
+      </>
+    ),
+  },
+  {
+    id: 'bookmark',
+    icon: '⭐',
+    title: '收藏題目',
+    body: (
+      <>
+        <p>
+          答題時按右下角 <strong>⭐ 收藏</strong> 按鈕，或在答完後按 <kbd>1</kbd> 鍵
+          加入 / 取消收藏。所有收藏統一在 <a href="/bookmarks">收藏</a> 頁面整理。
+        </p>
+        <p>
+          收藏會跨裝置同步（需登入 Google）。每張卡片附「重新作答」按鈕可單題複習。
+          支援以 family 篩選查看。
         </p>
       </>
     ),

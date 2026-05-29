@@ -109,8 +109,10 @@ export function dispatchKey(
     if (ctx.msSincePhaseChange < PHASE_COOLDOWN_MS) return { kind: 'noop' }
     return { kind: 'advance' }
   }
-  // 1 / 2 / 3 reserved for sibling-change wiring (bookmark / easy / guessed).
-  // Currently no-op; sibling changes will replace this branch.
+  // Bookmark toggle — wired by add-neurons-question-bookmarks.
+  if (key === '1') return { kind: 'toggle-bookmark' }
+  // 2 / 3 reserved for sibling-change wiring (太簡單 / 我亂猜的 SRS quality buttons).
+  // Currently no-op; add-neurons-srs-binary-modifiers will wire them.
   return { kind: 'noop' }
 }
 
@@ -123,6 +125,8 @@ export interface UseQuizHotkeysOptions {
   setHighlightedKey: (key: string | null) => void
   onSubmit: (key: string) => void
   onAdvance: () => void
+  /** Wired by add-neurons-question-bookmarks — toggles ⭐ for current question. */
+  onToggleBookmark: () => void
 }
 
 export function useQuizHotkeys(options: UseQuizHotkeysOptions): void {
@@ -158,13 +162,14 @@ export function useQuizHotkeys(options: UseQuizHotkeysOptions): void {
       switch (action.kind) {
         case 'skip':
         case 'noop':
-        case 'toggle-bookmark':
         case 'toggle-easy':
         case 'toggle-guessed':
-          // Reserved variants — current dispatcher never returns them, and
-          // even if injected callbacks added them they'd be a no-op here
-          // until sibling changes wire dedicated callbacks via the hook
-          // signature.
+          // Reserved variants — dispatcher never returns these yet; sibling
+          // change `add-neurons-srs-binary-modifiers` will replace them.
+          return
+        case 'toggle-bookmark':
+          event.preventDefault()
+          opts.onToggleBookmark()
           return
         case 'highlight':
           opts.setHighlightedKey(action.key)

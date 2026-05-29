@@ -14,10 +14,11 @@
 
 import { useState } from 'react'
 
-// v1 → v2 bump (add-neurons-helpmenu, 2026-05-29): re-shows banner once for
-// previously-dismissed users so they see the new「詳見右下 ❓ →『⌨️
-// 鍵盤快捷鍵』」 HelpMenu reference appended to the copy.
-const STORAGE_KEY = 'neurons-quiz-hotkeys-banner-dismissed-v2'
+// v1 → v2 bump (add-neurons-helpmenu, 2026-05-29): added HelpMenu reference.
+// v2 → v3 bump (add-neurons-question-bookmarks, 2026-05-29): added bookmark
+// key mention「答題後 1 收藏」. Re-shows banner once for previously-dismissed
+// users so they see the new key.
+const STORAGE_KEY = 'neurons-quiz-hotkeys-banner-dismissed-v3'
 
 function isDismissed(): boolean {
   try {
@@ -116,10 +117,10 @@ export default function QuizHotkeysAnnouncementBanner(): JSX.Element | null {
         </span>
         <span className="neurons-quiz-hotkeys-banner__msg">
           <strong>新功能：答題系統鍵盤快捷鍵</strong> — 題目階段 <kbd>1</kbd>–<kbd>4</kbd> 選答案、
-          <kbd>Enter</kbd> 送出；答題後 <kbd>Enter</kbd> 或 <kbd>Space</kbd> 下一題；
-          長題幹 <kbd>Space</kbd>/<kbd>Shift+Space</kbd> 翻頁、<kbd>↓</kbd><kbd>↑</kbd> 微捲、
-          <kbd>Home</kbd>/<kbd>End</kbd> 跳邊；<kbd>Esc</kbd> 隨時關閉。
-          詳見右上 ❓ →「⌨️ 鍵盤快捷鍵」section。
+          <kbd>Enter</kbd> 送出；答題後 <kbd>Enter</kbd> 或 <kbd>Space</kbd> 下一題、
+          <kbd>1</kbd> ⭐ 收藏；長題幹 <kbd>Space</kbd>/<kbd>Shift+Space</kbd> 翻頁、
+          <kbd>↓</kbd><kbd>↑</kbd> 微捲、<kbd>Home</kbd>/<kbd>End</kbd> 跳邊；
+          <kbd>Esc</kbd> 隨時關閉。詳見右上 ❓ →「⌨️ 鍵盤快捷鍵」section。
         </span>
         <button
           type="button"

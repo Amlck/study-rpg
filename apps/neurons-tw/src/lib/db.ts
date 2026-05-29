@@ -68,6 +68,30 @@ export interface AchievementRow {
   notificationShown: boolean
 }
 
+/**
+ * Per-question bookmark row (Dexie v7+). PK = questionId — at most one
+ * row per question per user. `addedAt` is set once on first add; `updatedAt`
+ * updates on every write (used for R2 LWW sync).
+ *
+ * Per add-neurons-question-bookmarks spec.
+ */
+export interface QuestionBookmarkRow {
+  questionId: string
+  family: string
+  addedAt: number
+  updatedAt: number
+}
+
+/**
+ * Tombstone row for a removed bookmark (Dexie v7+). Carries cross-device
+ * delete propagation through the R2 LWW pipeline — a tombstone with
+ * `updatedAt > local bookmark updatedAt` triggers delete on apply.
+ */
+export interface QuestionBookmarkTombstoneRow {
+  questionId: string
+  updatedAt: number
+}
+
 export class NeuronsDB extends Dexie {
   synapses!: EntityTable<SynapseRow, 'pairKey'>
   familyAccrual!: EntityTable<FamilyAccrualRow, 'familyId'>
@@ -82,6 +106,11 @@ export class NeuronsDB extends Dexie {
   dmnCards!: EntityTable<DmnCardRow, 'cardId'>
   dmnEventLog!: EntityTable<DmnEventLogRow, 'cardId'>
   dmnActiveBuffs!: Table<DmnActiveBuffRow, number>
+  // ─── Question bookmarks (Dexie v7+) ─────────────────────────────────────
+  // Per add-neurons-question-bookmarks. Additive — 2 new tables, existing
+  // tables untouched. Tombstones table carries cross-device delete propagation.
+  questionBookmarks!: EntityTable<QuestionBookmarkRow, 'questionId'>
+  questionBookmarkTombstones!: EntityTable<QuestionBookmarkTombstoneRow, 'questionId'>
 
   constructor() {
     super('neurons-rpg')
@@ -147,6 +176,25 @@ export class NeuronsDB extends Dexie {
       // Runtime buff rows (family-buff / variant-rate-up). Auto-inc PK; secondary
       // indices on expiresAt for cleanup queries + buffKind for type filter.
       dmnActiveBuffs: '++id, expiresAt, buffKind',
+    })
+    // Per add-neurons-question-bookmarks. Additive: 2 new tables.
+    // questionBookmarks: PK = questionId (one row per bookmarked question);
+    //   secondary indices on family (filter queries) + addedAt (chronological)
+    //   + updatedAt (LWW sync).
+    // questionBookmarkTombstones: PK = questionId; indexed on updatedAt.
+    this.version(7).stores({
+      synapses: 'pairKey, lastCoFireDate, state',
+      familyAccrual: 'familyId, lastFireDate, firedToday',
+      meta: 'key',
+      familyMastery: 'familyId',
+      neuronVariants: '[familyId+slotIndex], familyId, rolledAt',
+      leaderboardProfile: 'user_id, nickname_lower',
+      achievements: 'id, unlockedAt',
+      dmnCards: 'cardId, obtainedAt, rarity',
+      dmnEventLog: 'cardId, dispatchedAt',
+      dmnActiveBuffs: '++id, expiresAt, buffKind',
+      questionBookmarks: 'questionId, family, addedAt, updatedAt',
+      questionBookmarkTombstones: 'questionId, updatedAt',
     })
   }
 }

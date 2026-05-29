@@ -615,6 +615,7 @@ The neurons-tw QuizModal SHALL respond to keyboard input from the moment it open
 **Answered phase** (`picked !== null` — option already chosen, reveal showing):
 
 - Pressing `Enter` or `Space` SHALL advance to the next question (equivalent to clicking the existing「下一題」 advance button), provided at least 150ms have elapsed since the asking → answered phase transition. The 150ms cooldown SHALL prevent a single Enter keypress from both submitting an option AND advancing past the reveal.
+- **Pressing `1` SHALL toggle the bookmark for the current question** (wired by `add-neurons-question-bookmarks`). The hotkey hook SHALL accept an `onToggleBookmark: () => void` callback prop and dispatch `{ kind: 'toggle-bookmark' }`. The button-click + hotkey paths share the same `toggleBookmark(q)` service call.
 
 **Both phases — scroll bindings**:
 
@@ -639,7 +640,7 @@ The neurons-tw QuizModal SHALL respond to keyboard input from the moment it open
 - The hotkey logic SHALL be implemented as a pure `dispatchKey(key, shift, ctx)` function that maps a keypress + context to a discriminated-union `HotkeyAction` (`highlight` / `submit` / `advance` / `scroll` / `noop` / `skip`). The function SHALL have no DOM access, no React state mutation — pure for full unit-test coverage.
 - A separate `useQuizHotkeys` hook SHALL own the `document.addEventListener('keydown')` lifecycle, gated on `isOpen`. The hook SHALL pass current phase / option keys / highlighted key / cooldown reference / scroll container ref into `dispatchKey` and execute the returned action via injected callbacks (`setHighlightedKey`, `onSubmit`, `onAdvance`) + DOM scroll on the container.
 - The hook SHALL unsubscribe the document listener on modal close / unmount.
-- The `HotkeyAction` union SHALL reserve unused variants (`toggle-bookmark` / `toggle-easy` / `toggle-guessed`) as `noop` returns — these are wired by sibling changes (`add-neurons-question-bookmarks`, `add-neurons-srs-binary-modifiers`) and the reserved slots keep this hook's dispatch logic stable across those follow-ups.
+- The `HotkeyAction` union SHALL include a `toggle-bookmark` variant (now wired by `add-neurons-question-bookmarks`) and SHALL reserve `toggle-easy` / `toggle-guessed` as no-op returns until `add-neurons-srs-binary-modifiers` wires them.
 
 **Visual feedback on highlight**:
 
@@ -761,12 +762,21 @@ The neurons-tw QuizModal SHALL respond to keyboard input from the moment it open
 - **AND** the modal SHALL transition to answered phase as today
 - **AND** the highlight state SHALL remain `null` (irrelevant; reveal phase paints take over)
 
-#### Scenario: Reserved hotkey slots stay no-op until follow-up changes wire them
+#### Scenario: Answered-phase `1` toggles bookmark (wired by add-neurons-question-bookmarks)
+
+- **GIVEN** the QuizModal is open in answered phase showing question X (not yet bookmarked)
+- **WHEN** the player presses `1`
+- **THEN** the dispatcher SHALL return `{kind:'toggle-bookmark'}` and the hook SHALL invoke `onToggleBookmark()`
+- **AND** the bookmark SHALL be added (Dexie `questionBookmarks` row written)
+- **AND** the ⭐ button in the modal footer SHALL update to filled `★`
+- **WHEN** the player presses `1` again
+- **THEN** the bookmark SHALL be removed (row deleted + tombstone written)
+
+#### Scenario: Reserved hotkey slots `2` / `3` stay no-op until SRS change wires them
 
 - **GIVEN** the QuizModal is open in answered phase
-- **WHEN** the player presses `1`, `2`, or `3` (bookmark / 太簡單 / 我亂猜的 slots reserved for follow-up changes)
+- **WHEN** the player presses `2` or `3` (太簡單 / 我亂猜的 SRS quality slots reserved for `add-neurons-srs-binary-modifiers`)
 - **THEN** the dispatcher SHALL return `{kind:'noop'}` (no-op) and no action SHALL fire
-- **AND** when `add-neurons-question-bookmarks` ships, pressing `1` SHALL toggle bookmark per that change's spec
 - **AND** when `add-neurons-srs-binary-modifiers` ships, pressing `2` / `3` SHALL toggle the SRS quality buttons per that change's spec
 
 ### Requirement: Overview SHALL surface a dismissible hotkey announcement banner
@@ -775,30 +785,30 @@ Overview SHALL render a one-time announcement banner promoting the QuizModal key
 
 The banner SHALL:
 
-- Display a `⌨️` icon + headline「新功能：答題系統鍵盤快捷鍵」+ inline copy describing the asking-phase `1`–`4` highlight + `Enter` submit, answered-phase `Enter` / `Space` advance, scroll keys (`Space` / `Shift+Space` / `↓↑` / `Home` / `End`), and `Esc` close — all using `<kbd>` semantic elements.
+- Display a `⌨️` icon + headline「新功能：答題系統鍵盤快捷鍵」+ inline copy describing the asking-phase `1`–`4` highlight + `Enter` submit, answered-phase `Enter` / `Space` advance, **answered-phase `1` ⭐ bookmark toggle**, scroll keys (`Space` / `Shift+Space` / `↓↑` / `Home` / `End`), and `Esc` close — all using `<kbd>` semantic elements.
 - **Append a HelpMenu reference at the end of the copy**: `... 詳見右上 ❓ →「⌨️ 鍵盤快捷鍵」section。` so players who dismiss the banner know where to find a permanent reference.
-- Render a ✕ dismiss button on the right that, when clicked, hides the banner immediately AND writes a localStorage key `neurons-quiz-hotkeys-banner-dismissed-v2` (BUMPED from `-v1` to `-v2` so previously-dismissed users see the new HelpMenu-referencing copy ONCE) so the banner stays hidden on subsequent loads.
+- Render a ✕ dismiss button on the right that, when clicked, hides the banner immediately AND writes a localStorage key `neurons-quiz-hotkeys-banner-dismissed-v3` (BUMPED from `-v2` to `-v3` so previously-dismissed users see the new bookmark-key-mentioning copy ONCE) so the banner stays hidden on subsequent loads.
 - Use CSS media query `@media (hover: hover) and (pointer: fine)` to render only on devices with a precise pointer (desktop + tablet with mouse) — touch-only devices SHALL not see the banner since they have no physical keyboard for hotkeys.
 - Carry `role="region"` + `aria-label="新功能公告：鍵盤快捷鍵"` for screen-reader navigation; the dismiss button SHALL carry `aria-label="關閉公告"`.
 
 The banner SHALL handle localStorage failures gracefully: if `localStorage.setItem` throws (private browsing / quota exceeded), the in-memory `hidden` state SHALL still update so the banner disappears for the current session; the banner re-renders on next page load, which is acceptable degraded behavior.
 
-The localStorage key version suffix (currently `-v2`) SHALL be bumped (`-v3`, `-v4`, …) by future changes whenever banner copy revises materially, so re-discovery happens without migration code.
+The localStorage key version suffix (currently `-v3`) SHALL be bumped (`-v4`, `-v5`, …) by future changes whenever banner copy revises materially, so re-discovery happens without migration code.
 
-#### Scenario: Banner shows on first Overview load OR after v1→v2 key bump
+#### Scenario: Banner shows on first Overview load OR after v2→v3 key bump
 
-- **GIVEN** a user lands on Overview for the first time after `add-neurons-helpmenu` ships (no `neurons-quiz-hotkeys-banner-dismissed-v2` localStorage key — either fresh user OR user who dismissed v1 banner previously)
+- **GIVEN** a user lands on Overview for the first time after `add-neurons-question-bookmarks` ships (no `neurons-quiz-hotkeys-banner-dismissed-v3` localStorage key — either fresh user OR user who dismissed v1 / v2 banner previously)
 - **WHEN** Overview renders
 - **THEN** the announcement banner SHALL appear above `LeaderboardPromoBanner`
-- **AND** the banner content SHALL include `⌨️` icon + headline + hotkey hint copy + **the new「詳見右上 ❓ →『⌨️ 鍵盤快捷鍵』section。」 trailing reference** + dismiss button
+- **AND** the banner content SHALL include `⌨️` icon + headline + hotkey hint copy + **mention of `1` for ⭐ bookmark** + the「詳見右上 ❓ →『⌨️ 鍵盤快捷鍵』section。」 trailing reference + dismiss button
 
-#### Scenario: Dismiss persists across reload via v2 key
+#### Scenario: Dismiss persists across reload via v3 key
 
 - **GIVEN** the banner is visible and the player clicks the ✕ dismiss button
 - **WHEN** the player reloads the page
 - **THEN** the banner SHALL NOT render
-- **AND** the localStorage key `neurons-quiz-hotkeys-banner-dismissed-v2` SHALL equal `'true'`
-- **AND** the legacy `-v1` key (if present from prior dismissal) SHALL be ignored — only `-v2` gates display now
+- **AND** the localStorage key `neurons-quiz-hotkeys-banner-dismissed-v3` SHALL equal `'true'`
+- **AND** the legacy `-v1` / `-v2` keys (if present from prior dismissals) SHALL be ignored — only `-v3` gates display now
 
 #### Scenario: Banner is hidden on touch-only devices
 
@@ -833,6 +843,7 @@ The neurons-tw app SHALL render a floating ❓ FAB at the top-right corner that 
 - `aria-label="開啟說明選單"`.
 - Hover state: subtle lift + accent fill.
 - Active state (panel open): `aria-expanded="true"` + accent fill visual.
+- The FAB SHALL persist on the new `/bookmarks` route added by `add-neurons-question-bookmarks` (same App-level mount applies).
 
 **Panel structure**:
 
@@ -842,14 +853,15 @@ The neurons-tw app SHALL render a floating ❓ FAB at the top-right corner that 
 - Panel header: title「📖 說明選單」+ ✕ close button (`aria-label="關閉說明選單"`).
 - Panel body: a `<ul role="list">` of accordion `<li>` sections, each containing a native `<details>` element (semantic HTML for keyboard-accessible accordion).
 
-**Accordion sections** (initial 6 sections, identified by stable `id`):
+**Accordion sections** (7 sections after `add-neurons-question-bookmarks`, identified by stable `id`):
 
-1. **id=`hotkeys`, icon=⌨️, title=「鍵盤快捷鍵」** — body covers full hotkey reference matching the `wire-neurons-quiz-hotkeys` requirement (asking-phase 1-4 highlight + Enter, answered-phase Enter/Space + 150ms cooldown, scroll keys, Esc, mouse-click bypass).
-2. **id=`variant-unlock`, icon=🧬, title=「變體解鎖」** — body covers per-family AP threshold ladder + auto-pull on threshold + `/connectome` link.
-3. **id=`synapse-formation`, icon=🔗, title=「Synapse 形成」** — body covers cross-family 同日各答對 5 題 → wire + weak→strong tier + 7-day decay.
-4. **id=`dmn-draws`, icon=💎, title=「DMN 抽卡」** — body covers time-axis (30 min/draw, cap 2) + behavior-axis (variant slot unlock / synapse form / synapse strengthen, cap 3) + 20-card closed cap at `/dmn` + 5 event kinds.
-5. **id=`leaderboard`, icon=🏆, title=「排行榜」** — body covers opt-in flow + nickname NFKC + lowercase 撞名檢查 + 6 filter columns + opt-out flow.
-6. **id=`bug-report`, icon=🩺, title=「回報問題」** — body links out to GitHub Issues `https://github.com/fireman333/study-rpg/issues/new` (rendered as `<a target="_blank" rel="noopener">`); one-liner: 「目前 neurons 尚未接 in-app 回報，請開 GitHub Issue 並標 `neurons` label。也歡迎 PR。」. NOT a form modal (defer to future `add-neurons-bug-reporting` change if Supabase wiring lands).
+1. **id=`hotkeys`, icon=⌨️, title=「鍵盤快捷鍵」** — body covers full hotkey reference matching the `QuizModal SHALL accept keyboard hotkeys` requirement (asking-phase 1-4 highlight + Enter, answered-phase Enter/Space + 150ms cooldown, **answered-phase `1` bookmark toggle**, scroll keys, Esc, mouse-click bypass).
+2. **id=`bookmark`, icon=⭐, title=「收藏題目」** — body covers the bookmark feature: 「答題時按 ⭐ 按鈕或 <kbd>1</kbd> 鍵收藏題目，到 <a href="/bookmarks">收藏</a> 頁面隨時複習。收藏會跨裝置同步（需登入）。」
+3. **id=`variant-unlock`, icon=🧬, title=「變體解鎖」** — body covers per-family AP threshold ladder + auto-pull on threshold + `/connectome` link.
+4. **id=`synapse-formation`, icon=🔗, title=「Synapse 形成」** — body covers cross-family 同日各答對 5 題 → wire + weak→strong tier + 7-day decay.
+5. **id=`dmn-draws`, icon=💎, title=「DMN 抽卡」** — body covers time-axis (30 min/draw, cap 2) + behavior-axis (variant slot unlock / synapse form / synapse strengthen, cap 3) + 20-card closed cap at `/dmn` + 5 event kinds.
+6. **id=`leaderboard`, icon=🏆, title=「排行榜」** — body covers opt-in flow + nickname NFKC + lowercase 撞名檢查 + 6 filter columns + opt-out flow.
+7. **id=`bug-report`, icon=🩺, title=「回報問題」** — body links out to GitHub Issues `https://github.com/fireman333/study-rpg/issues/new` (rendered as `<a target="_blank" rel="noopener">`); one-liner: 「目前 neurons 尚未接 in-app 回報，請開 GitHub Issue 並標 `neurons` label。也歡迎 PR。」. NOT a form modal (defer to future `add-neurons-bug-reporting` change if Supabase wiring lands).
 
 **Single-expand accordion behavior**:
 
@@ -877,12 +889,18 @@ The neurons-tw app SHALL render a floating ❓ FAB at the top-right corner that 
 - **THEN** the ❓ FAB SHALL appear at the same top-right position (or bottom-right on mobile)
 - **AND** the FAB SHALL be clickable on every route (no per-route gating)
 
-#### Scenario: Click FAB opens panel with 6 sections
+#### Scenario: Click FAB opens panel with 7 sections
 
 - **GIVEN** the player is on any route with the panel closed
 - **WHEN** the player clicks the ❓ FAB
-- **THEN** the panel SHALL open with all 6 accordion sections rendered in collapsed state
+- **THEN** the panel SHALL open with all 7 accordion sections rendered in collapsed state (hotkeys / bookmark / variant-unlock / synapse-formation / dmn-draws / leaderboard / bug-report)
 - **AND** the panel SHALL have `role="dialog" aria-modal="true"` and the proper aria-label
+
+#### Scenario: bookmark section links to /bookmarks page
+
+- **GIVEN** the player expands the `bookmark` section
+- **WHEN** the player clicks the「收藏」 link inside the body
+- **THEN** the route SHALL navigate to `/bookmarks`
 
 #### Scenario: Single-expand accordion behavior
 
@@ -942,6 +960,143 @@ The neurons-tw app SHALL render a floating ❓ FAB at the top-right corner that 
 - **WHEN** the player reopens the panel later
 - **THEN** the panel SHALL re-open with ALL sections collapsed (no memory of `synapse-formation` being last-opened)
 - **AND** no localStorage / Dexie / sync table SHALL retain `expandedId` state
+
+### Requirement: Neurons-tw SHALL persist per-question bookmarks with cross-device sync
+
+The neurons-tw app SHALL provide a per-question bookmark feature so players can mark interesting / hard / want-to-revisit questions for later review. Bookmarks SHALL persist locally (Dexie) and SHALL sync across devices via the existing R2 LWW bundle pipeline.
+
+**Schema** (Dexie v7):
+
+- Table name: `questionBookmarks`
+- Primary key: `questionId` (string — a question is bookmarked or not, at most one row per question)
+- Indexed columns: `family` (for fast filter queries), `addedAt` (for chronological listing), `updatedAt` (for LWW sync)
+- Row shape: `{ questionId: string, family: string, addedAt: number, updatedAt: number }`
+- `addedAt` is set once when the bookmark is created; it does NOT update on re-bookmark (re-add after remove sets a NEW `addedAt`).
+- `updatedAt` updates on every write (add / remove → tombstone row with `updatedAt = Date.now()`).
+- No `note` / `tags` fields in v1 (defer to future change if owner demands).
+
+**Service surface** (`apps/neurons-tw/src/lib/services/bookmarks.ts`):
+
+- `addBookmark(questionId, family): Promise<void>` — upsert row; if already bookmarked, no-op (preserves original `addedAt`).
+- `removeBookmark(questionId): Promise<void>` — delete row + write tombstone for cross-device delete propagation.
+- `toggleBookmark(question: Question): Promise<boolean>` — convenience returning the NEW bookmarked state.
+- `isBookmarked(questionId): Promise<boolean>` — synchronous-style check.
+- `useIsBookmarked(questionId): boolean` — React hook via `liveQuery + subscribe` for reactive `<button>` rendering.
+- `useAllBookmarks(): QuestionBookmarkRow[]` — React hook returning all bookmarks ordered by `addedAt` desc.
+
+**QuizModal ⭐ button**:
+
+- Renders in the QuizModal footer with `margin-right: auto` (pushed left), `結束` / `下一題` buttons on the right.
+- Visible in BOTH asking and answered phases — player can bookmark before or after seeing the answer.
+- Icon: filled `★` (with accent color `#d4a04d`) when bookmarked; outline `☆` (muted) when not.
+- Tooltip / `aria-label`: 「收藏 (1)」 when not bookmarked; 「取消收藏 (1)」 when bookmarked.
+- `aria-pressed` reflects current bookmark state.
+- Click toggles bookmark via `toggleBookmark(q)`.
+- Mobile (`@media (max-width: 600px)`): button text label hidden (`.bookmark-btn-label { display: none }`); icon-only.
+
+**Hotkey `1` in answered phase**:
+
+- The answered-phase `1` slot SHALL dispatch `{ kind: 'toggle-bookmark' }` (wired by this change; previously reserved as noop by `wire-neurons-quiz-hotkeys`).
+- `useQuizHotkeys` hook SHALL accept a non-optional `onToggleBookmark: () => void` callback prop.
+- QuizModal SHALL pass `onToggleBookmark: () => void toggleBookmark(q)` when wiring the hook.
+- The asking-phase `1` slot remains as `highlight` for option A (no conflict — different phase).
+
+**`/bookmarks` route**:
+
+- New route `BookmarksPage` mounted at path `/bookmarks` in `App.tsx`.
+- Top nav link「收藏 →」 added to the App-level header between「DMN →」 and「成就 →」.
+- Page lists all bookmarked questions in `addedAt` desc order.
+- Each row renders as an `<li>`:
+  - Family badge (matching NT branch accent color)
+  - Question stem (truncated to 100 chars + ellipsis)
+  - Added timestamp (relative format: 「剛剛」 / 「3 分鐘前」 / 「2 小時前」 / 「昨天」 / `YYYY-MM-DD`)
+  - 「★ 取消」 unbookmark button (immediate remove — no separate confirm modal since the action is reversible)
+  - 「🎯 重新作答」 button → opens QuizModal scoped to a 1-question pool of that question
+- Empty state: 「📭 目前沒有收藏的題目。在答題時按 ⭐ 收藏 按鈕或鍵盤 <kbd>1</kbd> 加入收藏。」 + link back to `/`.
+- Family filter bar at top: chips of all 11 families grouped by NT branch; click toggles exclusion. Default: all families included.
+- Cap at 200 visible rows (warns when > 200 — dogfood scope guard).
+
+**Sync via R2 LWW**:
+
+- New `questionBookmarksAdapter` and `questionBookmarkTombstonesAdapter` in `apps/neurons-tw/src/lib/sync/tables.ts`.
+- Bundle `SCHEMA_VERSION` bumps from `2` → `3` in `apps/neurons-tw/src/lib/sync/r2/bundles.ts`.
+- Snapshot: read all rows; serialize as JSON-safe records.
+- Apply: LWW per `questionId` using `updatedAt` — incoming row wins iff `incoming.updatedAt > local.updatedAt`. Tombstones gate: incoming bookmark < local tombstone → skip (delete preserved); incoming tombstone > local bookmark → delete the bookmark; re-add un-deletes (clear tombstone).
+- Forward-compat: existing v2 clients silently drop the `questionBookmarks` / `questionBookmarkTombstones` keys per `validateBundleMeta` tolerance.
+
+#### Scenario: ⭐ button toggles bookmark and updates icon
+
+- **GIVEN** the QuizModal is open showing question X (not yet bookmarked)
+- **WHEN** the player clicks the ⭐ button
+- **THEN** the icon SHALL change from outline `☆` to filled `★`
+- **AND** `aria-pressed` SHALL flip to `true`
+- **AND** the aria-label SHALL change from 「收藏 (1)」 to 「取消收藏 (1)」
+- **AND** a new row SHALL appear in Dexie `questionBookmarks` with `questionId === X.id` and `addedAt === Date.now()`
+- **WHEN** the player clicks the ⭐ button again
+- **THEN** the icon SHALL revert to outline `☆`
+- **AND** the row SHALL be removed from `questionBookmarks` (and a tombstone written to `questionBookmarkTombstones`)
+
+#### Scenario: BookmarksPage renders all bookmarks in addedAt desc order
+
+- **GIVEN** the player has bookmarked questions X (added 1 min ago), Y (added 10 min ago), Z (added 1 hour ago)
+- **WHEN** the player navigates to `/bookmarks`
+- **THEN** the page SHALL render 3 rows in order: X (top, 「剛剛」), Y (「10 分鐘前」), Z (「1 小時前」)
+- **AND** each row SHALL display the family badge + stem truncated to 100 chars + 「★ 取消」 + 「🎯 重新作答」 button
+
+#### Scenario: Empty state surfaces when no bookmarks exist
+
+- **GIVEN** the player has no bookmarks
+- **WHEN** the player navigates to `/bookmarks`
+- **THEN** the page SHALL render an empty-state message containing 「目前沒有收藏的題目」
+- **AND** SHALL include a link「← 回總覽開始答題」 back to `/`
+
+#### Scenario: Family filter excludes selected families from list
+
+- **GIVEN** the player has bookmarks across 3 families (藥理學, 生理學, 病理學)
+- **WHEN** the player clicks the 藥理學 chip in the filter bar to exclude it
+- **THEN** the page SHALL hide all 藥理學 bookmarks
+- **AND** 生理學 / 病理學 rows SHALL remain visible
+- **AND** the excluded chip SHALL render in dashed-border / muted style with `aria-pressed="false"`
+
+#### Scenario: 「重新作答」 opens QuizModal scoped to that question
+
+- **GIVEN** the player has bookmark for question X
+- **WHEN** the player clicks 「重新作答」 on X's row
+- **THEN** a QuizModal SHALL open with a 1-question pool containing only X
+- **AND** after submitting + advancing, the modal SHALL show「題庫已答完」 (since the pool is exhausted)
+
+#### Scenario: R2 sync replicates bookmarks across devices
+
+- **GIVEN** the player bookmarks question X on Device A (writes to local Dexie + queues sync push)
+- **WHEN** the player loads neurons on Device B (signed in to the same account)
+- **THEN** the sync pull SHALL include the X bookmark in the incoming bundle
+- **AND** Device B's local Dexie SHALL apply the row via LWW
+- **AND** subsequent `useIsBookmarked(X.id)` calls on Device B SHALL return `true`
+
+#### Scenario: Tombstone propagates bookmark removal across devices
+
+- **GIVEN** the player has bookmarked X on both Device A and Device B
+- **WHEN** the player removes the bookmark on Device A (writes tombstone with `updatedAt = T2 > original addedAt`)
+- **AND** Device B pulls the latest bundle
+- **THEN** Device B's local `questionBookmarks` SHALL have the X row removed
+- **AND** Device B's `questionBookmarkTombstones` SHALL contain the tombstone
+- **AND** `useIsBookmarked(X.id)` on Device B SHALL return `false`
+
+#### Scenario: Re-add after remove clears tombstone
+
+- **GIVEN** the player removed bookmark X (tombstone exists with `updatedAt = T1`)
+- **WHEN** the player re-adds bookmark X (`addBookmark` runs)
+- **THEN** the new bookmark row SHALL be written with fresh `addedAt = T2 > T1`
+- **AND** the local tombstone for X SHALL be deleted
+- **AND** subsequent sync push SHALL carry the bookmark row, not the tombstone
+
+#### Scenario: v2 client tolerates v3 bundle (forward-compat)
+
+- **GIVEN** a v2 client (pre-`add-neurons-question-bookmarks`) pulls a v3 bundle from R2
+- **WHEN** `validateBundleMeta` runs
+- **THEN** it SHALL log an info message about unknown fields but SHALL NOT throw
+- **AND** the v2 client SHALL silently drop the `questionBookmarks` and `questionBookmarkTombstones` fields
+- **AND** the v2 client SHALL still apply all other v2-known adapters normally
 
 ### Requirement: Rarity reveal animations SHALL share a centralized timing baseline with rarity-tiered minimums
 
