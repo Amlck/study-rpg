@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Question } from '@study-rpg/core'
 import { recordCorrectAnswer, recordIncorrectAnswer } from '../lib/services/connectome'
 import { SpikeTrainFiring } from '../lib/motion'
+import { useQuizHotkeys, type QuizPhase } from '../lib/hooks/useQuizHotkeys'
 
 interface Props {
   pool: Question[]
@@ -26,7 +27,9 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
 
   const [idx, setIdx] = useState(0)
   const [picked, setPicked] = useState<string | null>(null)
+  const [highlighted, setHighlighted] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
   const q: Question | undefined = sessionPool[idx]
   const exhausted = idx >= sessionPool.length
@@ -52,7 +55,13 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
 
   const handleNext = useCallback(() => {
     setPicked(null)
+    setHighlighted(null)
     setIdx((i) => i + 1)
+    // Scroll the modal body back to top on next-question so the player sees
+    // the new stem from the start rather than mid-scroll from the last reveal.
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'auto' })
+    }
   }, [])
 
   // Esc to close
@@ -63,6 +72,27 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // Keyboard hotkeys: 1/2/3/4 highlight, Enter submit, Enter/Space advance,
+  // Space/Shift+Space/↓↑/Home/End scroll the modal body container.
+  const phase: QuizPhase = picked === null ? 'asking' : 'answered'
+  const optionKeysForHotkey = useMemo<string[]>(() => {
+    const cur = sessionPool[idx]
+    return cur ? Object.keys(cur.options) : []
+  }, [sessionPool, idx])
+  useQuizHotkeys({
+    isOpen: sessionPool[idx] !== undefined && idx < sessionPool.length,
+    phase,
+    optionKeys: optionKeysForHotkey,
+    highlightedKey: highlighted,
+    scrollContainerRef,
+    setHighlightedKey: setHighlighted,
+    onSubmit: (key) => {
+      setHighlighted(null)
+      void handlePick(key)
+    },
+    onAdvance: handleNext,
+  })
 
   if (exhausted) {
     return (
@@ -151,7 +181,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
           </button>
         </header>
 
-        <div style={bodyStyle}>
+        <div style={bodyStyle} ref={scrollContainerRef}>
           <p style={stemStyle}>{q.stem}</p>
 
           <div style={optionsGridStyle}>
@@ -159,6 +189,8 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
               const optText = q.options[key]
               let border = '2px solid #d4c4a0'
               let bg = '#fdf8ee'
+              let boxShadow: string | undefined
+              const isHighlighted = !revealed && key === highlighted
               if (revealed) {
                 if (key === correctKey && !q.disputed) {
                   border = '2px solid #4d8c4d' // green = correct answer
@@ -173,6 +205,12 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
                     bg = '#f8e8e8'
                   }
                 }
+              } else if (isHighlighted) {
+                // Keyboard-driven highlight before commit. Same warm-gold accent
+                // as mouse hover so the visual vocabulary stays consistent.
+                border = '2px solid #d4a04d'
+                bg = '#fdf2e0'
+                boxShadow = '0 0 0 3px rgba(212, 160, 77, 0.25)'
               }
               const style: React.CSSProperties = {
                 ...optionCardStyle,
@@ -180,6 +218,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
                 background: bg,
                 cursor: picked !== null ? 'default' : 'pointer',
                 opacity: picked !== null && key !== picked && key !== correctKey ? 0.65 : 1,
+                ...(boxShadow ? { boxShadow } : {}),
               }
               return (
                 <button
@@ -187,6 +226,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
                   style={style}
                   onClick={() => handlePick(key)}
                   disabled={picked !== null}
+                  aria-pressed={isHighlighted}
                 >
                   <span style={optionKeyStyle}>{key}</span>
                   <span>{optText}</span>

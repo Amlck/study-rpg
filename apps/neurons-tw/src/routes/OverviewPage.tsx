@@ -3,6 +3,7 @@ import { liveQuery } from 'dexie'
 import type { ContentPack } from '@study-rpg/core'
 import { initMasteryForPack, loadConnectome } from '../lib/services/connectome'
 import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
+import QuizHotkeysAnnouncementBanner from '../components/QuizHotkeysAnnouncementBanner'
 import { QuizModal } from '../components/QuizModal'
 import { FamilyPicker } from '../components/FamilyPicker'
 import { useReadingTimer } from '../lib/hooks/useReadingTimer'
@@ -99,6 +100,7 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
 
   return (
     <>
+      <QuizHotkeysAnnouncementBanner />
       <LeaderboardPromoBanner />
 
       <section style={statusChipStyle} aria-label="進度狀態">
