@@ -42,7 +42,10 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
       setBusy(true)
       try {
         setPicked(optionKey)
-        const isCorrect = q.disputed === true || optionKey === q.answer
+        const isCorrect =
+          q.disputed === true ||
+          optionKey === q.answer ||
+          (q.acceptedAnswers?.includes(optionKey) ?? false)
         if (isCorrect) {
           await recordCorrectAnswer(q.subject)
         } else {
@@ -180,7 +183,13 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
 
   const optionKeys = Object.keys(q.options)
   const correctKey = q.answer
-  const isCorrect = picked !== null && (q.disputed === true || picked === correctKey)
+  // Keys that count as correct: disputed (一律給分) → all; multi (多選給分) → listed; else → the single answer.
+  const acceptedKeys = q.disputed
+    ? optionKeys
+    : q.acceptedAnswers && q.acceptedAnswers.length > 0
+      ? q.acceptedAnswers
+      : [correctKey]
+  const isCorrect = picked !== null && (q.disputed === true || acceptedKeys.includes(picked))
   const revealed = picked !== null
 
   return (
@@ -218,8 +227,8 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
               let boxShadow: string | undefined
               const isHighlighted = !revealed && key === highlighted
               if (revealed) {
-                if (key === correctKey && !q.disputed) {
-                  border = '2px solid #4d8c4d' // green = correct answer
+                if (!q.disputed && acceptedKeys.includes(key)) {
+                  border = '2px solid #4d8c4d' // green = correct answer (all accepted keys for 多選給分)
                   bg = '#e8f5e8'
                 }
                 if (key === picked) {
@@ -243,7 +252,8 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
                 border,
                 background: bg,
                 cursor: picked !== null ? 'default' : 'pointer',
-                opacity: picked !== null && key !== picked && key !== correctKey ? 0.65 : 1,
+                opacity:
+                  picked !== null && key !== picked && !acceptedKeys.includes(key) ? 0.65 : 1,
                 ...(boxShadow ? { boxShadow } : {}),
               }
               return (
@@ -266,9 +276,14 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
               {q.disputed && (
                 <p style={disputedBannerStyle}>⚠️ 此題為送分題，任何選項皆計為答對。</p>
               )}
+              {!q.disputed && q.acceptedAnswers && q.acceptedAnswers.length > 1 && (
+                <p style={disputedBannerStyle}>
+                  ⚠️ 此題官方更正為多個答案（{q.acceptedAnswers.join(' / ')}）皆計為答對。
+                </p>
+              )}
               <p style={resultLineStyle}>
                 {isCorrect ? '✅ 答對' : '❌ 答錯'}
-                {!q.disputed && ` · 正解：${correctKey}`}
+                {!q.disputed && ` · 正解：${acceptedKeys.join(' 或 ')}`}
                 {isCorrect && (
                   <span style={spikeFireStyle} aria-hidden>
                     <SpikeTrainFiring key={`spike-${idx}`} width={120} />
@@ -281,6 +296,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
                   <div style={explanationBodyStyle}>{q.explanation}</div>
                 </details>
               )}
+              <p style={questionIdStyle}>題號 {q.id}</p>
             </div>
           )}
         </div>
@@ -509,6 +525,14 @@ const explanationBodyStyle: React.CSSProperties = {
   lineHeight: 1.6,
   color: '#3a2a1a',
   whiteSpace: 'pre-wrap',
+}
+
+const questionIdStyle: React.CSSProperties = {
+  marginTop: '0.6rem',
+  fontSize: '0.72rem',
+  letterSpacing: '0.02em',
+  color: '#9b8c70',
+  fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
 }
 
 const footerStyle: React.CSSProperties = {

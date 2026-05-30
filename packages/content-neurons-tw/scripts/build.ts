@@ -13,9 +13,12 @@ import { resolve } from 'node:path'
 import { NEURONS_ACHIEVEMENTS, NEURONS_ACHIEVEMENTS_STATS } from '../src/achievements'
 import { validateNeuronsAchievementCatalog } from '../src/achievement-validator'
 
-const ROOT = resolve(import.meta.dirname, '..', '..', '..')
+// 一階 corpus source = 考選部-authoritative reconciled artifacts committed under
+// packages/content-neurons-tw/data/medexam-reconciled (see reconcile/README.md).
+// Self-contained so the neurons build survives the planned removal of
+// apps/medexam-tw / packages/content-medexam-tw. Override with MEDEXAM_TW_DIST.
 const MEDEXAM_TW_DIST =
-  process.env.MEDEXAM_TW_DIST ?? resolve(ROOT, 'apps/medexam-tw/public/content/medexam-tw')
+  process.env.MEDEXAM_TW_DIST ?? resolve(import.meta.dirname, '..', 'data', 'medexam-reconciled')
 const MEDEXAM_SOURCE_ROOT =
   process.env.MEDEXAM_SOURCE_ROOT ??
   resolve(process.env.HOME ?? '/', 'Desktop/國考/一階國考/陽明國考考古/_extracted')
