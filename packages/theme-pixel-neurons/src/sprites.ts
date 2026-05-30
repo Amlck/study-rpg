@@ -9,12 +9,17 @@
  * via Gemini MCP per `generate-dmn-card-artworks` change (2026-05-28). See
  * `../CARD_SPRITE_GENERATION.md` for prompts + regen procedure.
  *
- * Both bundled via Vite `import.meta.glob` with `?url` for cache-busting hash
+ * Variant gacha sprites (55 = 11 families × 5 slots): REAL sprites generated via
+ * codex CLI per `generate-neuron-variant-sprites` change (2026-05-30). See
+ * `../SPRITE_GENERATION.md` for prompts + regen procedure. The `variant:default`
+ * terminal fallback stays a 1×1 transparent placeholder.
+ *
+ * All bundled via Vite `import.meta.glob` with `?url` for cache-busting hash
  * URLs in production.
  *
- * Other categories (core scaffold / items / cosmetics / skill placeholders /
- * variant gacha) still map to a 1×1 transparent PNG until their respective
- * consumer capabilities ship real assets in separate future changes.
+ * Other categories (core scaffold / items / cosmetics / skill placeholders)
+ * still map to a 1×1 transparent PNG until their respective consumer
+ * capabilities ship real assets in separate future changes.
  *
  * theme-pack-contract MUST-cover keys: character-base, slot-placeholder-{head,
  * body,weapon,charm}, plus every Item.artKey in itemCatalog. Engine boots cleanly
@@ -80,6 +85,26 @@ const cardSprites: Record<string, string> = Object.fromEntries(
     const stem = path.replace(/.*\/(.+)\.png$/, '$1')
     const key = stem === 'card-back' ? 'dmn:card-back' : `dmn:card:${stem}`
     return [key, url]
+  }),
+)
+
+// Real variant gacha sprites — 55 files `<familyId>-<slotIndex>.png` generated
+// via codex CLI per `generate-neuron-variant-sprites` change (2026-05-30). See
+// `../SPRITE_GENERATION.md`. Filename maps to key `variant:<familyId>:<slotIndex>`;
+// family IDs are Chinese and contain no `-`, so split on the LAST `-`.
+const variantSpriteModules = import.meta.glob('../sprites/variants/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const variantSprites: Record<string, string> = Object.fromEntries(
+  Object.entries(variantSpriteModules).map(([path, url]) => {
+    const stem = path.replace(/.*\/(.+)\.png$/, '$1')
+    const dash = stem.lastIndexOf('-')
+    const familyId = stem.slice(0, dash)
+    const slot = stem.slice(dash + 1)
+    return [`variant:${familyId}:${slot}`, url]
   }),
 )
 
@@ -233,7 +258,8 @@ export const SPRITE_MAP: Record<string, string> = Object.fromEntries([
   ...ITEM_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...COSMETIC_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
   ...SKILL_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
-  ...VARIANT_ART_KEYS.map((k) => [k, TRANSPARENT_PIXEL]),
+  // Variant gacha: real sprite if file present, else defensive placeholder
+  ...VARIANT_ART_KEYS.map((k) => [k, variantSprites[k] ?? TRANSPARENT_PIXEL]),
   // DMN fate-card sprites: real PNG if file present, else defensive placeholder
   ...DMN_ART_KEYS.map((k) => [k, cardSprites[k] ?? TRANSPARENT_PIXEL]),
 ])
