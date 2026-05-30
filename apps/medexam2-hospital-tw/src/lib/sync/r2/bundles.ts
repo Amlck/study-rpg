@@ -23,7 +23,27 @@ import type { CloudRow, RowPayload } from '../types'
 // explicit clear propagates cross-device. Older clients that omit the field
 // no longer overwrite a local true (preserving prior protection against
 // silent revocation). See tables.ts applyToLocal for the canonical impl.
-const SCHEMA_VERSION = 2
+//
+// v3 (tidy-tabs-add-study-stats-medexam2, 2026-05-26): m2 bundle now carries
+// a new top-level data key for `daily_study_log` (one row per calendar day
+// of active study). v3 client reading v2 bundle defaults the table to []
+// (the data dict simply lacks the key). v2 client reading v3 bundle ignores
+// the unknown key. Row-level LWW on `updatedAt` — no monotonic-OR carve-out
+// (cumulative-per-day counter, no cross-version contamination risk).
+//
+// v4 (fix-doctor-retire-cloud-resurrection-v2, 2026-05-27): m2 bundle now
+// carries a new top-level data key for `retirement_log` (tombstone table for
+// retired doctors). Logical pk = doctor_id. v4 client reading v3 bundle
+// defaults the table to [] (the data dict simply lacks the key) — local
+// carve-out still works because it consults local retirementLog. v3 client
+// reading v4 bundle ignores the unknown key — known regression: v3 will
+// still resurrect locally-deleted doctors (no adapter to handle it). v3
+// clients are ALSO blocked from PUSHing back over a v4 cloud bundle by the
+// schema_version monotonic guard in r2/etag.ts + r2/engine-r2.ts pushBundle
+// pre-PUT check — prevents v3 from silently stripping the new key from cloud.
+// Row-level LWW on `updatedAt` / `_updatedAt` (no monotonic-OR carve-out
+// needed — retirement is destructive, can't legitimately go backwards).
+const SCHEMA_VERSION = 4
 const CLIENT_ID_KEY = 'study-rpg.sync.clientId'
 const BUNDLE_APP_VERSION = '0.3.0'
 

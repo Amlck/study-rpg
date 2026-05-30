@@ -878,6 +878,7 @@ body:has(.modal-backdrop) {
 
 .filter-bar__label {
   white-space: nowrap;
+  color: var(--ink);
 }
 
 .filter-bar select {
@@ -2546,7 +2547,7 @@ body:has(.modal-backdrop) {
 
 .quiz-modal__foot {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   margin-top: 8px;
 }
@@ -2632,9 +2633,14 @@ body:has(.modal-backdrop) {
 .quiz-modal__foot .quiz-bug-trigger--in-footer {
   flex: 0 0 auto;
 }
+/* Pin 下一題 to the right edge so the left-side chips (🐞 + ⭐, plus
+ * quality buttons when present) cluster on the left. With quality buttons
+ * (flex: 1 1 auto) the auto margin collapses; without them, it pushes 下一題
+ * all the way right and keeps 🐞 + ⭐ neighbouring on the left. */
 .quiz-modal__foot .quiz-modal__next {
   flex: 0 0 auto;
   white-space: nowrap;
+  margin-left: auto;
 }
 
 @media (max-width: 600px) {
@@ -2642,6 +2648,17 @@ body:has(.modal-backdrop) {
     padding: 0 10px;
     font-size: 13px;
     gap: 4px;
+  }
+  /* On narrow viewports the quality buttons need every horizontal pixel; the
+   * bookmark chip collapses to an icon-only square (same width as 🐞) so the
+   * row still fits without wrapping or clipping. */
+  .quiz-modal__footer-bookmark {
+    padding: 0;
+    width: 40px;
+    gap: 0;
+  }
+  .quiz-modal__footer-bookmark > span {
+    display: none;
   }
   .quiz-modal__foot {
     gap: 6px;
@@ -3052,6 +3069,7 @@ body:has(.modal-backdrop) {
   background: rgba(255,255,255,0.3);
   border: 2px solid var(--frame-dark);
   font-size: 13px;
+  color: var(--ink);
 }
 
 .training-doctor-list { margin-top: 16px; }
@@ -3548,9 +3566,9 @@ body:has(.modal-backdrop) {
 .surface-hint__title {
   margin: 0 0 4px;
   font-size: 14px;
-  color: var(--frame-dark);
+  color: var(--ink);
 }
-.surface-hint__text { margin: 0; line-height: 1.5; }
+.surface-hint__text { margin: 0; line-height: 1.5; color: var(--ink); }
 .surface-hint__close {
   background: transparent;
   border: none;
@@ -4181,6 +4199,132 @@ body:has(.modal-backdrop) {
   font-weight: 600;
 }
 
+/* ── Doctor page sub-tab structure (tidy-tabs-add-study-stats-medexam2) ── */
+
+.doctor-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-muted, #444);
+  margin: 12px 0 0;
+}
+
+.doctor-tabs__tab {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted, #999);
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+}
+
+.doctor-tabs__tab:hover:not(.doctor-tabs__tab--active) {
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  color: inherit;
+}
+
+.doctor-tabs__tab--active {
+  background: var(--surface-1, rgba(255, 255, 255, 0.06));
+  border-color: var(--border-muted, #444);
+  border-bottom-color: var(--surface-1, rgba(255, 255, 255, 0.06));
+  color: inherit;
+  font-weight: 600;
+}
+
+/* Training panel header row (revenue chip) — replaces what was app-header
+   meta in the old standalone TrainingPage. Sits above the filter bar. */
+.training-panel-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+/* ── Stats sub-tab (tidy-tabs-add-study-stats-medexam2) ─────────────────── */
+
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.stats-panel__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.stats-panel__residual-chip {
+  font-size: 13px;
+  color: var(--text-muted, #999);
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-muted, #444);
+  border-radius: 12px;
+  padding: 4px 10px;
+}
+
+.stats-panel__filter-caption {
+  font-size: 12px;
+  color: var(--text-muted, #999);
+  margin: 0;
+}
+
+.stats-panel__empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted, #999);
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  border-radius: 8px;
+}
+
+.stats-panel__chart {
+  margin: 0;
+  background: var(--surface-1, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-muted, #444);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.stats-panel__chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+
+.stats-panel__chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.stats-panel__chart-y-label {
+  font-size: 10px;
+  fill: var(--ink);
+}
+
+.stats-panel__chart-x-label {
+  font-size: 10px;
+  fill: var(--ink);
+}
+
+.stats-panel__chart-axis {
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.stats-panel__chart-gridline {
+  stroke: var(--frame-light);
+  stroke-width: 1;
+  stroke-opacity: 0.35;
+}
+
 .bookmarks-tab {
   margin-top: 16px;
 }
@@ -4301,19 +4445,13 @@ body:has(.modal-backdrop) {
 .quiz-modal__inline-promote {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
   margin: 8px 0 0;
-  padding: 6px 0;
-}
-
-.quiz-modal__inline-promote--wrong {
   padding: 10px 12px;
   background: rgba(255, 120, 80, 0.08);
   border: 1px dashed var(--accent, #d8a04a);
   border-radius: 4px;
-  justify-content: space-between;
 }
 
 .quiz-modal__inline-promote-hint {
@@ -4322,26 +4460,40 @@ body:has(.modal-backdrop) {
   flex: 1 1 auto;
 }
 
-.quiz-modal__inline-promote-btn {
-  appearance: none;
-  background: var(--surface-2, rgba(255, 255, 255, 0.08));
-  color: inherit;
-  border: 1px solid var(--border-muted, #555);
-  padding: 6px 12px;
+/* Footer-row ★ bookmark toggle — pinned to the same 46px chip height as the
+ * 🐞 trigger, quality buttons, and 下一題 so the whole footer aligns. */
+.quiz-modal__footer-bookmark {
+  flex: 0 0 auto;
+  height: 46px;
+  padding: 0 16px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+  background: var(--bg-cream);
+  color: var(--frame-dark);
+  border: 2px solid var(--frame-dark);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  box-shadow: 2px 2px 0 var(--frame-dark);
+  transition: transform 80ms, box-shadow 80ms, background 160ms;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
 }
-
-.quiz-modal__inline-promote-btn:hover {
-  background: var(--surface-3, rgba(255, 255, 255, 0.14));
+.quiz-modal__footer-bookmark:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--frame-dark);
 }
-
-.quiz-modal__inline-promote-btn--on {
-  background: rgba(255, 200, 80, 0.18);
-  border-color: var(--accent, #d8a04a);
-  color: var(--accent, #d8a04a);
+.quiz-modal__footer-bookmark:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--frame-dark);
+}
+.quiz-modal__footer-bookmark--on {
+  background: var(--accent-gold, #e3b341);
+  font-weight: 600;
 }
 
 /* ── Quiz inline bug-report (🐞 trigger + sheet) ──────────────────── */
@@ -5981,23 +6133,12 @@ body:has(.modal-backdrop) {
 
 .achievements-page__filters {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column; /* one row per filter dimension */
+  gap: 8px;
   margin-bottom: 20px;
-}
-.achievements-filter {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.85em;
-  color: #aaa;
-  gap: 2px;
-}
-.achievements-filter select {
-  background: #2a2a2a;
-  color: #e4e4e4;
-  border: 1px solid #444;
-  padding: 4px 8px;
-  font: inherit;
+  /* Chip-style filter groups reuse `.filter-bar__group` / `.filter-chip*`
+     classes from the bookmarks page for visual consistency across all
+     three sub-tabs (成就 / 科別精通 / 統計). */
 }
 .achievements-page__empty {
   text-align: center;
@@ -6250,4 +6391,111 @@ body:has(.modal-backdrop) {
   color: #777;
   font-size: 0.85em;
   font-style: italic;
+}
+
+/* ─── Quiz keyboard hotkey badges (add-quiz-number-hotkeys-medexam2) ─── */
+/* Subscript number / Enter arrow shown at bottom-left of choice + modifier
+ * buttons. Desktop-only via `@media (hover: hover) and (pointer: fine)` —
+ * touch devices hide the badge entirely (listener still attached but harmless
+ * since touch devices have no physical keyboard). */
+.quiz-hotkey-badge {
+  display: none;
+}
+.quiz-modal__option,
+.quiz-quality-btn,
+.quiz-modal__next,
+.quiz-modal__footer-bookmark {
+  position: relative;
+}
+@media (hover: hover) and (pointer: fine) {
+  .quiz-hotkey-badge {
+    display: inline-block;
+    position: absolute;
+    left: 6px;
+    bottom: 3px;
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0.55;
+    pointer-events: none;
+    color: var(--frame-dark, #333);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .quiz-hotkey-badge--enter {
+    font-size: 12px;
+    opacity: 0.6;
+  }
+}
+
+/* Keyboard pre-submit highlight on choice buttons. Mouse click still
+ * single-step (select=submit); keyboard users press 1/2/3/4 to highlight,
+ * then Enter to commit. */
+.quiz-modal__option--highlighted {
+  background: var(--bg-cream, #f5edd6);
+  outline: 2px solid var(--accent-leaf, #2d8c4f);
+  outline-offset: -2px;
+}
+
+/* Homepage announcement banner for the new keyboard-hotkey feature.
+ * Desktop-only — touch devices hide it entirely since the feature requires
+ * a physical keyboard. Dismissible via localStorage per-device. */
+.quiz-hotkeys-banner {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .quiz-hotkeys-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0 12px;
+    padding: 10px 14px;
+    background: var(--bg-paper, #fdf8eb);
+    border: 2px solid var(--accent-leaf, #2d8c4f);
+    border-radius: 6px;
+    box-shadow: 3px 3px 0 var(--frame-dark, #3a2e1e);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .quiz-hotkeys-banner__icon {
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .quiz-hotkeys-banner__msg {
+    flex: 1;
+    color: var(--text-ink, #2a2118);
+  }
+  .quiz-hotkeys-banner__msg strong {
+    color: var(--accent-leaf, #2d8c4f);
+  }
+  .quiz-hotkeys-banner__msg kbd {
+    display: inline-block;
+    padding: 0 5px;
+    margin: 0 1px;
+    background: #fff;
+    border: 1px solid var(--frame-dark, #3a2e1e);
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    box-shadow: 1px 1px 0 var(--frame-dark, #3a2e1e);
+  }
+  .quiz-hotkeys-banner__inline-icon {
+    font-size: 14px;
+  }
+  .quiz-hotkeys-banner__dismiss {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-ink, #2a2118);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .quiz-hotkeys-banner__dismiss:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border-color: var(--frame-dark, #3a2e1e);
+  }
 }

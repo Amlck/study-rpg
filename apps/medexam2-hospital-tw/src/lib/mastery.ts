@@ -250,6 +250,48 @@ export async function applyQualityModifier(
 }
 
 /**
+ * Snapshot of the questionHistory fields that the default-path correct-answer
+ * write produces. Captured by the caller immediately after `recordCorrectAnswer`
+ * commits, so it can be restored by `restoreDefaultSrs` if the player toggles
+ * an opt-in modifier off via a second click.
+ */
+export type DefaultPathSnapshot = Pick<
+  QuestionHistoryRow,
+  'interval' | 'easeFactor' | 'nextDueAt' | 'everWrong' | 'lastAnsweredAt'
+>
+
+/**
+ * Revert questionHistory SRS fields to the default-path snapshot. Used when
+ * the player deselects an opt-in modifier (太簡單 / 我亂猜的) by clicking the
+ * same button a second time — restores the row to what it would be if no
+ * modifier had ever been applied.
+ *
+ * Three-state UX rationale: opting in to 太簡單 / 我亂猜的 produces different
+ * SRS schedules than the default path (ease ×1.5 + interval ×3 / interval = 1
+ * respectively). A debounced re-click that no-ops cannot express the player's
+ * intent to revert; explicit deselect closes the loop so the SRS schedule
+ * matches the player's intended quality signal.
+ */
+export async function restoreDefaultSrs(
+  questionId: string,
+  snapshot: DefaultPathSnapshot,
+): Promise<void> {
+  const db = getHospitalDB()
+  await db.transaction('rw', db.questionHistory, async () => {
+    const existing = await db.questionHistory.get(questionId)
+    if (!existing) return // safety: row should exist
+    await db.questionHistory.put({
+      ...existing,
+      interval: snapshot.interval,
+      easeFactor: snapshot.easeFactor,
+      nextDueAt: snapshot.nextDueAt,
+      everWrong: snapshot.everWrong,
+      lastAnsweredAt: snapshot.lastAnsweredAt,
+    })
+  })
+}
+
+/**
  * Format mastery as a display label. Returns `「掌握 N%」` when total > 0,
  * `「掌握 -」` placeholder otherwise.
  */

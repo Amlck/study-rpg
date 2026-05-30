@@ -14,7 +14,7 @@
  * persistence".
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ACHIEVEMENTS } from '@study-rpg/content-medexam2-tw'
@@ -22,6 +22,37 @@ import type { Achievement, AchievementCategory, AchievementTier } from '@study-r
 import { getHospitalDB } from '../db/schema'
 import { AchievementCard } from '../components/AchievementCard'
 import { SurfaceHint } from '../components/SurfaceHint'
+import { StatsPanel } from '../components/StatsPanel'
+
+// Category chip pagination (avoid 3-row wrap on iPhone SE widths). Mirror
+// BookmarkFilterBar's responsive page-size pattern: 3 chips/page on mobile,
+// full set (6) on desktop = single page (no pager).
+const CATEGORY_CHIPS_PER_PAGE_MOBILE = 3
+const CATEGORY_CHIPS_PER_PAGE_DESKTOP = 6
+const CATEGORY_MOBILE_BREAKPOINT_PX = 768
+
+const CATEGORY_OPTIONS: ReadonlyArray<AchievementCategory> = [
+  'study',
+  'quiz',
+  'recruit',
+  'hospital',
+  'fortune',
+  'hidden',
+]
+
+function useCategoryChipsPerPage(): number {
+  const [count, setCount] = useState(CATEGORY_CHIPS_PER_PAGE_DESKTOP)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia(`(max-width: ${CATEGORY_MOBILE_BREAKPOINT_PX}px)`)
+    const update = () =>
+      setCount(mq.matches ? CATEGORY_CHIPS_PER_PAGE_MOBILE : CATEGORY_CHIPS_PER_PAGE_DESKTOP)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+  return count
+}
 
 const CATEGORY_LABELS: Record<AchievementCategory, string> = {
   study: '學習里程碑',
@@ -40,7 +71,7 @@ const TIER_LABELS: Record<AchievementTier, string> = {
   P4: 'P4 🥉 銅',
 }
 
-type SubTab = 'main' | 'subject'
+type SubTab = 'main' | 'subject' | 'stats'
 type CategoryFilter = 'all' | AchievementCategory
 type TierFilter = 'all' | AchievementTier
 type LockFilter = 'all' | 'locked' | 'unlocked'
@@ -50,6 +81,19 @@ export function AchievementsPage() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
   const [tierFilter, setTierFilter] = useState<TierFilter>('all')
   const [lockFilter, setLockFilter] = useState<LockFilter>('all')
+  const categoryChipsPerPage = useCategoryChipsPerPage()
+  const categoryPages = useMemo<ReadonlyArray<ReadonlyArray<AchievementCategory>>>(() => {
+    const pages: AchievementCategory[][] = []
+    for (let i = 0; i < CATEGORY_OPTIONS.length; i += categoryChipsPerPage) {
+      pages.push(CATEGORY_OPTIONS.slice(i, i + categoryChipsPerPage))
+    }
+    return pages.length === 0 ? [[]] : pages
+  }, [categoryChipsPerPage])
+  const [categoryPageIdx, setCategoryPageIdx] = useState(0)
+  const clampedCategoryPage = Math.min(
+    categoryPageIdx,
+    Math.max(0, categoryPages.length - 1),
+  )
 
   // Subscribe to achievements table — live updates when new unlocks land.
   const db = getHospitalDB()
@@ -139,53 +183,137 @@ export function AchievementsPage() {
           {subjectEntries.filter((a) => unlockedMap.has(a.id)).length}/{subjectEntries.length}
           )
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={subTab === 'stats'}
+          className={`achievements-tab ${subTab === 'stats' ? 'achievements-tab--active' : ''}`}
+          onClick={() => setSubTab('stats')}
+        >
+          統計
+        </button>
       </div>
 
-      <div className="achievements-page__filters">
-        {subTab === 'main' && (
-          <label className="achievements-filter">
-            類別
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
-            >
-              <option value="all">全部</option>
-              {(['study', 'quiz', 'recruit', 'hospital', 'fortune', 'hidden'] as const).map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABELS[c]}
-                </option>
+      {subTab !== 'stats' && (
+        <div className="achievements-page__filters">
+          {subTab === 'main' && (
+            <div className="filter-bar__group">
+              <span className="filter-bar__label">類別</span>
+              <span className="filter-chip-group" role="group" aria-label="類別篩選">
+                <button
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={categoryFilter === 'all'}
+                  onClick={() => setCategoryFilter('all')}
+                >
+                  全部
+                </button>
+                {categoryPages[clampedCategoryPage]?.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className="filter-chip"
+                    aria-pressed={categoryFilter === c}
+                    onClick={() => setCategoryFilter(c)}
+                  >
+                    {CATEGORY_LABELS[c]}
+                  </button>
+                ))}
+              </span>
+              {categoryPages.length > 1 && (
+                <span className="filter-bar__pager">
+                  <button
+                    type="button"
+                    className="filter-bar__pager-btn"
+                    aria-label="上一頁"
+                    aria-disabled={clampedCategoryPage === 0}
+                    onClick={() => {
+                      if (clampedCategoryPage > 0) setCategoryPageIdx(clampedCategoryPage - 1)
+                    }}
+                  >
+                    ‹
+                  </button>
+                  <span className="filter-bar__pager-indicator" aria-live="polite">
+                    {clampedCategoryPage + 1} / {categoryPages.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="filter-bar__pager-btn"
+                    aria-label="下一頁"
+                    aria-disabled={clampedCategoryPage === categoryPages.length - 1}
+                    onClick={() => {
+                      if (clampedCategoryPage < categoryPages.length - 1)
+                        setCategoryPageIdx(clampedCategoryPage + 1)
+                    }}
+                  >
+                    ›
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
+          <div className="filter-bar__group">
+            <span className="filter-bar__label">級別</span>
+            <span className="filter-chip-group" role="group" aria-label="級別篩選">
+              <button
+                type="button"
+                className="filter-chip"
+                aria-pressed={tierFilter === 'all'}
+                onClick={() => setTierFilter('all')}
+              >
+                全部
+              </button>
+              {(['P1', 'P2', 'P3', 'P4'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={tierFilter === t}
+                  onClick={() => setTierFilter(t)}
+                >
+                  {TIER_LABELS[t]}
+                </button>
               ))}
-            </select>
-          </label>
-        )}
-        <label className="achievements-filter">
-          級別
-          <select
-            value={tierFilter}
-            onChange={(e) => setTierFilter(e.target.value as TierFilter)}
-          >
-            <option value="all">全部</option>
-            {(['P1', 'P2', 'P3', 'P4'] as const).map((t) => (
-              <option key={t} value={t}>
-                {TIER_LABELS[t]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="achievements-filter">
-          狀態
-          <select value={lockFilter} onChange={(e) => setLockFilter(e.target.value as LockFilter)}>
-            <option value="all">全部</option>
-            <option value="unlocked">已解鎖</option>
-            <option value="locked">未解鎖</option>
-          </select>
-        </label>
-      </div>
+            </span>
+          </div>
+          <div className="filter-bar__group">
+            <span className="filter-bar__label">狀態</span>
+            <span className="filter-chip-group" role="group" aria-label="狀態篩選">
+              <button
+                type="button"
+                className="filter-chip"
+                aria-pressed={lockFilter === 'all'}
+                onClick={() => setLockFilter('all')}
+              >
+                全部
+              </button>
+              <button
+                type="button"
+                className="filter-chip"
+                aria-pressed={lockFilter === 'unlocked'}
+                onClick={() => setLockFilter('unlocked')}
+              >
+                已解鎖
+              </button>
+              <button
+                type="button"
+                className="filter-chip"
+                aria-pressed={lockFilter === 'locked'}
+                onClick={() => setLockFilter('locked')}
+              >
+                未解鎖
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
 
       {subTab === 'main' ? (
         <MainLaddersView filtered={filtered} unlockedMap={unlockedMap} />
-      ) : (
+      ) : subTab === 'subject' ? (
         <SubjectGridView filtered={filtered} unlockedMap={unlockedMap} />
+      ) : (
+        <StatsPanel />
       )}
     </div>
   )

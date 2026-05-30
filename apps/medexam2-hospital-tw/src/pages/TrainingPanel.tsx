@@ -1,14 +1,17 @@
 /**
- * Training page — players spend revenue to attempt rarity upgrades on owned
- * doctors. Each doctor has its own pity counter (5 consecutive failures →
- * guaranteed next-attempt success). P1 doctors are terminal.
+ * 進修 panel — body of the training experience, extracted from the original
+ * single-page `TrainingPage` component. Rendered inside the `/roster`
+ * sub-tab container (DoctorRoster.tsx). No `<main>` wrapper or page-level
+ * header; the container owns those.
  *
- * Per design D4: failure does NOT downgrade rarity (only pity counter ticks).
- * Cost / success-rate / pity-threshold all live in content pack `training.ts`.
+ * `onActiveBattleChange` prop signals the parent when a training battle is
+ * in progress (i.e. `trainingBattle !== null`) — used by the sub-tab
+ * container to gate sub-tab switches behind a confirm dialog (spec:
+ * hospital-management-mode "Switching away from training during an active
+ * battle SHALL prompt confirmation").
  */
 
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Question } from '@study-rpg/core'
 import {
@@ -84,7 +87,16 @@ function getTrainingBattleMultiplier(correct: number): number {
   )
 }
 
-export function TrainingPage() {
+export interface TrainingPanelProps {
+  /**
+   * Reports whether a training battle is active (battle modal open and not yet
+   * dismissed). The parent uses this to prompt a confirm dialog before
+   * unmounting the panel (preventing accidental loss of in-progress battle).
+   */
+  onActiveBattleChange?: (active: boolean) => void
+}
+
+export function TrainingPanel({ onActiveBattleChange }: TrainingPanelProps = {}) {
   const db = getHospitalDB()
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const doctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
@@ -102,11 +114,20 @@ export function TrainingPage() {
   const [pityFilters, setPityFilters] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
 
+  // Report active-battle state to parent (sub-tab container) so it can guard
+  // sub-tab switches with a confirm dialog.
+  useEffect(() => {
+    onActiveBattleChange?.(trainingBattle !== null)
+  }, [trainingBattle, onActiveBattleChange])
+  // Ensure parent gets a false signal on unmount (cleanup).
+  useEffect(() => {
+    return () => {
+      onActiveBattleChange?.(false)
+    }
+  }, [onActiveBattleChange])
+
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
   const yearFilter = useMemo(() => effectiveYearSet(persistedYearFilter), [persistedYearFilter])
-  // Year-filtered pool size for the doctor pending confirmation (drives the
-  // 「開始進修戰」 disabled gate). Recomputes when the player toggles year chips
-  // on HomePage while the confirm modal is open.
   const confirmingPoolSize = useLiveQuery(async () => {
     if (!confirming) return null
     return await effectivePoolSize(confirming.doctor.subjectId, yearFilter)
@@ -263,16 +284,10 @@ export function TrainingPage() {
   const fmtPct = (n: number) => `${(n * 100).toFixed(1).replace(/\.0$/, '')}%`
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <h1>醫師進修</h1>
-        <div className="app-header__meta">
-          <span className="ticket-counter"><EmojiIcon char="💰" size={18} /> {fmt(counters?.revenue ?? 0)}</span>
-          <Link to="/" className="nav-link">
-            ← 回首頁
-          </Link>
-        </div>
-      </header>
+    <>
+      <div className="training-panel-header">
+        <span className="ticket-counter"><EmojiIcon char="💰" size={18} /> {fmt(counters?.revenue ?? 0)}</span>
+      </div>
 
       <SurfaceHint surfaceId="training" />
 
@@ -789,6 +804,6 @@ export function TrainingPage() {
           </div>
         </div>
       )}
-    </main>
+    </>
   )
 }

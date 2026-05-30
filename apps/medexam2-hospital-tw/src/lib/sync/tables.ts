@@ -18,6 +18,7 @@ import type {
   AchievementRow,
   AffinityRow,
   BookmarkRow,
+  DailyStudyLogRow,
   DoctorRow,
   GachaStatsRow,
   GameCountersRow,
@@ -26,6 +27,7 @@ import type {
   MasteryRow,
   MonotonicCountersRow,
   QuestionHistoryRow,
+  RetirementLogRow,
   RoomRow,
   TargetedTicketHistoryRow,
   TargetedTicketRow,
@@ -238,6 +240,21 @@ const HOSPITAL_DOCTORS: TableAdapter = {
     const pk = cloudRow.id
     const data = cloudRow.data as WithUpdatedAt<Record<string, unknown>> | undefined
     if (!pk || !data) return false
+    // Tombstone carve-out — FIRST STEP, honoured even when force=true.
+    // Spec: cloud-sync "Row deletion in collection tables SHALL propagate via
+    // tombstone-table mechanism" + hospital-finances "Retired doctor SHALL
+    // stay retired across page refresh, sign-in cycles, and devices".
+    //
+    // Lookup uses .where('doctorId').equals(pk).first() — NOT .get(pk) —
+    // because Dexie pk on retirementLog is auto-incr id (v2 additive design),
+    // and doctorId is a non-unique secondary index. See
+    // ~/.claude/imports/dexie_pk_change_pitfall.md for why pk was NOT changed.
+    const tombstone = await (db as HospitalDB).retirementLog
+      .where('doctorId').equals(pk).first()
+    if (tombstone) {
+      await (db as HospitalDB).doctors.delete(pk)
+      return false
+    }
     const force = opts?.force ?? false
     if (!force) {
       const local = await (db as HospitalDB).doctors.get(pk)
@@ -734,8 +751,173 @@ const ACHIEVEMENTS: TableAdapter = {
   },
 }
 
+// ─── DAILY_STUDY_LOG adapter (v18, tidy-tabs-add-study-stats-medexam2) ─────
+// Mirror ACHIEVEMENTS precedent: R2-only, lives in M2_ADAPTERS only,
+// NOT in HOSPITAL_ADAPTERS. No Supabase migration, no upsert_lww whitelist
+// entry. Per `daily-study-log` spec §"R2 m2 bundle SHALL carry dailyStudyLog
+// with row-level LWW merge".
+//
+// Conflict resolution: pure row-level LWW on cloud's `updated_at` timestamp
+// vs Dexie hook's `_updatedAt`. The cumulative-per-day counter means
+// cross-device same-day work loses some minutes on conflict (last writer
+// wins) — accepted trade-off, vs the complexity of per-field monotonic-OR.
+// No cross-version contamination risk (v2 clients don't write this key).
+const DAILY_STUDY_LOG: TableAdapter = {
+  postgresTable: 'daily_study_log',
+  shape: 'collection',
+  dexieTable: 'dailyStudyLog',
+  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
+    if (!dirtyPks.size) return []
+    const rows: RowPayload[] = []
+    for (const pk of dirtyPks) {
+      const row = await (db as HospitalDB).dailyStudyLog.get(pk)
+      if (!row) continue
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: pk,
+        data: row,
+      })
+    }
+    return rows
+  },
+  async snapshotAll(db, userId, updatedAt, appVersion) {
+    const rows: RowPayload[] = []
+    await (db as HospitalDB).dailyStudyLog.each((row) => {
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        id: (row as DailyStudyLogRow).date,
+        data: row,
+      })
+    })
+    return rows
+  },
+  async applyToLocal(db, cloudRow, opts) {
+    const pk = cloudRow.id
+    const data = cloudRow.data as WithUpdatedAt<DailyStudyLogRow> | undefined
+    if (!pk || !data) return false
+    const force = opts?.force ?? false
+    if (!force) {
+      const local = await (db as HospitalDB).dailyStudyLog.get(pk)
+      const localMs = (local as WithUpdatedAt<DailyStudyLogRow> | undefined)?._updatedAt
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+    }
+    const next = { ...data, date: pk, _updatedAt: Date.parse(cloudRow.updated_at) }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as HospitalDB).dailyStudyLog.put(next as any)
+    return true
+  },
+}
+
+/**
+ * Retirement-log tombstone adapter — fix-doctor-retire-cloud-resurrection-v2.
+ *
+ * Cloud table `retirement_log` (Supabase pk = composite `(user_id, doctor_id)`).
+ * Local Dexie table `retirementLog` (pk = auto-incr `id`; doctor_id is a plain
+ * non-unique secondary index per v19 schema). Logical pk on the wire = doctorId.
+ *
+ * Pattern mirrors TARGETED_TICKET_HISTORY: snapshot* methods walk Dexie rows
+ * and emit `doctor_id` at top level of RowPayload; applyToLocal looks up by
+ * `.where('doctorId').equals(cloudRow.doctor_id).first()`, preserving the
+ * Dexie auto-incr id on update or letting Dexie assign on insert.
+ *
+ * NEVER use `.get(pk)` against retirementLog — pk is auto-incr id, not
+ * doctorId. v1 commit dac4eae changed pk to doctorId and was prod-reverted
+ * because Dexie 4.x throws UpgradeError Not yet support for changing
+ * primary key. See ~/.claude/imports/dexie_pk_change_pitfall.md.
+ *
+ * Registered in BOTH HOSPITAL_ADAPTERS (Supabase push) AND M2_ADAPTERS
+ * (R2 m2 bundle), and in M2_ADAPTERS placed BEFORE HOSPITAL_DOCTORS so the
+ * R2 apply order is retirementLog → doctors (carve-out check fires after
+ * tombstone is in local).
+ */
+const RETIREMENT_LOG: TableAdapter = {
+  postgresTable: 'retirement_log',
+  shape: 'collection',
+  dexieTable: 'retirementLog',
+  async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
+    if (!dirtyPks.size) return []
+    const rows: RowPayload[] = []
+    for (const pk of dirtyPks) {
+      // dirtyPks come from Dexie hooks keyed by physical pk (auto-incr id, stringified).
+      const localId = typeof pk === 'string' ? Number(pk) : pk
+      const row = await (db as HospitalDB).retirementLog.get(localId as number)
+      if (!row) continue
+      const r = row as RetirementLogRow
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        doctor_id: r.doctorId,
+        data: {
+          doctorId: r.doctorId,
+          retiredAt: r.retiredAt,
+          subjectId: r.subjectId,
+          rarity: r.rarity,
+          refund: r.refund,
+        },
+      })
+    }
+    return rows
+  },
+  async snapshotAll(db, userId, updatedAt, appVersion) {
+    const rows: RowPayload[] = []
+    await (db as HospitalDB).retirementLog.each((row) => {
+      const r = row as RetirementLogRow
+      rows.push({
+        user_id: userId,
+        updated_at: updatedAt,
+        app_version: appVersion,
+        doctor_id: r.doctorId,
+        data: {
+          doctorId: r.doctorId,
+          retiredAt: r.retiredAt,
+          subjectId: r.subjectId,
+          rarity: r.rarity,
+          refund: r.refund,
+        },
+      })
+    })
+    return rows
+  },
+  async applyToLocal(db, cloudRow, opts) {
+    const doctorId = cloudRow.doctor_id
+    const data = cloudRow.data as WithUpdatedAt<Partial<RetirementLogRow>> | undefined
+    if (!doctorId || !data) return false
+    const force = opts?.force ?? false
+    // Secondary-index lookup — auto-incr local id will NOT match across devices.
+    const existing = await (db as HospitalDB).retirementLog
+      .where('doctorId').equals(doctorId).first()
+    if (!force && existing) {
+      const localMs = (existing as WithUpdatedAt<unknown>)._updatedAt
+      if (!cloudIsNewer(cloudRow.updated_at, localMs)) return false
+    }
+    const next: WithUpdatedAt<RetirementLogRow> = {
+      doctorId,
+      retiredAt: typeof data.retiredAt === 'number' ? data.retiredAt : Date.now(),
+      subjectId: typeof data.subjectId === 'string' ? data.subjectId : '',
+      rarity: data.rarity as RetirementLogRow['rarity'],
+      refund: typeof data.refund === 'number' ? data.refund : 0,
+      _updatedAt: Date.parse(cloudRow.updated_at),
+    }
+    // Preserve existing auto-id if updating; otherwise let Dexie assign.
+    if (existing && typeof (existing as RetirementLogRow).id === 'number') {
+      next.id = (existing as RetirementLogRow).id
+    } else {
+      delete next.id
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as HospitalDB).retirementLog.put(next as any)
+    return true
+  },
+}
+
 export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
+  RETIREMENT_LOG,
   HOSPITAL_DOCTORS,
   HOSPITAL_MASTERY,
   HOSPITAL_QUESTION_HISTORY,
@@ -771,6 +953,10 @@ export const HOSPITAL_ADAPTERS: readonly TableAdapter[] = [
  */
 export const M2_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_STATE,
+  // RETIREMENT_LOG MUST come before HOSPITAL_DOCTORS so R2 bundle apply order
+  // is retirementLog → doctors (carve-out check fires after tombstone is in
+  // local). Spec: cloud-sync "Apply ordering".
+  RETIREMENT_LOG,
   HOSPITAL_DOCTORS,
   HOSPITAL_MASTERY,
   HOSPITAL_QUESTION_HISTORY,
@@ -779,6 +965,7 @@ export const M2_ADAPTERS: readonly TableAdapter[] = [
   HOSPITAL_MONOTONIC_COUNTERS,
   LEADERBOARD_PROFILE,
   ACHIEVEMENTS,
+  DAILY_STUDY_LOG,
 ]
 
 export const BOOKMARKS_ADAPTERS: readonly TableAdapter[] = [QUESTION_BOOKMARKS]

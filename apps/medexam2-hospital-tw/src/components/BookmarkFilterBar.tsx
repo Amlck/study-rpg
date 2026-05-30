@@ -108,59 +108,61 @@ export function BookmarkFilterBar(props: BookmarkFilterBarProps) {
 
   return (
     <section className="filter-bar filter-bar--stacked" aria-label="收藏題目篩選">
-      <div className="filter-bar__group">
-        <span className="filter-bar__label">年份</span>
-        <span className="filter-chip-group" role="group" aria-label="民國年多選">
-          <button
-            type="button"
-            className="filter-chip"
-            aria-pressed={yearsAllEmpty}
-            onClick={clearYears}
-          >
-            全部
-          </button>
-          {yearPages[clampedYearPage]?.map((year) => (
+      {availableYears.length > 0 && (
+        <div className="filter-bar__group">
+          <span className="filter-bar__label">年份</span>
+          <span className="filter-chip-group" role="group" aria-label="民國年多選">
             <button
-              key={year}
               type="button"
               className="filter-chip"
-              aria-pressed={selectedYears.has(year)}
-              onClick={() => toggleYear(year)}
+              aria-pressed={yearsAllEmpty}
+              onClick={clearYears}
             >
-              {year}
+              全部
             </button>
-          ))}
-        </span>
-        {yearPages.length > 1 && (
-          <span className="filter-bar__pager">
-            <button
-              type="button"
-              className="filter-bar__pager-btn"
-              aria-label="上一頁"
-              aria-disabled={clampedYearPage === 0}
-              onClick={() => {
-                if (clampedYearPage > 0) setYearPage(clampedYearPage - 1)
-              }}
-            >
-              ‹
-            </button>
-            <span className="filter-bar__pager-indicator" aria-live="polite">
-              {clampedYearPage + 1} / {yearPages.length}
-            </span>
-            <button
-              type="button"
-              className="filter-bar__pager-btn"
-              aria-label="下一頁"
-              aria-disabled={clampedYearPage === yearPages.length - 1}
-              onClick={() => {
-                if (clampedYearPage < yearPages.length - 1) setYearPage(clampedYearPage + 1)
-              }}
-            >
-              ›
-            </button>
+            {yearPages[clampedYearPage]?.map((year) => (
+              <button
+                key={year}
+                type="button"
+                className="filter-chip"
+                aria-pressed={selectedYears.has(year)}
+                onClick={() => toggleYear(year)}
+              >
+                {year}
+              </button>
+            ))}
           </span>
-        )}
-      </div>
+          {yearPages.length > 1 && (
+            <span className="filter-bar__pager">
+              <button
+                type="button"
+                className="filter-bar__pager-btn"
+                aria-label="上一頁"
+                aria-disabled={clampedYearPage === 0}
+                onClick={() => {
+                  if (clampedYearPage > 0) setYearPage(clampedYearPage - 1)
+                }}
+              >
+                ‹
+              </button>
+              <span className="filter-bar__pager-indicator" aria-live="polite">
+                {clampedYearPage + 1} / {yearPages.length}
+              </span>
+              <button
+                type="button"
+                className="filter-bar__pager-btn"
+                aria-label="下一頁"
+                aria-disabled={clampedYearPage === yearPages.length - 1}
+                onClick={() => {
+                  if (clampedYearPage < yearPages.length - 1) setYearPage(clampedYearPage + 1)
+                }}
+              >
+                ›
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       <div className="filter-bar__group">
         <span className="filter-bar__label">科別</span>
         <span className="filter-chip-group" role="group" aria-label="科別多選">
