@@ -89,7 +89,7 @@ export default function App(): JSX.Element {
         <main style={pageStyle}>
           <header style={topBarStyle}>
             <h1 style={appTitleStyle}>神經元 RPG · LTP</h1>
-            <nav style={navStyle}>
+            <nav className="neurons-nav">
               <NavLink to="/" style={navLinkStyle} end>
                 {({ isActive }) => (
                   <span style={isActive ? activeNavBoxStyle : navBoxStyle}>總覽 →</span>
@@ -163,12 +163,6 @@ const appTitleStyle: React.CSSProperties = {
   color: '#3a2a1a',
   letterSpacing: '0.05em',
   whiteSpace: 'nowrap',
-}
-
-const navStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '0.45rem',
-  flexWrap: 'wrap',
 }
 
 const navLinkStyle: React.CSSProperties = {

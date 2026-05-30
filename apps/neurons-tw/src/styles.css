@@ -1,0 +1,87 @@
+/*
+ * neurons-tw responsive layout — first dedicated stylesheet.
+ *
+ * Scope (add-neurons-mobile-rwd): homepage top-nav + FamilyPicker cards +
+ * modal/toast overlays only. Connectome SVG + list pages are out of scope.
+ *
+ * Mirrors apps/medexam2-hospital-tw/src/styles.css patterns (480/768
+ * breakpoints, horizontal-scroll nav + fade mask, body scroll lock) for
+ * cross-app consistency.
+ *
+ * Decision 1 (design.md): inline style objects beat external CSS, so any
+ * property a breakpoint must control was REMOVED from its inline object and
+ * re-expressed here. Desktop (≥768px) base values live outside @media so the
+ * desktop layout stays pixel-identical.
+ */
+
+/* ── Body scroll lock while a modal backdrop is mounted ──────────────────── */
+
+/* Disable pull-to-refresh so a swipe-down that reaches a modal's scroll top
+ * can't accidentally reload the SPA. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+/* Lock page scroll behind any modal backdrop so touch-drag can't scroll the
+ * page underneath. Modal-internal scroll containers (e.g. QuizModal body with
+ * overflow-y:auto) still scroll because they're their own overflow context. */
+body:has(.modal-backdrop) {
+  overflow: hidden;
+}
+
+/* ── Top-nav (App.tsx header <nav>) ──────────────────────────────────────── */
+
+/* Base = the former inline navStyle (display/gap/flex-wrap moved here per
+ * Decision 1). Desktop keeps the wrapping flex row, identical to before. */
+.neurons-nav {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+/* ≤480px: switch from wrap to a single horizontally-scrollable row so the
+ * header stays compact instead of ballooning (measured 34px→150px at 375px). */
+@media (max-width: 480px) {
+  .neurons-nav {
+    flex-basis: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+    padding-bottom: 3px;
+    /* Fade the right edge to hint that more nav items exist off-screen. */
+    -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
+    mask-image: linear-gradient(to right, black 90%, transparent 100%);
+  }
+
+  /* NavLink renders an <a>; keep tabs from shrinking — scroll instead. */
+  .neurons-nav > a {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
+
+  .neurons-nav::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .neurons-nav::-webkit-scrollbar-thumb {
+    background: #8c6d4a;
+    border-radius: 2px;
+  }
+}
+
+/* ── FamilyPicker card grid (FamilyPicker.tsx branchRow) ─────────────────── */
+
+/* Base = former inline gridTemplateColumns (moved here per Decision 1). */
+.neurons-family-grid {
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+}
+
+/* <768px: single column so cards never shrink below a legible width. */
+@media (max-width: 768px) {
+  .neurons-family-grid {
+    grid-template-columns: 1fr;
+  }
+}

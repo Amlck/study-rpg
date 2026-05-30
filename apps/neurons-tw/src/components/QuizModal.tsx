@@ -120,6 +120,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
   if (exhausted) {
     return (
       <div
+        className="modal-backdrop"
         style={backdropStyle}
         onClick={onClose}
         role="dialog"
@@ -153,6 +154,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
     // sessionPool empty (entire corpus was image-option questions, unlikely but defensive)
     return (
       <div
+        className="modal-backdrop"
         style={backdropStyle}
         onClick={onClose}
         role="dialog"
@@ -194,6 +196,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
 
   return (
     <div
+      className="modal-backdrop"
       style={backdropStyle}
       onClick={onClose}
       role="dialog"

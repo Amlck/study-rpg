@@ -74,6 +74,7 @@ export default function DmnDrawModal({ onClose }: Props): JSX.Element {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={transition}
+        className="modal-backdrop"
         style={overlayStyle}
         onClick={phase === 'revealed' ? onClose : undefined}
       >

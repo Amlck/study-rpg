@@ -61,7 +61,7 @@ export function FamilyPicker({ pack, onStartQuiz }: Props): JSX.Element {
                 <span style={branchLabelTextStyle}>{BRANCH_LABEL[branch]}</span>
                 <span style={branchCountStyle}>{families.length} family</span>
               </div>
-              <div style={branchRowStyle}>
+              <div style={branchRowStyle} className="neurons-family-grid">
                 {families.map((s) => (
                   <FamilyCard
                     key={s.id}
@@ -190,7 +190,9 @@ const branchCountStyle: React.CSSProperties = {
 
 const branchRowStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+  // grid-template-columns moved to .neurons-family-grid (styles.css) so an
+  // @media rule can collapse to a single column < 768px (Decision 1: inline
+  // would otherwise beat the CSS @media).
   gap: '0.55rem',
 }
 

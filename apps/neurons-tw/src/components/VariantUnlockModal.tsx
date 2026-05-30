@@ -79,6 +79,7 @@ export default function VariantUnlockModal(): JSX.Element {
         animate={overlayAnimate}
         exit={overlayExit}
         transition={overlayTransition}
+        className="modal-backdrop"
         style={overlayStyle}
         onClick={dismissCurrent}
       >
