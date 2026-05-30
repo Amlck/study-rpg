@@ -115,6 +115,7 @@ interface MedexamQuestion {
   explanation: string
   hasImage?: boolean
   hasOptionImages?: boolean
+  microImmune?: '微生物學' | '免疫學'  // baked split (self-contained; no _extracted needed in CI)
   meta: { year: number; session: number; book: string; paper: string; qNumber: number; pageRef?: string }
   sourceCredit?: string
 }
@@ -161,6 +162,11 @@ function lookupSourceTag(year: number, session: number, qNumber: number): string
 }
 
 function classifyMicroImmune(q: MedexamQuestion): { subject: '微生物學' | '免疫學'; tagged: boolean } {
+  // Prefer the split baked into the reconciled corpus (self-contained; no _extracted in CI).
+  if (q.microImmune === '微生物學' || q.microImmune === '免疫學') {
+    return { subject: q.microImmune, tagged: true }
+  }
+  // Legacy fallback: per-Q `**科目**：` tag in the source .md (needs _extracted; CI lacks it).
   const tag = lookupSourceTag(q.meta.year, q.meta.session, q.meta.qNumber)
   if (tag === null) {
     return { subject: DEFAULT_MICROIMMUNE_FALLBACK, tagged: false }
@@ -203,7 +209,8 @@ function main(): void {
     if (!tagged) untaggedFallback += 1
     if (subject === '微生物學') splitMicro += 1
     else splitImmune += 1
-    return { ...q, subject }
+    const { microImmune: _drop, ...rest } = q // strip build-only hint from output
+    return { ...rest, subject }
   })
 
   // Step 4: Generate subjects.json from FAMILY_BY_SUBJECT

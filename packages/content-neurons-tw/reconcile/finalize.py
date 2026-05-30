@@ -1,6 +1,12 @@
-"""Finalize dataset: hardcode 106-1 subject blocks (user-confirmed), emit app-schema artifacts."""
+"""Finalize dataset: hardcode 106-1 subject blocks (user-confirmed), emit app-schema artifacts.
+
+Also bakes the 微生物暨免疫學 → 微生物學/免疫學 split into a `microImmune` field so the
+content-neurons-tw build is self-contained in CI (no dependency on Desktop _extracted, which
+was leaving the 免疫學 neuron family empty on every CI deploy).
+"""
 import json, os, re
 from reconcile_all import reconcile_year
+from reconcile import YM_ROOT
 
 # User-confirmed 106-1 contiguous subject blocks (old grouping)
 OLD_106_1 = {
@@ -15,6 +21,48 @@ def subject_106_1(book, qn):
         if a <= qn <= b:
             return s
     return None
+
+
+# ── 微生物暨免疫學 → 微生物學 / 免疫學 split (baked, self-contained) ──
+_micro_file_cache = {}
+
+
+def _ym_micro_tag(year, session, qn):
+    """Look up 陽明's per-Q `**科目**：` tag in the 微免 source file (modern years align by qNum)."""
+    path = os.path.join(YM_ROOT, '醫學二', '微生物暨免疫學', f'{year}-{session}.md')
+    if path not in _micro_file_cache:
+        _micro_file_cache[path] = open(path, encoding='utf-8').read() if os.path.exists(path) else None
+    content = _micro_file_cache[path]
+    if not content:
+        return None
+    m = re.search(rf'^## Q{qn}\b', content, re.M)
+    if not m:
+        return None
+    rest = content[m.start():]
+    nxt = re.search(r'^## Q\d+', rest[1:], re.M)
+    block = rest[: nxt.start() + 1] if nxt else rest
+    tm = re.search(r'\*\*科目\*\*[：:]\s*(.+?)\r?$', block, re.M)
+    return tm.group(1).strip() if tm else None
+
+
+_IMMUNE_RE = re.compile(
+    r'免疫|微免|抗體|抗原|[TB]\s*細胞|補體|過敏|移植|排斥|Treg|調節型T|輔助性T|Ig[EMGDA]|HLA|MHC|'
+    r'淋巴球|細胞激素|interleukin|class\s*switch|FoxP3|TH17|naive|tumor antigen|自體免疫|疫苗')
+_MICRO_RE = re.compile(r'微生物|微⽣物|細菌|病毒|桿菌|球菌|黴菌|真菌|孢子|披衣菌|prion|rabies|HIV|dengue|抗生素')
+
+
+def micro_immune(year, session, book, qn, stem):
+    """Return '微生物學' | '免疫學' for a 微生物暨免疫學 question. Self-contained at finalize time."""
+    if (year, session) == (106, 1):
+        # old-grouping paper: 微免 block = 醫學一 Q42-74; Q42-61 microbiology, Q62-74 immunology
+        return '免疫學' if qn >= 62 else '微生物學'
+    tag = _ym_micro_tag(year, session, qn)
+    src = tag or stem
+    if _IMMUNE_RE.search(src):
+        return '免疫學'
+    if _MICRO_RE.search(src):
+        return '微生物學'
+    return '微生物學'
 
 
 SUBJECT_COLOR = {
@@ -52,8 +100,14 @@ def main():
                      'qNumber': r['qNum']},
             'sourceCredit': SOURCE_CREDIT,
         }
-        if r.get('acceptedAnswers'):
-            rec['acceptedAnswers'] = r['acceptedAnswers']
+        acc = r.get('acceptedAnswers')
+        if acc:
+            if len(acc) >= 4:
+                rec['disputed'] = True  # 一律給分 → reuse existing core field (any selection correct)
+            else:
+                rec['acceptedAnswers'] = acc  # 多選給分 → only the listed letters accepted
+        if r['subject'] == '微生物暨免疫學':
+            rec['microImmune'] = micro_immune(r['year'], r['sess'], r['book'], r['qNum'], r['stem'])
         out_q.append(rec)
 
     # subjects.json
@@ -76,7 +130,8 @@ def main():
         'stats': {'totalQuestions': len(out_q), 'papers': 36, 'subjects': len(out_s),
                   'withExplanation': sum(1 for q in out_q if q['explanation'].strip()),
                   'gapsFilled': sum(1 for q in out_q if not q['explanation'].strip()),
-                  'corrections': sum(1 for q in out_q if 'acceptedAnswers' in q)},
+                  'disputed': sum(1 for q in out_q if q.get('disputed')),
+                  'multiAnswer': sum(1 for q in out_q if 'acceptedAnswers' in q)},
     }
 
     os.makedirs('out/artifacts', exist_ok=True)
