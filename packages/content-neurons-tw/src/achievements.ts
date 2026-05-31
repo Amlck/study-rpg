@@ -71,9 +71,9 @@ const naturalP1AtLeast = (n: number) =>
 
 export const NEURONS_ACHIEVEMENTS: readonly NeuronsAchievement[] = [
   // ━━━ STUDY (4) ━━━
-  // Note: total_study_min accumulator not yet wired in neurons-tw (see
-  // add-neurons-achievements proposal). These predicates evaluate false
-  // until a reading-timer follow-up change ships.
+  // total_study_min IS wired: reading-timer.ts accrues meta['totalStudyMinutes']
+  // and buildAchievementStats() (achievement.ts) reads it into stats, so these
+  // predicates evaluate against live accrued reading minutes.
   {
     id: 'study-warmup',
     name: '初次唸書',
