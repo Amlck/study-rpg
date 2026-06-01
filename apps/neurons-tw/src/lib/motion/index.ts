@@ -30,6 +30,15 @@ export type { SpikeTrainFiringProps } from './SpikeTrainFiring'
 export { SignalOscillation } from './SignalOscillation'
 export type { SignalOscillationProps } from './SignalOscillation'
 
+export { AmbientFiring } from './AmbientFiring'
+export type { AmbientFiringProps } from './AmbientFiring'
+
+export { AnswerFeedbackFlash } from './AnswerFeedbackFlash'
+export type { AnswerFeedbackFlashProps } from './AnswerFeedbackFlash'
+
+export { CelebrationHalo } from './CelebrationHalo'
+export type { CelebrationHaloProps } from './CelebrationHalo'
+
 export {
   RARITY_TIMINGS,
   SKIP_THRESHOLD_MS,

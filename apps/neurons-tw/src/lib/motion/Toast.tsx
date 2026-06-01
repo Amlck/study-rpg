@@ -12,6 +12,7 @@ import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useRespectsReducedMotion } from './useRespectsReducedMotion'
+import { CelebrationHalo } from './CelebrationHalo'
 import { TOAST_AUTO_DISMISS_MS } from './timings'
 
 export type ToastVariant = 'celebratory' | 'info' | 'warning'
@@ -67,6 +68,9 @@ export function Toast({ variant = 'info', onDismiss, children }: ToastProps): JS
         ...VARIANT_STYLES[variant],
       }}
     >
+      {/* Subtle enhanced-celebration layer for celebratory toasts. Additive
+          overlay; self-nulls in reduced-motion. (revamp-neurons-homepage-experience) */}
+      {variant === 'celebratory' && <CelebrationHalo color="#b58900" intensity={1} durationMs={650} />}
       <div style={{ flex: 1 }}>{children}</div>
       <button
         type="button"

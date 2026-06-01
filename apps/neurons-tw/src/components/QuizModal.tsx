@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Question } from '@study-rpg/core'
 import { recordCorrectAnswer, recordIncorrectAnswer } from '../lib/services/connectome'
-import { SpikeTrainFiring } from '../lib/motion'
+import { SpikeTrainFiring, AnswerFeedbackFlash } from '../lib/motion'
 import { useQuizHotkeys, type QuizPhase } from '../lib/hooks/useQuizHotkeys'
 import { toggleBookmark, useIsBookmarked } from '../lib/services/bookmarks'
 import { toggleEasy, toggleGuessed, useFlag } from '../lib/services/question-flags'
@@ -31,6 +31,7 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
   const [picked, setPicked] = useState<string | null>(null)
   const [highlighted, setHighlighted] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [flash, setFlash] = useState<{ outcome: 'correct' | 'incorrect'; nonce: number } | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
   const q: Question | undefined = sessionPool[idx]
@@ -46,6 +47,8 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
           q.disputed === true ||
           optionKey === q.answer ||
           (q.acceptedAnswers?.includes(optionKey) ?? false)
+        // Instant answer-feedback flash (non-blocking, sibling overlay).
+        setFlash({ outcome: isCorrect ? 'correct' : 'incorrect', nonce: Date.now() })
         if (isCorrect) {
           await recordCorrectAnswer(q.subject)
         } else {
@@ -204,6 +207,13 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
       aria-label="答題中"
     >
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+        {flash && (
+          <AnswerFeedbackFlash
+            key={flash.nonce}
+            outcome={flash.outcome}
+            onComplete={() => setFlash(null)}
+          />
+        )}
         <style>{`
           @media (max-width: 600px) {
             .bookmark-btn-label { display: none; }
@@ -391,6 +401,7 @@ const backdropStyle: React.CSSProperties = {
 }
 
 const modalStyle: React.CSSProperties = {
+  position: 'relative',
   background: '#fdf8ee',
   border: '2px solid #d4a04d',
   borderRadius: '10px',

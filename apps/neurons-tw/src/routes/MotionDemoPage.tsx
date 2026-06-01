@@ -12,6 +12,9 @@ import { useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import {
   AchievementUnlockModal,
+  AmbientFiring,
+  AnswerFeedbackFlash,
+  CelebrationHalo,
   NumberTickUp,
   RARITY_TIMINGS,
   RarityRevealModal,
@@ -32,6 +35,8 @@ type ActiveDemo =
   | { kind: 'reveal'; rarity: Rarity }
   | { kind: 'achievement' }
   | { kind: 'spike'; nonce: number }
+  | { kind: 'flash'; outcome: 'correct' | 'incorrect'; nonce: number }
+  | { kind: 'halo'; intensity: number; nonce: number }
 
 export default function MotionDemoPage(): JSX.Element {
   const reduced = useRespectsReducedMotion()
@@ -126,6 +131,78 @@ export default function MotionDemoPage(): JSX.Element {
           <SignalOscillation width={120} height={24} />
         </span>
       </p>
+
+      <h3 style={h3Style}>Ambient resting-state firing（homepage hero 環境動態）</h3>
+      <p style={{ margin: '0 0 0.4rem' }}>
+        CSS-driven（compositor，背景分頁不凍結）的休息態 firing constellation：
+        <span style={{ marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+          <AmbientFiring width={160} />
+        </span>
+      </p>
+
+      <h3 style={h3Style}>Answer-feedback flash（答題即時回饋）</h3>
+      <div
+        style={{
+          position: 'relative',
+          height: 80,
+          border: '2px dashed #c4a878',
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#5a3f29',
+          marginBottom: '0.5rem',
+        }}
+      >
+        模擬答題容器（flash 為 inset overlay，不阻擋流程）
+        {active.kind === 'flash' && (
+          <AnswerFeedbackFlash key={active.nonce} outcome={active.outcome} onComplete={close} />
+        )}
+      </div>
+      <button
+        style={btnStyle}
+        onClick={() => setActive({ kind: 'flash', outcome: 'correct', nonce: Date.now() })}
+      >
+        🟢 答對 flash
+      </button>
+      <button
+        style={btnStyle}
+        onClick={() => setActive({ kind: 'flash', outcome: 'incorrect', nonce: Date.now() })}
+      >
+        🔴 答錯 flash
+      </button>
+
+      <h3 style={h3Style}>Celebration halo（獎勵增強層）</h3>
+      <div
+        style={{
+          position: 'relative',
+          height: 140,
+          border: '2px dashed #c4a878',
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#5a3f29',
+          marginBottom: '0.5rem',
+          overflow: 'hidden',
+        }}
+      >
+        增強慶祝層（疊在 reveal / celebratory toast 上）
+        {active.kind === 'halo' && (
+          <CelebrationHalo key={active.nonce} intensity={active.intensity} />
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {[1, 2, 3].map((lvl) => (
+          <button
+            key={lvl}
+            style={{ ...btnStyle, marginBottom: 0 }}
+            onClick={() => setActive({ kind: 'halo', intensity: lvl, nonce: Date.now() })}
+          >
+            ✨ halo intensity {lvl}
+          </button>
+        ))}
+      </div>
 
       <h3 style={h3Style}>Synapse tree animations</h3>
       <SynapseDemoSvg />

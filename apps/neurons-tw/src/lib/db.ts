@@ -29,6 +29,13 @@ export interface MetaRow {
   value: string
 }
 
+/**
+ * `meta` key for the homepage first-visit onboarding dismissal flag. Single
+ * source of truth so the onboarding component + the debug-reset path agree.
+ * Value `'true'` = dismissed (never re-show). (revamp-neurons-homepage-experience)
+ */
+export const HOMEPAGE_ONBOARDING_DISMISSED_KEY = 'homepageOnboardingDismissed'
+
 export interface FamilyMasteryRow {
   familyId: string
   correct: number

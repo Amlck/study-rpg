@@ -6,6 +6,9 @@ import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
 import QuizHotkeysAnnouncementBanner from '../components/QuizHotkeysAnnouncementBanner'
 import { QuizModal } from '../components/QuizModal'
 import { FamilyPicker } from '../components/FamilyPicker'
+import { ConnectomeHero } from '../components/ConnectomeHero'
+import { DmnDrawProgressRing } from '../components/DmnDrawProgressRing'
+import { HomepageOnboarding } from '../components/HomepageOnboarding'
 import { useReadingTimer } from '../lib/hooks/useReadingTimer'
 import { readTotalStudyMinutes } from '../lib/services/reading-timer'
 import { filterPoolByFamily } from '../lib/services/quiz-pool'
@@ -96,12 +99,26 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
     return '⏸ 已暫停 · 點擊繼續'
   })()
 
-  const minutesUntilDmnDraw = totalStudyMin > 0 ? 30 - (totalStudyMin % 30) : 30
-
   return (
     <>
       <QuizHotkeysAnnouncementBanner />
       <LeaderboardPromoBanner />
+      <HomepageOnboarding />
+
+      <header style={heroStyle}>
+        <div>
+          <h1 style={heroTitleStyle}>{pack.meta.displayName}</h1>
+          <p style={heroSubtitleStyle}>
+            "Neurons that fire together, wire together." — Donald Hebb
+          </p>
+        </div>
+      </header>
+
+      {/* ── Hook (top): live connectome hero + DMN-draw progress ring ── */}
+      <section style={hookStyle} aria-label="connectome 預覽與 DMN 進度">
+        <ConnectomeHero pack={pack} />
+        <DmnDrawProgressRing />
+      </section>
 
       <section style={statusChipStyle} aria-label="進度狀態">
         <div style={statusItemStyle}>
@@ -133,15 +150,6 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
         </div>
       </section>
 
-      <header style={heroStyle}>
-        <div>
-          <h1 style={heroTitleStyle}>{pack.meta.displayName}</h1>
-          <p style={heroSubtitleStyle}>
-            "Neurons that fire together, wire together." — Donald Hebb
-          </p>
-        </div>
-      </header>
-
       <section style={quizCtaSectionStyle} aria-label="核心循環入口">
         <div style={ctaButtonRowStyle}>
           <button
@@ -164,9 +172,7 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
           </button>
         </div>
         <p style={quizCtaHintStyle}>
-          閱讀 → 每分鐘 +1 study min · 每 30 min 觸發 DMN 抽卡。今日累計{' '}
-          <strong>{totalStudyMin}</strong> min · 距下個 DMN 抽卡還剩{' '}
-          <strong>{minutesUntilDmnDraw}</strong> min。下方點任何 family 卡片即可指定範圍練習。
+          開始閱讀累積時間，或直接答題。下方點任何 family 卡片即可指定範圍練習。
         </p>
       </section>
 
@@ -247,11 +253,21 @@ const statusMaxStyle: React.CSSProperties = { color: 'var(--signal-ink)', opacit
 const statusSepStyle: React.CSSProperties = { color: 'var(--signal-ink)', opacity: 0.35 }
 
 const heroStyle: React.CSSProperties = {
-  marginBottom: '1rem',
+  marginBottom: '0.75rem',
   padding: '0.85rem 1rem',
   background: 'linear-gradient(135deg, #fdf6e3 0%, #f4ecd8 100%)',
   border: '2px solid #8c6d4a',
   borderRadius: '6px',
+}
+
+// Hook region (top): the live connectome hero + the DMN-draw progress ring,
+// stacked (hero full-width on top, ring bar below).
+const hookStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  gap: '0.5rem',
+  marginBottom: '1rem',
 }
 
 const heroTitleStyle: React.CSSProperties = {
