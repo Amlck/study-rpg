@@ -17,8 +17,17 @@
 import type { ContentPack, Subject } from '@study-rpg/core'
 import { THEME_PIXEL_NEURONS } from '@study-rpg/theme-pixel-neurons'
 import MasteryChip from './MasteryChip'
+import VariantCollectionChip from './VariantCollectionChip'
+import { AP_THRESHOLDS, nextSlotThreshold } from '../lib/connectome'
 
 const SPRITE_MAP = THEME_PIXEL_NEURONS.sprites
+
+/** Per-family connectome accrual the card surfaces (AP / unlocked slots / fired-today). */
+export interface FamilyAccrual {
+  ap: number
+  unlockedSlots: number[]
+  firedToday: boolean
+}
 
 const NT_BRANCHES = ['DA', '5HT', 'GABA', 'Glu'] as const
 const BRANCH_LABEL: Record<typeof NT_BRANCHES[number], string> = {
@@ -37,9 +46,11 @@ const BRANCH_ACCENT: Record<typeof NT_BRANCHES[number], string> = {
 interface Props {
   pack: ContentPack
   onStartQuiz: (familyId: string) => void
+  /** Per-family connectome accrual; when present each card shows AP + next-slot + variant chip + fired-today badge. */
+  accrualByFamily?: Map<string, FamilyAccrual>
 }
 
-export function FamilyPicker({ pack, onStartQuiz }: Props): JSX.Element {
+export function FamilyPicker({ pack, onStartQuiz, accrualByFamily }: Props): JSX.Element {
   return (
     <section style={pickerSectionStyle} aria-label="選 family 直接答題">
       <header style={headerRowStyle}>
@@ -66,6 +77,7 @@ export function FamilyPicker({ pack, onStartQuiz }: Props): JSX.Element {
                   <FamilyCard
                     key={s.id}
                     family={s}
+                    accrual={accrualByFamily?.get(s.id)}
                     onStartQuiz={() => onStartQuiz(s.id)}
                   />
                 ))}
@@ -80,14 +92,19 @@ export function FamilyPicker({ pack, onStartQuiz }: Props): JSX.Element {
 
 function FamilyCard({
   family,
+  accrual,
   onStartQuiz,
 }: {
   family: Subject
+  accrual?: FamilyAccrual
   onStartQuiz: () => void
 }): JSX.Element {
   const accent = family.color ?? '#8c6d4a'
   const spriteUrl = SPRITE_MAP[`subject:${family.id}`] ?? ''
   const isEmpty = family.totalQuestions === 0
+  const ap = accrual?.ap ?? 0
+  const unlockedSlots = accrual?.unlockedSlots ?? []
+  const next = nextSlotThreshold(unlockedSlots)
   return (
     <article style={familyCardStyle(accent)} aria-label={`${family.id} · ${family.displayName}`}>
       <header style={cardHeaderStyle}>
@@ -99,13 +116,24 @@ function FamilyCard({
           )}
         </div>
         <div style={cardHeadTextStyle}>
-          <div style={primaryNameStyle(accent)}>{family.id}</div>
+          <div style={primaryNameStyle(accent)}>
+            {accrual?.firedToday && <span title="今日已激發" aria-label="今日已激發">🔥 </span>}
+            {family.id}
+          </div>
           <div style={personaNameStyle}>{family.displayName}</div>
         </div>
       </header>
 
+      <div style={apLineStyle}>
+        AP <strong style={{ color: accent }}>{ap}</strong>
+        {next == null
+          ? `／MAX（${AP_THRESHOLDS.length}/${AP_THRESHOLDS.length}）`
+          : `／next @ ${next}（${unlockedSlots.length}/${AP_THRESHOLDS.length}）`}
+      </div>
+
       <div style={chipRowStyle}>
         <MasteryChip familyId={family.id} displayName={family.displayName} />
+        <VariantCollectionChip familyId={family.id} />
         <span style={countChipStyle(accent)}>{family.totalQuestions} 題</span>
       </div>
 
@@ -263,6 +291,12 @@ const personaNameStyle: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+}
+
+const apLineStyle: React.CSSProperties = {
+  fontSize: '0.72rem',
+  color: '#5a3f29',
+  letterSpacing: '0.01em',
 }
 
 const chipRowStyle: React.CSSProperties = {

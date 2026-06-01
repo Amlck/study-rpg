@@ -46,22 +46,30 @@ export interface ConnectomeTreeSvgProps {
   /**
    * When false, the tree is a presentational embed: no pan / zoom / wheel /
    * touch / drag bindings and no zoom toolbar, so it never intercepts page
-   * scroll (used by the homepage hero). Defaults to true (full interactivity
-   * on /connectome). (revise-neurons-homepage-hero-real-tree)
+   * scroll. Defaults to true (full interactivity). (revise-neurons-homepage-hero-real-tree)
    */
   interactive?: boolean
+  /**
+   * When set (e.g. `'min(72vh, 600px)'`), the SVG is rendered at this fixed CSS
+   * height and `width:100%`; `preserveAspectRatio="xMidYMid meet"` fits the whole
+   * tree into that bounded panel. Used by the homepage so the interactive tree is
+   * a fixed-height centerpiece rather than a full-page-tall block. Touch uses
+   * `pan-y` so single-finger vertical drag still scrolls the page (no scroll-trap);
+   * pinch (2-finger) still zooms. (fuse-connectome-into-neurons-homepage)
+   */
+  panelHeight?: string
 }
 
 interface EdgeFlags {
+  // pairKey → token incremented on formation / dormant→weak strengthen. A non-zero
+  // token re-keys the edge so it re-mounts with the birth draw-in + burst.
   freshFormed: Map<string, number>
-  fadingOut: Set<string>
 }
 
-export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSvgProps): JSX.Element {
+export function ConnectomeTreeSvg({ pack, interactive = true, panelHeight }: ConnectomeTreeSvgProps): JSX.Element {
   const [snapshot, setSnapshot] = useState<ConnectomeSnapshot | null>(null)
   const [flags, setFlags] = useState<EdgeFlags>(() => ({
     freshFormed: new Map(),
-    fadingOut: new Set(),
   }))
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 })
@@ -93,12 +101,8 @@ export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSv
     const sub = subscribeConnectomeEvents({
       'connectome.synapseFormed': (payload) => {
         setFlags((prev) => {
-          const next: EdgeFlags = {
-            freshFormed: new Map(prev.freshFormed),
-            fadingOut: new Set(prev.fadingOut),
-          }
+          const next: EdgeFlags = { freshFormed: new Map(prev.freshFormed) }
           next.freshFormed.set(payload.pairKey, (prev.freshFormed.get(payload.pairKey) ?? 0) + 1)
-          next.fadingOut.delete(payload.pairKey)
           return next
         })
         refresh()
@@ -106,29 +110,16 @@ export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSv
       'connectome.synapseStrengthened': (payload) => {
         if (payload.fromState === 'dormant') {
           setFlags((prev) => {
-            const next: EdgeFlags = {
-              freshFormed: new Map(prev.freshFormed),
-              fadingOut: new Set(prev.fadingOut),
-            }
+            const next: EdgeFlags = { freshFormed: new Map(prev.freshFormed) }
             next.freshFormed.set(payload.pairKey, (prev.freshFormed.get(payload.pairKey) ?? 0) + 1)
             return next
           })
         }
         refresh()
       },
-      'connectome.synapseDecayed': (payload) => {
-        if (payload.toState === 'dormant') {
-          setFlags((prev) => {
-            const next: EdgeFlags = {
-              freshFormed: new Map(prev.freshFormed),
-              fadingOut: new Set(prev.fadingOut),
-            }
-            next.fadingOut.add(payload.pairKey)
-            return next
-          })
-        }
-        refresh()
-      },
+      // Decay no longer fades/removes the edge — dormant renders (thin + recency
+      // brightness), so a decay just re-renders with the new state's thinner width.
+      'connectome.synapseDecayed': () => refresh(),
       'connectome.variantSlotUnlocked': () => refresh(),
     })
     return () => sub.dispose()
@@ -346,18 +337,6 @@ export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSv
     )
   }
 
-  const handleFadeOutComplete = (pairKey: string): void => {
-    setFlags((prev) => {
-      const next: EdgeFlags = {
-        freshFormed: new Map(prev.freshFormed),
-        fadingOut: new Set(prev.fadingOut),
-      }
-      next.fadingOut.delete(pairKey)
-      return next
-    })
-    refresh()
-  }
-
   const zoomedViewBox = (() => {
     const w = bounds.width / zoom
     const h = bounds.height / zoom
@@ -397,9 +376,12 @@ export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSv
         aria-label="Connectome — 4 NT 分支根節點 / 11 家族葉節點 / 年份節點 / synapse 邊"
         style={{
           width: '100%',
-          height: 'auto',
+          height: panelHeight ?? 'auto',
           display: 'block',
-          touchAction: interactive ? 'none' : 'auto',
+          // panelHeight (homepage): pan-y lets single-finger vertical drag scroll
+          // the page (no touch scroll-trap); pinch (2-finger) is still preventDefault'd
+          // to zoom. Without panelHeight + interactive: 'none' (legacy canvas behavior).
+          touchAction: interactive ? (panelHeight ? 'pan-y' : 'none') : 'auto',
           cursor: interactive ? 'grab' : 'pointer',
         }}
         onPointerDown={interactive ? onSvgPointerDown : undefined}
@@ -433,16 +415,21 @@ export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSv
           })}
         </g>
 
-        {/* Synapse edges */}
+        {/* Synapse edges — all formed synapses render a visible edge (incl. dormant).
+            Stroke WIDTH encodes accumulated strength (state); BRIGHTNESS encodes
+            recency (daysSinceCoFire → 0 brightest, ≥7 dim floor). */}
         <g aria-hidden>
           {snapshot.synapses.map((syn) => {
-            const fadingOut = flags.fadingOut.has(syn.pairKey)
-            if (syn.state === 'dormant' && !fadingOut) return null
             const [a, b] = syn.pairKey.split('|')
             const aPos = positions.get(`leaf:${a}`)
             const bPos = positions.get(`leaf:${b}`)
             if (!aPos || !bPos) return null
             const freshToken = flags.freshFormed.get(syn.pairKey) ?? 0
+            const daysSince = daysBetween(syn.lastCoFireDate, snapshot.today)
+            const recency = Math.max(0, 1 - daysSince / 7)
+            const aName = pack.subjects.find((s) => s.id === a)?.displayName ?? a
+            const bName = pack.subjects.find((s) => s.id === b)?.displayName ?? b
+            const tooltip = `${aName} ⇄ ${bName}・上次共激發 ${syn.lastCoFireDate}（${daysSince} 天前）`
             const pathD = `M ${aPos.x.toFixed(2)},${aPos.y.toFixed(2)} Q ${((aPos.x + bPos.x) / 2 + (bPos.y - aPos.y) * 0.18).toFixed(2)},${((aPos.y + bPos.y) / 2 - (bPos.x - aPos.x) * 0.18).toFixed(2)} ${bPos.x.toFixed(2)},${bPos.y.toFixed(2)}`
             return (
               <SynapseEdge
@@ -450,9 +437,9 @@ export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSv
                 pathKey={`${syn.pairKey}-${freshToken}`}
                 pathD={pathD}
                 state={syn.state}
-                isFreshlyFormed={freshToken > 0 && !fadingOut}
-                isFadingOut={fadingOut}
-                onFadeOutComplete={() => handleFadeOutComplete(syn.pairKey)}
+                recency={recency}
+                isFreshlyFormed={freshToken > 0}
+                title={tooltip}
               />
             )
           })}
@@ -618,6 +605,14 @@ function guessEdgeColor(targetId: string, pack: ContentPack): string {
   return '#8c6d4a'
 }
 
+// Whole-days between two ISO date strings (floored, clamped ≥ 0). Used to derive
+// synapse-edge recency for the brightness channel.
+function daysBetween(earlier: string, later: string): number {
+  const ms = Date.parse(later) - Date.parse(earlier)
+  if (Number.isNaN(ms)) return 0
+  return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)))
+}
+
 // Dim instrument canvas (EEG-monitor read) — dimmer than the deep #0c1418 stats
 // surface so the warm pixel tree labels (relit to --signal-ink) stay legible.
 // Grid + scanline via signal-layer overlay tokens. Thick warm frame keeps it
@@ -633,6 +628,10 @@ const containerStyle: React.CSSProperties = {
   padding: '0.85rem 1rem',
   borderRadius: '4px',
   marginBottom: '1rem',
+  // Keep any internal scroll/zoom gestures from chaining out to the page scroll
+  // when the tree is mounted inside the homepage's fixed-height panel. Plain wheel
+  // still scrolls the page (zoom is ctrl/⌘+wheel / pinch / toolbar — no trap).
+  overscrollBehavior: 'contain',
 }
 
 const zoomBarStyle: React.CSSProperties = {

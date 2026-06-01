@@ -6,29 +6,27 @@ Defines the composition and behavior of the neurons-tw homepage (`/`): a hook re
 
 ## Requirements
 
-### Requirement: Homepage SHALL render a lightweight presentational connectome-tree hero that routes to the full interactive view
+### Requirement: Homepage SHALL render the interactive connectome tree as its centerpiece in a fixed-height contained-scroll panel
 
-The neurons-tw homepage (`/`) SHALL render the real labeled connectome tree (`ConnectomeTreeSvg`) as its hero, in a **non-interactive (presentational) embed mode**: family sprites + names + AP chips + firedToday halos + state-styled synapse edges, but with pan / zoom / wheel-capture / drag and the zoom toolbar all disabled so the hero never intercepts page-scroll on the landing page. Activating the hero (click or keyboard Enter/Space) SHALL navigate to `/connectome`. The hero SHALL be a non-`<button>` activation wrapper (the tree renders a `<section>`). The force-sim layout pass SHALL be allowed to run only until it self-settles (its rAF loop stops when stable).
+The neurons-tw homepage (`/`) SHALL render the real labeled connectome tree (`ConnectomeTreeSvg`) as its interactive centerpiece by passing `interactive={true}`, mounted inside a **fixed-height panel**. Zooming SHALL be reachable via `ctrl`/`⌘`+wheel, two-finger pinch, and the `+` / `−` / 重置 toolbar buttons; node-drag SHALL reposition nodes and empty-canvas drag SHALL pan. A plain (unmodified) wheel over the panel SHALL scroll the page normally — the tall panel SHALL NOT trap page scroll (the Google-Maps-embed pattern), and `overscroll-behavior` containment SHALL prevent the tree from hijacking page scroll. The tree SHALL NOT be a navigation link (no `navigate('/connectome')`) — it is the homepage itself, not a thumbnail. The force-sim layout pass SHALL be allowed to run only until it self-settles (its rAF loop stops when stable).
 
-#### Scenario: Hero renders the labeled real tree
-- **WHEN** the homepage loads with an initialized connectome snapshot
-- **THEN** the hero renders the real `ConnectomeTreeSvg` with family sprites + names + AP chips and state-styled (`dormant | weak | strong`) synapse edges — not an abstract unlabeled mini-tree
+#### Scenario: Tree is interactive on the homepage
+- **WHEN** the user drags a node, pinches, or uses the toolbar over the tree panel on the homepage
+- **THEN** the tree pans / zooms (the homepage embed passes `interactive={true}`) and the zoom toolbar is present
 
-#### Scenario: Hero is non-interactive and does not capture page-scroll
-- **WHEN** the user wheel-scrolls, drags, or pinches over the hero on the homepage
-- **THEN** no tree pan / zoom / node-drag occurs, the zoom toolbar is absent, and the page scrolls normally (the homepage embed passes `interactive={false}`)
+#### Scenario: Panel does not trap page scroll
+- **WHEN** the user plain-wheel-scrolls (no modifier) with the pointer over the tree panel
+- **THEN** the page scrolls normally and the tree does NOT zoom or trap the scroll
+- **AND WHEN** the user `ctrl`/`⌘`+wheels, pinches, or clicks the `+` / `−` buttons
+- **THEN** the tree zooms
 
-#### Scenario: Hero routes to the full connectome on activation
-- **WHEN** the user clicks the hero or focuses it and presses Enter/Space
-- **THEN** the app navigates to `/connectome` where the same tree is interactive and the family-detail grid + synapse table live
+#### Scenario: Tree is not a navigation link
+- **WHEN** the user clicks a family node or empty area inside the tree
+- **THEN** the app does NOT navigate to `/connectome` (the route no longer exists) and stays on `/`
 
-#### Scenario: The /connectome tree remains fully interactive
-- **WHEN** the user is on `/connectome`
-- **THEN** the tree there is still pan/zoom/drag interactive with its zoom toolbar (the `interactive` prop defaults to true; only the homepage embed disables it)
-
-#### Scenario: Hero is responsive on mobile
+#### Scenario: Tree is responsive on mobile
 - **WHEN** the homepage is viewed below 768px width
-- **THEN** the hero tree remains legible and within viewport without horizontal overflow
+- **THEN** the tree panel remains legible and within viewport without horizontal overflow, retaining contained-scroll behavior
 
 ### Requirement: Homepage SHALL display a cap-aware "next DMN draw" progress ring driven by real reading-timer data
 
@@ -46,21 +44,18 @@ The homepage SHALL replace the prose rule line describing DMN draw timing with a
 - **WHEN** the homepage renders
 - **THEN** the previous "每 30 min 觸發 DMN 抽卡…" prose rule line is absent, the ring conveying the mechanic visually instead
 
-### Requirement: Homepage SHALL compose as hook-on-top + dashboard-on-bottom without merging dense connectome detail
+### Requirement: Homepage SHALL compose as a CTA toolbar over the interactive tree panel over the family-detail grid
 
-The homepage SHALL present the hero + progress ring (+ first-visit onboarding) as the top "hook" region and the existing progress status chips + read/quiz CTA + `FamilyPicker` as the bottom "dashboard" region. The dense family-detail grid and synapse table SHALL NOT be moved onto the homepage; they remain on `/connectome`.
+The homepage SHALL present, top to bottom: (1) a **CTA toolbar** containing the reading-timer toggle and the 🎲 cross-family random-quiz entry, visually grouped with the tree's zoom controls; (2) the **fixed-height interactive tree panel**; (3) a **single per-NT-branch family grid** — the `FamilyPicker` enriched to carry BOTH the per-family quiz entry (🎯 答題) AND the connectome detail (AP + next-slot threshold + mastery + variant-collection chips + `firedToday` badge). There SHALL be exactly one family-card grid (the prior separate read-only family-detail grid is folded into the enriched `FamilyPicker`, not duplicated). The `DmnDrawProgressRing`, the progress status chips, and the first-visit onboarding SHALL remain present. The dense synapse list table SHALL NOT be present anywhere in the app.
 
-#### Scenario: Top region presents the visual hook
+#### Scenario: Single enriched family grid renders on the homepage
 - **WHEN** the homepage renders
-- **THEN** the connectome hero and the DMN progress ring appear above the dashboard region
+- **THEN** exactly one per-NT-branch family grid (4 branches DA / 5-HT / GABA / Glu) is present on `/`, each card showing AP + next slot threshold + mastery chip + variant-collection chip + the 🎯 答題 quiz entry
+- **AND** there SHALL NOT be a second, separate read-only family-detail grid
 
-#### Scenario: Bottom region presents the dashboard
+#### Scenario: Synapse table is absent
 - **WHEN** the homepage renders
-- **THEN** the progress status chips, the read/quiz CTA, and the `FamilyPicker` appear in the dashboard region
-
-#### Scenario: Dense connectome detail is not duplicated on the homepage
-- **WHEN** the homepage renders
-- **THEN** the per-family AP detail grid and the synapse table are NOT present on the homepage (they remain only on `/connectome`)
+- **THEN** no synapse list table is present anywhere in the app (synapse state is conveyed only by the tree edges + hover tooltip)
 
 ### Requirement: Homepage SHALL surface a one-tap-dismissable first-visit onboarding that never reappears once dismissed
 
@@ -84,15 +79,15 @@ The homepage SHALL render a brief, skippable onboarding panel gated on a persist
 
 ### Requirement: Homepage SHALL preserve manual reading-timer start and the non-collapsed quiz CTA
 
-The homepage redesign SHALL NOT auto-start the reading timer and SHALL NOT collapse the quiz entry into a single button. The manual reading toggle, the 🎲 cross-family random-quiz entry, and the `FamilyPicker` family-select entry SHALL all remain available; only the path into answering is smoothed.
+The homepage redesign SHALL NOT auto-start the reading timer and SHALL NOT collapse the quiz entry into a single button. The manual reading toggle and the 🎲 cross-family random-quiz entry SHALL live in the CTA toolbar above the tree; the per-family family-select entry SHALL live in the enriched `FamilyPicker` grid below the tree. Both quiz entry paths SHALL remain available; only the path into answering is smoothed.
 
 #### Scenario: Timer does not auto-start on load
 - **WHEN** the homepage loads
-- **THEN** the reading timer remains in `idle` until the user manually starts it
+- **THEN** the reading timer remains in `idle` until the user manually starts it from the toolbar toggle
 
 #### Scenario: Both quiz entry paths remain
 - **WHEN** the homepage renders
-- **THEN** the 🎲 random-quiz entry and the `FamilyPicker` family-select entry are both present (the CTA is not reduced to a single mega-button)
+- **THEN** the 🎲 random-quiz entry (in the toolbar) and the per-family 🎯 答題 select entry (in the `FamilyPicker` grid) are both present (the CTA is not reduced to a single mega-button)
 
 ### Requirement: Homepage answer-feedback and ambient motion SHALL respect reduced-motion and survive SPA direct-URL + F5
 
