@@ -117,6 +117,27 @@ export interface QuestionFlagRow {
   updatedAt: number
 }
 
+/**
+ * Per-question answer-result history (Dexie v9+). One row per answered
+ * question. `lastResult` is LWW (the most recent attempt); `everWrong` is a
+ * monotonic-OR flag — once the player answers wrong it stays `true` forever,
+ * even after a later correct answer. Backs the 「目前未答對」(`lastResult==='wrong'`)
+ * + 「歷史曾錯」(`everWrong===true`) sub-tabs on `/bookmarks`.
+ *
+ * Per add-neurons-wrong-questions-subtab spec. Sync: the questionHistory
+ * adapter resolves `everWrong` via monotonic-OR (NOT LWW) — see
+ * lib/sync/tables.ts. `everWrong` is intentionally NOT a Dexie index (IndexedDB
+ * cannot index booleans); the two sub-tabs filter in JS off a full `toArray()`.
+ */
+export interface QuestionHistoryRow {
+  questionId: string
+  family: string
+  lastResult: 'correct' | 'wrong'
+  everWrong: boolean
+  lastAnsweredAt: number
+  updatedAt: number
+}
+
 export class NeuronsDB extends Dexie {
   synapses!: EntityTable<SynapseRow, 'pairKey'>
   familyAccrual!: EntityTable<FamilyAccrualRow, 'familyId'>
@@ -140,6 +161,10 @@ export class NeuronsDB extends Dexie {
   // Per add-neurons-srs-binary-modifiers. Additive — single composite row
   // per question carries both easyMarked + guessedMarked flags.
   questionFlags!: EntityTable<QuestionFlagRow, 'questionId'>
+  // ─── Question answer-result history (Dexie v9+) ─────────────────────────
+  // Per add-neurons-wrong-questions-subtab. Additive — 1 new table. Backs the
+  // 錯題 sub-tabs (目前未答對 / 歷史曾錯). everWrong = monotonic-OR (sync adapter).
+  questionHistory!: EntityTable<QuestionHistoryRow, 'questionId'>
 
   constructor() {
     super('neurons-rpg')
@@ -243,6 +268,27 @@ export class NeuronsDB extends Dexie {
       questionBookmarks: 'questionId, family, addedAt, updatedAt',
       questionBookmarkTombstones: 'questionId, updatedAt',
       questionFlags: 'questionId, easyMarked, guessedMarked, updatedAt',
+    })
+    // Per add-neurons-wrong-questions-subtab. Additive: 1 new table.
+    // questionHistory: PK = questionId; secondary indices on family + lastResult
+    //   (filter queries) + lastAnsweredAt (sort) + updatedAt (LWW sync).
+    //   everWrong is NOT indexed — IndexedDB cannot index booleans; the
+    //   歷史曾錯 sub-tab filters everWrong in JS off a full toArray().
+    this.version(9).stores({
+      synapses: 'pairKey, lastCoFireDate, state',
+      familyAccrual: 'familyId, lastFireDate, firedToday',
+      meta: 'key',
+      familyMastery: 'familyId',
+      neuronVariants: '[familyId+slotIndex], familyId, rolledAt',
+      leaderboardProfile: 'user_id, nickname_lower',
+      achievements: 'id, unlockedAt',
+      dmnCards: 'cardId, obtainedAt, rarity',
+      dmnEventLog: 'cardId, dispatchedAt',
+      dmnActiveBuffs: '++id, expiresAt, buffKind',
+      questionBookmarks: 'questionId, family, addedAt, updatedAt',
+      questionBookmarkTombstones: 'questionId, updatedAt',
+      questionFlags: 'questionId, easyMarked, guessedMarked, updatedAt',
+      questionHistory: 'questionId, family, lastResult, lastAnsweredAt, updatedAt',
     })
   }
 }

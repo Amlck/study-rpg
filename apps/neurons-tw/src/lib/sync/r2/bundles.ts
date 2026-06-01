@@ -17,11 +17,15 @@
 //   v4 — add-neurons-srs-binary-modifiers 2026-05-29: adds questionFlags
 //        adapter (✨ 太簡單 / 🤔 我亂猜的 binary flags). Additive — v3
 //        clients drop the new field.
+//   v5 — add-neurons-wrong-questions-subtab 2026-06-01: adds questionHistory
+//        adapter (per-question lastResult + everWrong, backs the 錯題 sub-tabs).
+//        everWrong merges via MONOTONIC-OR (see tables.ts). Additive — v4
+//        clients drop the new key.
 
 import type { NeuronsDB } from '../../db'
 import { NEURONS_ADAPTERS } from '../tables'
 
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 export const BUNDLE_APP_VERSION = '0.4.0'
 
 const CLIENT_ID_KEY = 'neurons-rpg.sync.clientId'

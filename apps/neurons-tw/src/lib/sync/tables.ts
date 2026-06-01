@@ -657,6 +657,70 @@ const questionFlagsAdapter: TableAdapter<'questionFlags'> = {
   },
 }
 
+// ---- Question history (Dexie v9 — add-neurons-wrong-questions-subtab) ----
+
+const questionHistoryAdapter: TableAdapter<'questionHistory'> = {
+  name: 'questionHistory',
+  async snapshot(db) {
+    return await db.questionHistory.toArray()
+  },
+  async apply(db, rows) {
+    // Critical: `everWrong` uses MONOTONIC-OR merge (NOT LWW). Once any device
+    // records a question as ever-wrong, that signal must propagate and never be
+    // cleared by a stale `correct` row — otherwise the 歷史曾錯 list would lose
+    // entries on a cross-device race. Mirrors 二階 wrong-answer-list everWrong
+    // discipline + neurons dmnEventLog monotonic-union. The other fields
+    // (lastResult / family / lastAnsweredAt) resolve by LWW on the greater
+    // lastAnsweredAt. DO NOT replace everWrong with plain LWW.
+    let applied = 0
+    let skipped = 0
+    await db.transaction('rw', db.questionHistory, async () => {
+      for (const incoming of rows) {
+        if (!incoming || typeof incoming !== 'object') {
+          skipped++
+          continue
+        }
+        const row = incoming as Record<string, unknown>
+        const questionId = row.questionId
+        if (typeof questionId !== 'string') {
+          skipped++
+          continue
+        }
+        const incLastAnsweredAt = typeof row.lastAnsweredAt === 'number' ? row.lastAnsweredAt : 0
+        const incEverWrong = row.everWrong === true
+        const incLastResult = row.lastResult === 'wrong' ? 'wrong' : 'correct'
+        const incFamily = typeof row.family === 'string' ? row.family : ''
+        const incUpdatedAt = typeof row.updatedAt === 'number' ? row.updatedAt : incLastAnsweredAt
+        const local = await db.questionHistory.get(questionId)
+        if (!local) {
+          await db.questionHistory.put({
+            questionId,
+            family: incFamily,
+            lastResult: incLastResult,
+            everWrong: incEverWrong,
+            lastAnsweredAt: incLastAnsweredAt,
+            updatedAt: incUpdatedAt,
+          })
+          applied++
+          continue
+        }
+        // incoming wins on ties (mirrors lwwPick `b >= a`).
+        const incomingNewer = incLastAnsweredAt >= local.lastAnsweredAt
+        await db.questionHistory.put({
+          questionId,
+          family: incomingNewer && incFamily ? incFamily : local.family,
+          lastResult: incomingNewer ? incLastResult : local.lastResult,
+          everWrong: local.everWrong || incEverWrong, // monotonic-OR
+          lastAnsweredAt: Math.max(local.lastAnsweredAt, incLastAnsweredAt),
+          updatedAt: Math.max(local.updatedAt, incUpdatedAt),
+        })
+        applied++
+      }
+    })
+    return { applied, skipped }
+  },
+}
+
 // ---- Adapter registry -----------------------------------------------------
 
 export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
@@ -673,4 +737,5 @@ export const NEURONS_ADAPTERS: ReadonlyArray<TableAdapter> = [
   questionBookmarksAdapter,
   questionBookmarkTombstonesAdapter,
   questionFlagsAdapter,
+  questionHistoryAdapter,
 ]

@@ -1,12 +1,14 @@
 /**
- * BookmarksPage — `/bookmarks` route listing all ⭐ bookmarked questions.
+ * BookmarksPage — `/bookmarks` route, a three-tab review hub:
+ *   • 手動收藏    — all ⭐ bookmarked questions (replay + un-bookmark actions)
+ *   • 目前未答對  — questionHistory rows where lastResult === 'wrong'
+ *   • 歷史曾錯    — questionHistory rows where everWrong === true (never leaves)
  *
- * Spec: openspec/specs/neurons-mode/spec.md
- *   "Neurons-tw SHALL persist per-question bookmarks with cross-device sync"
+ * The two wrong-answer lists are live derived views of `questionHistory` —
+ * no separate store. Rows there are display-only (per spec). A single shared
+ * filter bar (科目 family + 年份 year + ✨/🤔 標記) applies across all three tabs.
  *
- * Layout: top header + family filter chip bar + scrollable row list (max 200).
- * Each row: family badge / stem (100 chars) / addedAt relative time /
- * unbookmark button / 「重新作答」 button (opens 1-question QuizModal).
+ * Spec: openspec/specs/neurons-wrong-answer-list/spec.md
  */
 
 import { useMemo, useState } from 'react'
@@ -14,19 +16,35 @@ import type { ContentPack, Question } from '@study-rpg/core'
 import { QuizModal } from '../components/QuizModal'
 import { useAllBookmarks, removeBookmark } from '../lib/services/bookmarks'
 import { useAllFlags } from '../lib/services/question-flags'
+import { useQuestionHistory } from '../lib/services/question-history'
+import {
+  parseExamYear,
+  matchesWrongAnswerFilter,
+  type WrongAnswerFilterState,
+} from '../lib/wrong-answer-filter'
+import type { QuestionHistoryRow } from '../lib/db'
 
 interface Props {
   pack: ContentPack
 }
 
+type TabKey = 'manual' | 'currentWrong' | 'historyWrong'
+
 const MAX_RENDER = 200
 const STEM_TRUNCATE_LEN = 100
 const NT_BRANCHES = ['DA', '5HT', 'GABA', 'Glu'] as const
+const YEAR_CHIP_COLOR = '#6a7b8c'
 
 export default function BookmarksPage({ pack }: Props): JSX.Element {
   const bookmarks = useAllBookmarks()
   const flags = useAllFlags()
+  // Single subscription to the full history table; the two wrong-answer tabs
+  // derive from it (目前未答對 = lastResult==='wrong', 歷史曾錯 = everWrong).
+  const history = useQuestionHistory()
+
+  const [tab, setTab] = useState<TabKey>('manual')
   const [excludedFamilies, setExcludedFamilies] = useState<Set<string>>(new Set())
+  const [excludedYears, setExcludedYears] = useState<Set<string>>(new Set())
   const [filterEasyOnly, setFilterEasyOnly] = useState<boolean>(false)
   const [filterGuessedOnly, setFilterGuessedOnly] = useState<boolean>(false)
   const [replayQuestion, setReplayQuestion] = useState<Question | null>(null)
@@ -60,29 +78,53 @@ export default function BookmarksPage({ pack }: Props): JSX.Element {
     return m
   }, [pack.subjects])
 
-  const filteredBookmarks = useMemo(() => {
-    return bookmarks.filter((b) => {
-      if (excludedFamilies.has(b.family)) return false
-      if (filterEasyOnly || filterGuessedOnly) {
-        const flag = flagMap.get(b.questionId)
-        if (filterEasyOnly && !flag?.easyMarked) return false
-        if (filterGuessedOnly && !flag?.guessedMarked) return false
-      }
-      return true
-    })
-  }, [bookmarks, excludedFamilies, flagMap, filterEasyOnly, filterGuessedOnly])
+  // Distinct exam years for the chip set → stable, descending. `history` is the
+  // superset of both wrong-answer tabs; `bookmarks` is scanned separately
+  // because a bookmarked question may never have been answered (so its year
+  // wouldn't appear in `history`).
+  const yearOptions = useMemo(() => {
+    const years = new Set<string>()
+    for (const b of bookmarks) years.add(parseExamYear(b.questionId))
+    for (const w of history) years.add(parseExamYear(w.questionId))
+    return [...years].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+  }, [bookmarks, history])
 
-  const truncatedBookmarks = filteredBookmarks.slice(0, MAX_RENDER)
-  const truncated = filteredBookmarks.length > MAX_RENDER
+  const filter: WrongAnswerFilterState = useMemo(
+    () => ({ excludedFamilies, excludedYears, easyOnly: filterEasyOnly, guessedOnly: filterGuessedOnly }),
+    [excludedFamilies, excludedYears, filterEasyOnly, filterGuessedOnly],
+  )
 
-  function toggleFamilyChip(id: string): void {
-    setExcludedFamilies((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  const passesFilter = (item: { family: string; questionId: string }): boolean =>
+    matchesWrongAnswerFilter(item, filter, flagMap.get(item.questionId))
+
+  const filteredBookmarks = useMemo(
+    () => bookmarks.filter((b) => passesFilter({ family: b.family, questionId: b.questionId })),
+    [bookmarks, filter, flagMap],
+  )
+  // Derive both wrong-answer views from the single `history` subscription.
+  const filteredCurrentWrong = useMemo(
+    () => history.filter((w) => w.lastResult === 'wrong' && passesFilter({ family: w.family, questionId: w.questionId })),
+    [history, filter, flagMap],
+  )
+  const filteredHistoryWrong = useMemo(
+    () => history.filter((w) => w.everWrong && passesFilter({ family: w.family, questionId: w.questionId })),
+    [history, filter, flagMap],
+  )
+  const hasAnyCurrentWrong = useMemo(() => history.some((w) => w.lastResult === 'wrong'), [history])
+  const hasAnyHistoryWrong = useMemo(() => history.some((w) => w.everWrong), [history])
+
+  const makeToggleChip =
+    (setState: React.Dispatch<React.SetStateAction<Set<string>>>) =>
+    (value: string): void => {
+      setState((prev) => {
+        const next = new Set(prev)
+        if (next.has(value)) next.delete(value)
+        else next.add(value)
+        return next
+      })
+    }
+  const toggleFamilyChip = makeToggleChip(setExcludedFamilies)
+  const toggleYearChip = makeToggleChip(setExcludedYears)
 
   function handleReplay(questionId: string): void {
     const q = questionMap.get(questionId)
@@ -93,18 +135,81 @@ export default function BookmarksPage({ pack }: Props): JSX.Element {
     void removeBookmark(questionId)
   }
 
+  function renderFlagChips(questionId: string): JSX.Element {
+    const f = flagMap.get(questionId)
+    return (
+      <>
+        {f?.easyMarked && (
+          <span style={flagChipDisplayStyle('#d4a04d')} title="✨ 太簡單" aria-label="標記為太簡單">
+            ✨
+          </span>
+        )}
+        {f?.guessedMarked && (
+          <span style={flagChipDisplayStyle('#6a9bc4')} title="🤔 我亂猜的" aria-label="標記為我亂猜的">
+            🤔
+          </span>
+        )}
+      </>
+    )
+  }
+
+  // Shared row content (badge group + year + flags + time + truncated stem),
+  // used by both the manual-bookmark list and the two wrong-answer lists. The
+  // manual list appends its own action footer; wrong rows are display-only.
+  function renderRowHeadAndStem(questionId: string, familyId: string, timeTs: number): JSX.Element {
+    const q = questionMap.get(questionId)
+    const family = familyMap.get(familyId)
+    return (
+      <>
+        <header style={rowHeaderStyle}>
+          <div style={badgeGroupStyle}>
+            <span style={familyBadgeStyle(family?.color ?? '#8c6d4a')} title={family?.displayName ?? familyId}>
+              {familyId}
+            </span>
+            <span style={yearBadgeStyle} title="考試年度（民國）">
+              {parseExamYear(questionId)}年
+            </span>
+            {renderFlagChips(questionId)}
+          </div>
+          <span style={timeStyle}>{relativeTime(timeTs)}</span>
+        </header>
+        <p style={stemStyle}>
+          {q ? truncate(q.stem, STEM_TRUNCATE_LEN) : '（題目資料缺失 — 可能是 content pack 已更新）'}
+        </p>
+      </>
+    )
+  }
+
+  function renderWrongList(rows: QuestionHistoryRow[], hasAny: boolean, emptyText: string): JSX.Element {
+    if (!hasAny) {
+      return <p style={noMatchStyle}>{emptyText}</p>
+    }
+    if (rows.length === 0) {
+      return (
+        <p style={noMatchStyle}>目前篩選下沒有題目。調整上方的科目 / 年份 / 標記篩選把題目找回來。</p>
+      )
+    }
+    return (
+      <ul style={listStyle} role="list">
+        {rows.slice(0, MAX_RENDER).map((row) => (
+          <li key={row.questionId} style={rowStyle}>
+            {renderRowHeadAndStem(row.questionId, row.family, row.lastAnsweredAt)}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
   return (
     <>
       <header style={headerStyle}>
-        <h1 style={titleStyle}>⭐ 收藏題目</h1>
+        <h1 style={titleStyle}>📚 收藏與錯題</h1>
         <p style={subtitleStyle}>
-          所有按 ⭐ 或鍵盤 <kbd style={kbdStyle}>1</kbd> 收藏的題目。共{' '}
-          <strong>{bookmarks.length}</strong> 題（顯示 {filteredBookmarks.length} 題
-          {truncated && ` ，僅渲染前 ${MAX_RENDER} 題`}）。
+          手動收藏的題目，加上自動累積的錯題複習清單。錯題庫從這個功能上線後開始累積。
         </p>
       </header>
 
-      {/* Flag filter — ✨ 太簡單 / 🤔 我亂猜的 toggle chips. */}
+      {/* Shared filter bar — applies to all three tabs. */}
       <section style={filterBarStyle} aria-label="標記篩選">
         <div style={filterHeaderStyle}>
           <span style={filterLabelStyle}>🏷️ 依標記篩選</span>
@@ -146,11 +251,7 @@ export default function BookmarksPage({ pack }: Props): JSX.Element {
         <div style={filterHeaderStyle}>
           <span style={filterLabelStyle}>📚 依科目篩選</span>
           {excludedFamilies.size > 0 && (
-            <button
-              type="button"
-              style={resetBtnStyle}
-              onClick={() => setExcludedFamilies(new Set())}
-            >
+            <button type="button" style={resetBtnStyle} onClick={() => setExcludedFamilies(new Set())}>
               重置（顯示全部）
             </button>
           )}
@@ -179,91 +280,129 @@ export default function BookmarksPage({ pack }: Props): JSX.Element {
         </div>
       </section>
 
-      {bookmarks.length === 0 ? (
-        <EmptyState />
-      ) : filteredBookmarks.length === 0 ? (
-        <p style={noMatchStyle}>
-          目前篩選下沒有收藏題目。點上面的灰色 chip 把該 family 加回來。
-        </p>
-      ) : (
-        <ul style={listStyle} role="list">
-          {truncatedBookmarks.map((b) => {
-            const q = questionMap.get(b.questionId)
-            const family = familyMap.get(b.family)
-            return (
-              <li key={b.questionId} style={rowStyle}>
-                <header style={rowHeaderStyle}>
-                  <div style={badgeGroupStyle}>
-                    <span
-                      style={familyBadgeStyle(family?.color ?? '#8c6d4a')}
-                      title={family?.displayName ?? b.family}
-                    >
-                      {b.family}
-                    </span>
-                    {(() => {
-                      const f = flagMap.get(b.questionId)
-                      return (
-                        <>
-                          {f?.easyMarked && (
-                            <span style={flagChipDisplayStyle('#d4a04d')} title="✨ 太簡單" aria-label="標記為太簡單">
-                              ✨
-                            </span>
-                          )}
-                          {f?.guessedMarked && (
-                            <span style={flagChipDisplayStyle('#6a9bc4')} title="🤔 我亂猜的" aria-label="標記為我亂猜的">
-                              🤔
-                            </span>
-                          )}
-                        </>
-                      )
-                    })()}
-                  </div>
-                  <span style={timeStyle}>{relativeTime(b.addedAt)}</span>
-                </header>
-                <p style={stemStyle}>
-                  {q ? truncate(q.stem, STEM_TRUNCATE_LEN) : '（題目資料缺失 — 可能是 content pack 已更新）'}
-                </p>
-                <div style={rowActionsStyle}>
-                  <button
-                    type="button"
-                    style={replayBtnStyle}
-                    onClick={() => handleReplay(b.questionId)}
-                    disabled={!q}
-                    title={q ? '重新作答這一題' : '題目不在當前 content pack'}
-                  >
-                    🎯 重新作答
-                  </button>
-                  <button
-                    type="button"
-                    style={unbookmarkBtnStyle}
-                    onClick={() => handleRemove(b.questionId)}
-                    aria-label="取消收藏"
-                  >
-                    ★ 取消
-                  </button>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+      {/* Year filter — chips per 民國 exam year, click toggles exclusion. */}
+      {yearOptions.length > 0 && (
+        <section style={filterBarStyle} aria-label="年份篩選">
+          <div style={filterHeaderStyle}>
+            <span style={filterLabelStyle}>📅 依年份篩選</span>
+            {excludedYears.size > 0 && (
+              <button type="button" style={resetBtnStyle} onClick={() => setExcludedYears(new Set())}>
+                重置（顯示全部）
+              </button>
+            )}
+          </div>
+          <div style={chipRowStyle}>
+            {yearOptions.map((year) => {
+              const excluded = excludedYears.has(year)
+              const label = year === 'unknown' ? '其他' : `${year}年`
+              return (
+                <button
+                  key={year}
+                  type="button"
+                  onClick={() => toggleYearChip(year)}
+                  style={excluded ? chipExcludedStyle(YEAR_CHIP_COLOR) : chipIncludedStyle(YEAR_CHIP_COLOR)}
+                  aria-pressed={!excluded}
+                  title={excluded ? `加入 ${label}` : `排除 ${label}`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </section>
       )}
 
-      {replayQuestion && (
-        <QuizModal pool={[replayQuestion]} onClose={() => setReplayQuestion(null)} />
-      )}
+      {/* Tab strip */}
+      <div style={tabBarStyle} role="tablist" aria-label="收藏與錯題分頁">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'manual'}
+          style={tab === 'manual' ? tabActiveStyle : tabStyle}
+          onClick={() => setTab('manual')}
+        >
+          ⭐ 手動收藏 ({filteredBookmarks.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'currentWrong'}
+          style={tab === 'currentWrong' ? tabActiveStyle : tabStyle}
+          onClick={() => setTab('currentWrong')}
+        >
+          ❌ 目前未答對 ({filteredCurrentWrong.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'historyWrong'}
+          style={tab === 'historyWrong' ? tabActiveStyle : tabStyle}
+          onClick={() => setTab('historyWrong')}
+        >
+          📋 歷史曾錯 ({filteredHistoryWrong.length})
+        </button>
+      </div>
+
+      {/* Active tab body */}
+      {tab === 'manual' &&
+        (bookmarks.length === 0 ? (
+          <BookmarksEmptyState />
+        ) : filteredBookmarks.length === 0 ? (
+          <p style={noMatchStyle}>目前篩選下沒有收藏題目。調整上方的科目 / 年份 / 標記篩選把題目找回來。</p>
+        ) : (
+          <ul style={listStyle} role="list">
+            {filteredBookmarks.slice(0, MAX_RENDER).map((b) => {
+              const inPack = questionMap.has(b.questionId)
+              return (
+                <li key={b.questionId} style={rowStyle}>
+                  {renderRowHeadAndStem(b.questionId, b.family, b.addedAt)}
+                  <div style={rowActionsStyle}>
+                    <button
+                      type="button"
+                      style={replayBtnStyle}
+                      onClick={() => handleReplay(b.questionId)}
+                      disabled={!inPack}
+                      title={inPack ? '重新作答這一題' : '題目不在當前 content pack'}
+                    >
+                      🎯 重新作答
+                    </button>
+                    <button type="button" style={unbookmarkBtnStyle} onClick={() => handleRemove(b.questionId)} aria-label="取消收藏">
+                      ★ 取消
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        ))}
+
+      {tab === 'currentWrong' &&
+        renderWrongList(
+          filteredCurrentWrong,
+          hasAnyCurrentWrong,
+          '目前沒有未答對的題目。答錯題目時會自動出現在這裡；把題目答對後它就會離開這一頁（但仍保留在「歷史曾錯」）。',
+        )}
+
+      {tab === 'historyWrong' &&
+        renderWrongList(
+          filteredHistoryWrong,
+          hasAnyHistoryWrong,
+          '目前沒有曾經答錯的題目。只要答錯過一次，題目就會永久留在這裡供複習。',
+        )}
+
+      {replayQuestion && <QuizModal pool={[replayQuestion]} onClose={() => setReplayQuestion(null)} />}
     </>
   )
 }
 
-function EmptyState(): JSX.Element {
+function BookmarksEmptyState(): JSX.Element {
   return (
     <section style={emptyStyle} aria-label="無收藏題目">
       <p style={{ fontSize: '2.5rem', margin: 0 }} aria-hidden>
         📭
       </p>
       <p>
-        目前沒有收藏的題目。在答題時按 <strong>⭐ 收藏</strong> 按鈕或鍵盤{' '}
-        <kbd style={kbdStyle}>1</kbd> 加入收藏。
+        目前沒有收藏的題目。在答題時按 <strong>⭐ 收藏</strong> 按鈕或鍵盤 <kbd style={kbdStyle}>1</kbd> 加入收藏。
       </p>
       <a href="/" style={emptyLinkStyle}>
         ← 回總覽開始答題
@@ -392,6 +531,32 @@ function chipExcludedStyle(color: string): React.CSSProperties {
   }
 }
 
+const tabBarStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.4rem',
+  marginBottom: '1rem',
+}
+
+const tabStyle: React.CSSProperties = {
+  padding: '0.45rem 0.9rem',
+  background: '#f4ecd8',
+  color: '#5a3f29',
+  border: '2px solid #c4a878',
+  borderRadius: '6px',
+  fontSize: '0.85rem',
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+}
+
+const tabActiveStyle: React.CSSProperties = {
+  ...tabStyle,
+  background: '#8c6d4a',
+  color: '#fff',
+  border: '2px solid #6e5436',
+}
+
 const listStyle: React.CSSProperties = {
   listStyle: 'none',
   margin: 0,
@@ -428,6 +593,16 @@ function familyBadgeStyle(color: string): React.CSSProperties {
     fontSize: '0.78rem',
     fontWeight: 700,
   }
+}
+
+const yearBadgeStyle: React.CSSProperties = {
+  padding: '0.15rem 0.45rem',
+  background: '#fdf6e3',
+  color: YEAR_CHIP_COLOR,
+  border: `1px solid ${YEAR_CHIP_COLOR}`,
+  borderRadius: '4px',
+  fontSize: '0.74rem',
+  fontWeight: 700,
 }
 
 const badgeGroupStyle: React.CSSProperties = {
