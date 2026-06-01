@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Question } from '@study-rpg/core'
 import { recordCorrectAnswer, recordIncorrectAnswer } from '../lib/services/connectome'
+import { recordQuestionResult } from '../lib/services/question-history'
 import { SpikeTrainFiring, AnswerFeedbackFlash } from '../lib/motion'
 import { useQuizHotkeys, type QuizPhase } from '../lib/hooks/useQuizHotkeys'
 import { toggleBookmark, useIsBookmarked } from '../lib/services/bookmarks'
@@ -53,6 +54,13 @@ export function QuizModal({ pool, onClose }: Props): JSX.Element {
           await recordCorrectAnswer(q.subject)
         } else {
           await recordIncorrectAnswer(q.subject)
+        }
+        // Record per-question result for the 錯題 sub-tabs. Best-effort —
+        // never break the answer flow if the history write fails.
+        try {
+          await recordQuestionResult(q.id, q.subject, isCorrect)
+        } catch (err) {
+          console.error('[question-history] failed to record result', err)
         }
       } finally {
         setBusy(false)
