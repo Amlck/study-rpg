@@ -8,27 +8,27 @@ Defines the composition and behavior of the neurons-tw homepage (`/`): a hook re
 
 ### Requirement: Homepage SHALL render a lightweight presentational connectome-tree hero that routes to the full interactive view
 
-The neurons-tw homepage (`/`) SHALL render a `ConnectomeHero` component: a compact, stable-layout SVG of the 4 NT branches and their 11 family leaves with state-driven edge styling derived from the `loadConnectome()` snapshot, plus a gentle ambient firing animation. The hero SHALL NOT mount the heavy interactive force-simulation tree (`ConnectomeTreeSvg`) and SHALL NOT expose pan / zoom / drag on the homepage. Activating the hero (click or keyboard Enter) SHALL navigate to `/connectome`.
+The neurons-tw homepage (`/`) SHALL render the real labeled connectome tree (`ConnectomeTreeSvg`) as its hero, in a **non-interactive (presentational) embed mode**: family sprites + names + AP chips + firedToday halos + state-styled synapse edges, but with pan / zoom / wheel-capture / drag and the zoom toolbar all disabled so the hero never intercepts page-scroll on the landing page. Activating the hero (click or keyboard Enter/Space) SHALL navigate to `/connectome`. The hero SHALL be a non-`<button>` activation wrapper (the tree renders a `<section>`). The force-sim layout pass SHALL be allowed to run only until it self-settles (its rAF loop stops when stable).
 
-#### Scenario: Hero renders all branches and families with state styling
+#### Scenario: Hero renders the labeled real tree
 - **WHEN** the homepage loads with an initialized connectome snapshot
-- **THEN** the hero renders the 4 NT-branch sub-roots and 11 family leaves, with synapse edges styled by their `dormant | weak | strong` state
+- **THEN** the hero renders the real `ConnectomeTreeSvg` with family sprites + names + AP chips and state-styled (`dormant | weak | strong`) synapse edges — not an abstract unlabeled mini-tree
 
-#### Scenario: Hero is presentational, not the interactive tree
-- **WHEN** the user interacts with the hero on the homepage (wheel, drag, pinch)
-- **THEN** no pan / zoom / node-drag occurs (the homepage does not mount the force-sim tree), and no per-frame rAF physics loop runs on the homepage
+#### Scenario: Hero is non-interactive and does not capture page-scroll
+- **WHEN** the user wheel-scrolls, drags, or pinches over the hero on the homepage
+- **THEN** no tree pan / zoom / node-drag occurs, the zoom toolbar is absent, and the page scrolls normally (the homepage embed passes `interactive={false}`)
 
 #### Scenario: Hero routes to the full connectome on activation
-- **WHEN** the user clicks the hero or focuses it and presses Enter
-- **THEN** the app navigates to `/connectome` where the full interactive tree + family-detail grid + synapse table live
+- **WHEN** the user clicks the hero or focuses it and presses Enter/Space
+- **THEN** the app navigates to `/connectome` where the same tree is interactive and the family-detail grid + synapse table live
 
-#### Scenario: Hero highlights the most recently wired synapse
-- **WHEN** at least one synapse exists in the snapshot
-- **THEN** the hero visually emphasizes the synapse with the latest `lastCoFireDate`
+#### Scenario: The /connectome tree remains fully interactive
+- **WHEN** the user is on `/connectome`
+- **THEN** the tree there is still pan/zoom/drag interactive with its zoom toolbar (the `interactive` prop defaults to true; only the homepage embed disables it)
 
 #### Scenario: Hero is responsive on mobile
 - **WHEN** the homepage is viewed below 768px width
-- **THEN** the hero remains legible and within viewport without horizontal overflow
+- **THEN** the hero tree remains legible and within viewport without horizontal overflow
 
 ### Requirement: Homepage SHALL display a cap-aware "next DMN draw" progress ring driven by real reading-timer data
 

@@ -43,6 +43,13 @@ import { buildGraph } from './graph-builder'
 
 export interface ConnectomeTreeSvgProps {
   pack: ContentPack
+  /**
+   * When false, the tree is a presentational embed: no pan / zoom / wheel /
+   * touch / drag bindings and no zoom toolbar, so it never intercepts page
+   * scroll (used by the homepage hero). Defaults to true (full interactivity
+   * on /connectome). (revise-neurons-homepage-hero-real-tree)
+   */
+  interactive?: boolean
 }
 
 interface EdgeFlags {
@@ -50,7 +57,7 @@ interface EdgeFlags {
   fadingOut: Set<string>
 }
 
-export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element {
+export function ConnectomeTreeSvg({ pack, interactive = true }: ConnectomeTreeSvgProps): JSX.Element {
   const [snapshot, setSnapshot] = useState<ConnectomeSnapshot | null>(null)
   const [flags, setFlags] = useState<EdgeFlags>(() => ({
     freshFormed: new Map(),
@@ -222,7 +229,10 @@ export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element
   }
 
   // Native event binding so we can preventDefault on wheel + touch.
+  // Skipped entirely in non-interactive embed mode so the hero never intercepts
+  // page scroll. (revise-neurons-homepage-hero-real-tree)
   useEffect(() => {
+    if (!interactive) return
     const svg = svgRef.current
     if (!svg) return
 
@@ -265,7 +275,7 @@ export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element
       svg.removeEventListener('touchend', onTouchEnd)
       svg.removeEventListener('touchcancel', onTouchEnd)
     }
-  }, [svgReady])
+  }, [svgReady, interactive])
 
   // React-bridged pointer event handlers for drag (handles both node + canvas).
   const onSvgPointerDown = (e: React.PointerEvent): void => {
@@ -360,34 +370,42 @@ export function ConnectomeTreeSvg({ pack }: ConnectomeTreeSvgProps): JSX.Element
 
   return (
     <section style={containerStyle} aria-label="Connectome 連結組樹狀視覺">
-      <div style={zoomBarStyle}>
-        <button type="button" style={zoomBtnStyle} onClick={() => setZoomClamped(zoom - 0.25)} aria-label="縮小">−</button>
-        <span style={zoomLabelStyle}>{Math.round(zoom * 100)}%</span>
-        <button type="button" style={zoomBtnStyle} onClick={() => setZoomClamped(zoom + 0.25)} aria-label="放大">＋</button>
-        <button
-          type="button"
-          style={zoomResetBtnStyle}
-          onClick={() => {
-            setZoom(1)
-            setPan({ dx: 0, dy: 0 })
-          }}
-          aria-label="重置縮放與位置"
-        >
-          重置
-        </button>
-        <span style={hintStyle}>拖拉節點移動・捏合 / Ctrl+滾輪縮放</span>
-      </div>
+      {interactive && (
+        <div style={zoomBarStyle}>
+          <button type="button" style={zoomBtnStyle} onClick={() => setZoomClamped(zoom - 0.25)} aria-label="縮小">−</button>
+          <span style={zoomLabelStyle}>{Math.round(zoom * 100)}%</span>
+          <button type="button" style={zoomBtnStyle} onClick={() => setZoomClamped(zoom + 0.25)} aria-label="放大">＋</button>
+          <button
+            type="button"
+            style={zoomResetBtnStyle}
+            onClick={() => {
+              setZoom(1)
+              setPan({ dx: 0, dy: 0 })
+            }}
+            aria-label="重置縮放與位置"
+          >
+            重置
+          </button>
+          <span style={hintStyle}>拖拉節點移動・捏合 / Ctrl+滾輪縮放</span>
+        </div>
+      )}
       <svg
         ref={svgRef}
         viewBox={zoomedViewBox}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="Connectome — 4 NT 分支根節點 / 11 家族葉節點 / 年份節點 / synapse 邊"
-        style={{ width: '100%', height: 'auto', display: 'block', touchAction: 'none', cursor: 'grab' }}
-        onPointerDown={onSvgPointerDown}
-        onPointerMove={onSvgPointerMove}
-        onPointerUp={onSvgPointerUp}
-        onPointerCancel={onSvgPointerUp}
+        style={{
+          width: '100%',
+          height: 'auto',
+          display: 'block',
+          touchAction: interactive ? 'none' : 'auto',
+          cursor: interactive ? 'grab' : 'pointer',
+        }}
+        onPointerDown={interactive ? onSvgPointerDown : undefined}
+        onPointerMove={interactive ? onSvgPointerMove : undefined}
+        onPointerUp={interactive ? onSvgPointerUp : undefined}
+        onPointerCancel={interactive ? onSvgPointerUp : undefined}
       >
         {/* Skeleton edges — under everything */}
         <g aria-hidden>
