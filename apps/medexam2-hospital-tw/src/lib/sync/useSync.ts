@@ -4,7 +4,7 @@
 // db.gameCounters (key 'singleton') instead of db.players ('p1').
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getHospitalDB } from '../../db/schema'
+import { getHospitalDB, refreshDailyTickets } from '../../db/schema'
 import { getSupabase } from '../auth/client'
 import { useAuth } from '../auth/AuthContext'
 import { createSyncEngine } from './engine'
@@ -27,6 +27,7 @@ import {
   setLastSignedInUserId,
 } from './account-switch'
 import { checkAssignmentInvariants } from '../assignment'
+import { reconcileRetiredDoctors } from '../retirement-reconcile'
 import { getBackendConfig } from './backend-config'
 import { pushLeaderboardIfOptedIn } from './leaderboard'
 import { deleteLeaderboardMe } from '../leaderboard/api'
@@ -38,6 +39,8 @@ import {
   writeLocalAckResetAt,
 } from './reset-propagation'
 import { registerSyncMetadataGetter } from '../../services/sync-metadata'
+import { backfillAchievementsFromCurrentStats } from '../../services/achievement-backfill'
+import { backfillMonotonicCounters } from '../../services/counter-backfill'
 import type {
   EngineDiagnosticSnapshot,
   SyncEngine,
@@ -247,10 +250,81 @@ export function useSync(): UseSyncReturn {
               { bundle: 'm2', adapters: M2_ADAPTERS },
               { bundle: 'bookmarks', adapters: BOOKMARKS_ADAPTERS },
             ],
-            // Post-pull invariant repair — restores doctor↔room SOT if cloud
-            // applied stale hospital_state.rooms (e.g. legacy non-null
-            // assignedDoctorId values from pre-fix saves).
-            onPullComplete: () => checkAssignmentInvariants().then(() => undefined),
+            // Post-pull chain (runs after every successful pull cycle):
+            //   1. Invariant repair — restores doctor↔room SOT if cloud applied
+            //      stale hospital_state.rooms (legacy non-null assignedDoctorId
+            //      values from pre-fix saves).
+            //   2. Achievement backfill — silently writes any unlocked-but-
+            //      missing rows for pre-existing players who already met
+            //      thresholds before the achievement system shipped. Wrapped
+            //      in try/catch so a Dexie transient failure cannot break the
+            //      pull cycle (per spec scenario "Backfill error does not
+            //      break the pull cycle").
+            onPullComplete: async () => {
+              // Step 1: Reconcile retired-doctor tombstones BEFORE any other
+              // post-pull repair. checkAssignmentInvariants reads the doctor
+              // roster to detect orphan room pointers — reconcile MUST clean
+              // ghost rows first so the repair observes correct state. Per
+              // spec cloud-sync "reconcile SHALL run BEFORE
+              // checkAssignmentInvariants" (fix-doctor-retire-cloud-
+              // resurrection-v2). Wrapped in its own try/catch so a transient
+              // Dexie failure here cannot block achievement / invariant repair
+              // downstream.
+              try {
+                const { cleaned } = await reconcileRetiredDoctors()
+                if (cleaned > 0) {
+                  // eslint-disable-next-line no-console
+                  console.info(
+                    `[retirement-reconcile] cleaned ${cleaned} ghost doctor rows after pull`,
+                  )
+                }
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[retirement-reconcile] failed, will retry on next pull cycle:',
+                  err,
+                )
+              }
+              try {
+                await checkAssignmentInvariants()
+                // Counter backfill MUST run first — achievement-backfill's
+                // buildAchievementStats() reads from monotonicCounters, so
+                // patched values need to be in place before predicate
+                // evaluation. See backfill-monotonic-counters spec D5.
+                await backfillMonotonicCounters()
+                const unlocked = await backfillAchievementsFromCurrentStats()
+                if (unlocked > 0) {
+                  // eslint-disable-next-line no-console
+                  console.info(
+                    `[achievement-backfill] silently unlocked ${unlocked} achievements from current stats`,
+                  )
+                }
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[achievement-backfill] failed, will retry on next pull cycle:',
+                  err,
+                )
+              }
+              // Re-evaluate the daily ticket AFTER the pull reconciles. The
+              // cold-start force-pull overwrites the local `tickets` row (incl.
+              // lastRefreshDay) with the cloud snapshot, rolling back the +1
+              // that App boot's refreshDailyTickets() granted before sync ran.
+              // Re-running here is idempotent on lastRefreshDay (no-ops once
+              // granted for the day); the re-grant is hook-tracked (this fires
+              // after applyingFromCloud resets to false) so it marks dirty and
+              // the existing debounced push persists it to cloud. Per
+              // fix-medexam2-ticket-cloud-clobber recruitment-gacha delta.
+              try {
+                await refreshDailyTickets()
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  '[daily-ticket] post-pull refresh failed, will retry on next pull cycle:',
+                  err,
+                )
+              }
+            },
             // Post-push leaderboard chain — fires after every successful R2
             // bundle push within the same 3s debounce window. Orchestrator
             // skips silently for never-opted-in players; surface its tagged

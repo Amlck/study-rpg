@@ -5,10 +5,12 @@
 //   2. 同步狀態 — last push / last pull / engine status + "重新解決衝突" if paused
 //   3. 資料管理 — Export cloud data (Blob download) + Delete account data (RPC + sign out)
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { getDB } from '@study-rpg/core'
 import { getSupabase } from '../lib/auth/client'
 import { getBackendConfig } from '../lib/sync/backend-config'
 import type { MigrationGateState } from '../lib/sync/migration'
+import { snapshotLocalToBackup } from '../lib/sync/migration'
 import { requestR2Cleanup } from '../lib/sync/r2/account-lifecycle'
 import { exportAllBundlesFromR2 } from '../lib/sync/r2/export'
 import type { SyncStatus } from '../lib/sync/types'
@@ -80,6 +82,7 @@ export function SettingsPanel({
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [bugReportOpen, setBugReportOpen] = useState(false)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   // Tick once per 30s so "X 分鐘前" stays roughly fresh.
   const [, setTick] = useState(0)
   useEffect(() => {
@@ -135,6 +138,76 @@ export function SettingsPanel({
         URL.revokeObjectURL(url)
       },
       '雲端資料已下載',
+    )
+  }
+
+  function triggerImport(): void {
+    const input = importInputRef.current
+    if (!input) return
+    input.value = ''
+    input.click()
+  }
+
+  async function handleImportFile(file: File): Promise<void> {
+    await withBusy(
+      'import',
+      async () => {
+        const text = await file.text()
+        let payload: Record<string, unknown>
+        try {
+          payload = JSON.parse(text) as Record<string, unknown>
+        } catch {
+          throw new Error('檔案不是合法 JSON')
+        }
+        if (payload.schema_version !== 'local-bake-export-v1') {
+          throw new Error(`不支援的 schema 版本：${String(payload.schema_version ?? '未知')}`)
+        }
+        if (payload.app !== 'medexam-tw') {
+          throw new Error(`此 JSON 是給 ${String(payload.app ?? '未知 app')} 用的，無法匯入一階`)
+        }
+        const ok = window.confirm(
+          '⚠ 匯入會覆寫本機目前資料（角色 / 物品 / SRS / 導師背景）。\n\n' +
+            '匯入前會先快照到 localBackup 安全網，但匯入後雲端同步開啟時可能與雲端衝突。\n' +
+            '建議在乾淨裝置或先 export 雲端資料後再匯入。\n\n' +
+            '確定要匯入嗎？',
+        )
+        if (!ok) {
+          throw new Error('已取消')
+        }
+        const db = getDB()
+        await snapshotLocalToBackup(db, 'anonymous-import', 'before-domain-migration-import')
+        await db.transaction(
+          'rw',
+          db.players,
+          db.itemInstances,
+          db.srs,
+          db.mentorBacklog,
+          async () => {
+            await db.players.clear()
+            await db.itemInstances.clear()
+            await db.srs.clear()
+            await db.mentorBacklog.clear()
+            if (payload.player && typeof payload.player === 'object') {
+              await db.players.put(payload.player as Parameters<typeof db.players.put>[0])
+            }
+            if (Array.isArray(payload.itemInstances)) {
+              await db.itemInstances.bulkPut(
+                payload.itemInstances as Parameters<typeof db.itemInstances.bulkPut>[0],
+              )
+            }
+            if (Array.isArray(payload.srsCards)) {
+              await db.srs.bulkPut(payload.srsCards as Parameters<typeof db.srs.bulkPut>[0])
+            }
+            if (payload.mentorBacklog && typeof payload.mentorBacklog === 'object') {
+              await db.mentorBacklog.put(
+                payload.mentorBacklog as Parameters<typeof db.mentorBacklog.put>[0],
+              )
+            }
+          },
+        )
+        window.location.reload()
+      },
+      '匯入完成，重新載入中…',
     )
   }
 
@@ -288,6 +361,25 @@ export function SettingsPanel({
             </button>
             <button
               type="button"
+              className="settings-btn"
+              disabled={busy !== null}
+              onClick={triggerImport}
+              title="從舊網址（fireman333.github.io）匯出的 JSON 匯入到此網域；會先快照 localBackup 再覆寫本機"
+            >
+              {busy === 'import' ? '匯入中…' : '⬆ 匯入本機 JSON（跨網域搬遷）'}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void handleImportFile(file)
+              }}
+            />
+            <button
+              type="button"
               className="settings-btn settings-btn--danger"
               disabled={busy !== null || email === null || status === 'disabled'}
               onClick={handleResetProgress}
@@ -307,6 +399,26 @@ export function SettingsPanel({
           <p className="settings-hint">
             本機 IndexedDB 進度不會因為這些動作被刪除，仍可離線繼續玩。
           </p>
+        </section>
+
+        {/* ─── 神經元主題 companion app (M_3rd) ──────────────── */}
+        <section className="settings-section">
+          <div className="settings-section-title">神經元主題版（neurons-themed companion app）</div>
+          <p className="settings-hint" style={{ marginTop: 0 }}>
+            一階題庫的同主題 reskin — Hebbian「neurons that fire together, wire together」收集養成。
+            資料獨立、不影響此存檔；可以併行玩或當作換口味。
+          </p>
+          <div className="settings-actions">
+            <a
+              href="https://med-study-rpg.com/neurons/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-btn settings-btn--secondary"
+              style={{ textDecoration: 'none' }}
+            >
+              🧠 前往 neurons-tw（新分頁）
+            </a>
+          </div>
         </section>
 
         {/* ─── 回報問題 / 建議 (M4.5) ─────────────────────────── */}

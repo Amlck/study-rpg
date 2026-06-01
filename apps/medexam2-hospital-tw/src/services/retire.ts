@@ -21,10 +21,21 @@ export type RetireResult =
 
 export async function retireDoctor(doctorId: string): Promise<RetireResult> {
   const db = getHospitalDB()
-  return db.transaction(
+
+  // Achievement Phase 7 hook (retire path covers `services/training.ts`
+  // counterpart from tasks.md 7.6 — retire affects p1DoctorsRetired counter
+  // which the fortune-composite-p1「不離不棄」predicate reads).
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    '../lib/achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import('./achievement-reward')
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  const result: RetireResult = await db.transaction(
     'rw',
     [db.doctors, db.gameCounters, db.retirementLog],
-    async () => {
+    async (): Promise<RetireResult> => {
       const doctor = await db.doctors.get(doctorId)
       if (!doctor) return { kind: 'not-found', doctorId } as RetireResult
 
@@ -42,17 +53,34 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
         await db.gameCounters.put({ ...counters, revenue: counters.revenue + refund })
       }
 
-      // Append retirementLog row
+      // Append retirementLog row.
+      // _updatedAt explicitly set here (not just relying on the Dexie creating
+      // hook auto-stamp) so the first cloud LWW push has a deterministic
+      // timestamp anchored to the retire moment. Added v19 by
+      // fix-doctor-retire-cloud-resurrection-v2.
+      const now = Date.now()
       const logRow: RetirementLogRow = {
-        retiredAt: Date.now(),
+        retiredAt: now,
         doctorId: doctor.id,
         subjectId: doctor.subjectId,
         rarity: doctor.rarity,
         refund,
+        _updatedAt: now,
       }
       await db.retirementLog.add(logRow)
 
-      return { kind: 'success', doctorId, refund, roomFreed }
+      return { kind: 'success', doctorId, refund, roomFreed } as const
     },
   )
+
+  // Achievement check post-tx
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[retire] achievement check failed:', err)
+  }
+
+  return result
 }

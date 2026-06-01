@@ -47,6 +47,8 @@ const M2_BUNDLE_SPEC: BundleSpec = {
     { table: 'targeted_tickets', pkColumns: ['id'] },
     { table: 'targeted_ticket_history', pkColumns: ['ticket_id', 'event'] },
     { table: 'hospital_monotonic_counters', pkColumns: [] },               // singleton
+    // fix-doctor-retire-cloud-resurrection-v2: composite pk (user_id, doctor_id) on cloud
+    { table: 'retirement_log', pkColumns: ['doctor_id'] },
   ],
 }
 

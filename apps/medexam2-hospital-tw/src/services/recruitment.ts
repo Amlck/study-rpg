@@ -55,38 +55,77 @@ export async function attemptRoll(subject: Subject): Promise<RollOutcome> {
   }
 
   const db = getHospitalDB()
-  return db.transaction('rw', db.tickets, db.gachaStats, db.doctors, async () => {
-    const ticketsRow = await db.tickets.get('global')
-    if (!ticketsRow || ticketsRow.available < 1) {
-      return { ok: false, reason: 'no-tickets' } as const
-    }
 
-    const stats = await getGachaStats()
-    const result = rollGacha(
-      { tiers: RECRUITMENT_WEIGHTS, pityRules: RECRUITMENT_PITY_RULES },
-      stats,
-    )
-    const rarity = result.tier as Rarity
-    const seq = (await db.doctors.where('subjectId').equals(subject.id).count()) + 1
-    const doctor: DoctorRow = {
-      id: randomId(),
-      subjectId: subject.id,
-      rarity,
-      powerMultiplier: RARITY_POWER_MULTIPLIER[rarity],
-      name: `${subject.displayName} ${DEFAULT_DOCTOR_TITLE_BY_RARITY[rarity]} #${seq}`,
-      spriteKey: resolveSpriteKey(subject.id, rarity, THEME_PIXEL_HOSPITAL.sprites),
-      obtainedAt: Date.now(),
-      assignedRoom: null,
-      pityCounter: 0,
-    }
+  // Capture pre-action stats for achievement diff. Synthetic Player — 二階
+  // has no Player aggregate. Phase 7 add-achievement-system hook.
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    '../lib/achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import('./achievement-reward')
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
 
-    await db.tickets.put({ ...ticketsRow, available: ticketsRow.available - 1 })
-    await db.gachaStats.put({
-      id: 'global',
-      totalRolls: result.newStats.totalRolls,
-      rollsSinceLast: { ...result.newStats.rollsSinceLast },
-    })
-    await db.doctors.put(doctor)
-    return { ok: true, doctor, wasPity: result.wasPity } as const
-  })
+  const result = await db.transaction(
+    'rw',
+    [db.tickets, db.gachaStats, db.doctors, db.monotonicCounters],
+    async () => {
+      const ticketsRow = await db.tickets.get('global')
+      if (!ticketsRow || ticketsRow.available < 1) {
+        return { ok: false, reason: 'no-tickets' } as const
+      }
+
+      const stats = await getGachaStats()
+      const rollResult = rollGacha(
+        { tiers: RECRUITMENT_WEIGHTS, pityRules: RECRUITMENT_PITY_RULES },
+        stats,
+      )
+      const rarity = rollResult.tier as Rarity
+      const seq = (await db.doctors.where('subjectId').equals(subject.id).count()) + 1
+      const doctor: DoctorRow = {
+        id: randomId(),
+        subjectId: subject.id,
+        rarity,
+        powerMultiplier: RARITY_POWER_MULTIPLIER[rarity],
+        name: `${subject.displayName} ${DEFAULT_DOCTOR_TITLE_BY_RARITY[rarity]} #${seq}`,
+        spriteKey: resolveSpriteKey(subject.id, rarity, THEME_PIXEL_HOSPITAL.sprites),
+        obtainedAt: Date.now(),
+        assignedRoom: null,
+        pityCounter: 0,
+      }
+
+      await db.tickets.put({ ...ticketsRow, available: ticketsRow.available - 1 })
+      await db.gachaStats.put({
+        id: 'global',
+        totalRolls: rollResult.newStats.totalRolls,
+        rollsSinceLast: { ...rollResult.newStats.rollsSinceLast },
+      })
+      await db.doctors.put(doctor)
+
+      // ─── Achievement monotonic counters (v15 add-achievement-system) ──
+      const mono = await db.monotonicCounters.get('singleton')
+      if (mono) {
+        await db.monotonicCounters.put({
+          ...mono,
+          totalDoctorsRecruited: (mono.totalDoctorsRecruited ?? 0) + 1,
+          totalP1DoctorsRecruited:
+            rarity === 'P1'
+              ? (mono.totalP1DoctorsRecruited ?? 0) + 1
+              : (mono.totalP1DoctorsRecruited ?? 0),
+        })
+      }
+
+      return { ok: true, doctor, wasPity: rollResult.wasPity } as const
+    },
+  )
+
+  // Achievement check post-tx (Phase 7 add-achievement-system)
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[recruitment] achievement check failed:', err)
+  }
+
+  return result
 }

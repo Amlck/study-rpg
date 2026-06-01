@@ -19,10 +19,22 @@ export async function trainDoctor(
   opts: { successRateMultiplier?: number } = {},
 ): Promise<TrainingAttemptResult> {
   const db = getHospitalDB()
-  return db.transaction(
+
+  // Achievement Phase 7 hook: training success can upgrade a doctor to P1,
+  // which the recruit-composite-p1 + recruit-first-p1-doctor predicates
+  // care about (totalP1DoctorsRecruited is recruitment-only by design, but
+  // allP1DoctorsSpecialtyMatched reads live doctors table — affected).
+  const { buildAchievementStats, buildSyntheticPlayer } = await import(
+    '../lib/achievement-stats'
+  )
+  const { checkAndUnlockAchievements } = await import('./achievement-reward')
+  const prevStats = await buildAchievementStats()
+  const synthPlayer = buildSyntheticPlayer()
+
+  const result: TrainingAttemptResult = await db.transaction(
     'rw',
-    [db.doctors, db.gameCounters, db.trainingHistory],
-    async () => {
+    [db.doctors, db.gameCounters, db.trainingHistory, db.monotonicCounters],
+    async (): Promise<TrainingAttemptResult> => {
       const doctor = await db.doctors.get(doctorId)
       if (!doctor) {
         return {
@@ -75,7 +87,30 @@ export async function trainDoctor(
       }
       await db.trainingHistory.add(historyRow)
 
+      // ─── Achievement counter (v15): bump totalP1DoctorsRecruited if
+      // training success crossed into P1 rarity ──────────────────────────
+      if (result.kind === 'success' && result.toRarity === 'P1') {
+        const mono = await db.monotonicCounters.get('singleton')
+        if (mono) {
+          await db.monotonicCounters.put({
+            ...mono,
+            totalP1DoctorsRecruited: (mono.totalP1DoctorsRecruited ?? 0) + 1,
+          })
+        }
+      }
+
       return result
     },
   )
+
+  // Achievement check post-tx
+  try {
+    const nextStats = await buildAchievementStats()
+    await checkAndUnlockAchievements(synthPlayer, prevStats, synthPlayer, nextStats)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[training] achievement check failed:', err)
+  }
+
+  return result
 }

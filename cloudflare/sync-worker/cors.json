@@ -4,6 +4,7 @@
       "allowed": {
         "origins": [
           "https://fireman333.github.io",
+          "https://med-study-rpg.com",
           "http://localhost:5173",
           "http://localhost:4173"
         ],

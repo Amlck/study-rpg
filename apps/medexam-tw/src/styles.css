@@ -785,11 +785,77 @@
 .quiz-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
   margin-top: 4px;
+  flex-wrap: wrap;
 }
 .quiz-actions button {
+  height: 46px;
   font-size: 16px;
-  padding: 10px 24px;
+  padding: 0 24px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* ─── 「太簡單」/「我亂猜的」 opt-in quality buttons (correct-answer only) ─── */
+.quiz-actions .quiz-quality-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Same height as the default `.quiz-actions button` (下一題) so the 2 chips
+     + 下一題 line up at the same baseline. */
+  height: 46px;
+  padding: 0 18px;
+  font-size: 15px;
+  line-height: 1;
+  background: var(--bg-cream);
+  color: var(--frame-wood-dark);
+  border: 2px solid var(--frame-wood-dark);
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--frame-wood-dark);
+  transition: transform 80ms, box-shadow 80ms, background 160ms;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+}
+.quiz-actions .quiz-quality-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--frame-wood-dark);
+}
+.quiz-actions .quiz-quality-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--frame-wood-dark);
+}
+.quiz-actions .quiz-quality-btn.is-active {
+  background: var(--accent-gold, #e3b341);
+  font-weight: 600;
+}
+.quiz-actions .quiz-quality-guessed.is-active {
+  background: #f0b86e;
+}
+
+@media (max-width: 600px) {
+  .quiz-actions {
+    gap: 6px;
+  }
+  .quiz-actions .quiz-quality-btn {
+    padding: 0 10px;
+    font-size: 13px;
+    gap: 4px;
+  }
+}
+@media (max-width: 420px) {
+  .quiz-actions .quiz-quality-btn {
+    padding: 0 8px;
+    font-size: 12px;
+  }
 }
 
 .quiz-summary {
@@ -2833,3 +2899,70 @@
   .sync-error-toast { max-width: calc(100vw - 16px); }
 }
 
+
+/* Domain migration banner (bake-period only — gated by VITE_DEPLOY_TARGET=gh-pages).
+   Distinct from .migration-banner (R2 backend migration). */
+.domain-migration-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Reserve 280px right padding so banner CTAs don't slide under the
+     position: fixed `.header-controls` chip (AuthButton + SyncStatusChip,
+     ~250px wide, anchored top-right with z-index 100). Without this the
+     dismiss button + Export CTA are hidden behind the auth chip on
+     desktop widths. */
+  padding: 10px 280px 10px 14px;
+  background: linear-gradient(90deg, #f3d35a 0%, #f6c84d 100%);
+  color: #2a1f00;
+  border-bottom: 1px solid #c89b1c;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.domain-migration-banner__msg {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.domain-migration-banner__msg strong {
+  font-weight: 700;
+}
+.domain-migration-banner__cta,
+.domain-migration-banner__export,
+.domain-migration-banner__dismiss {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #2a1f00;
+  background: rgba(255, 255, 255, 0.6);
+  color: #2a1f00;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.domain-migration-banner__cta:hover,
+.domain-migration-banner__export:hover,
+.domain-migration-banner__dismiss:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+.domain-migration-banner__cta {
+  font-weight: 600;
+}
+.domain-migration-banner__export:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.domain-migration-banner__dismiss {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.domain-migration-banner__error {
+  flex-basis: 100%;
+  color: #7a1a1a;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .domain-migration-banner { font-size: 13px; padding: 8px 12px; gap: 8px; }
+  .domain-migration-banner__msg { flex-basis: 100%; }
+}

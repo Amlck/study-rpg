@@ -19,6 +19,7 @@ export {
 } from './lib/loot'
 export {
   rollGacha,
+  rollGachaWithFloor,
   initialGachaStats,
   type GachaTier,
   type PityRule,
@@ -74,6 +75,12 @@ export {
   listLockedCosmetics,
 } from './lib/cosmetic'
 export {
+  checkAchievementUnlocks,
+  listUnlockedAchievements,
+  listLockedAchievements,
+  visibleAchievements,
+} from './lib/achievement'
+export {
   STREAK_CHECK_IN_THRESHOLD,
   STREAK_MULTIPLIER_CAP_DAYS,
   getTaipeiToday,
@@ -89,10 +96,17 @@ export {
   newCard,
   reviewCard,
   reviewCardBinary,
+  reviewCardEasy,
+  reviewCardGuessed,
+  reviewCardBinaryEasy,
+  reviewCardBinaryGuessed,
   dueCards,
   WRONG_INTERVAL_MULTIPLIER,
   WRONG_EASE_MULTIPLIER,
   STANDARD_INITIAL_INTERVALS,
+  EASY_EASE_MULTIPLIER,
+  EASY_INTERVAL_MULTIPLIER,
+  GUESSED_RESET_INTERVAL,
   SRS_DAILY_CAP,
   MAX_INTERVAL_DAYS,
   type BinaryReviewInput,

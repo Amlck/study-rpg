@@ -21,6 +21,7 @@ import {
   incrementAffinity,
   type DoctorRow,
 } from '../db/schema'
+import { tierLabel } from '../lib/tier-labels'
 import { attemptRoll, type RollOutcome } from '../services/recruitment'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
@@ -42,6 +43,8 @@ import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
 import { TargetedTicketSection } from '../components/TargetedTicketSection'
+import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
+import { QuizHotkeysAnnouncementBanner } from '../components/QuizHotkeysAnnouncementBanner'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
 
@@ -68,6 +71,8 @@ export function HomePage() {
   const mono = useLiveQuery(() => db.monotonicCounters.get('singleton'), [])
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const allDoctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
+  // add-hospital-equipment-medexam2 (2026-05-24): T3 → T4 equipment gate display
+  const ownedEquipment = useLiveQuery(() => db.hospitalEquipment.toArray(), []) ?? []
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
@@ -148,23 +153,27 @@ export function HomePage() {
           <Link to="/hospital" className="nav-link">
             醫院 →
           </Link>
-          <Link to="/training" className="nav-link">
-            進修 →
+          <Link to="/roster" className="nav-link">
+            醫師 →
           </Link>
           <Link to="/fate-cards" className="nav-link">
             命運 →
           </Link>
-          <Link to="/roster" className="nav-link">
-            醫師 →
-          </Link>
-          <Link to="/bookmarks" className="nav-link">
-            收藏 →
+          <Link to="/achievements" className="nav-link">
+            成就 →
           </Link>
           <Link to="/leaderboard" className="nav-link">
             排名 →
           </Link>
+          <Link to="/bookmarks" className="nav-link">
+            收藏 →
+          </Link>
         </div>
       </header>
+
+      <QuizHotkeysAnnouncementBanner />
+
+      <LeaderboardPromoBanner />
 
       <div className="ticket-counter-row">
         <span
@@ -190,7 +199,7 @@ export function HomePage() {
         return (
           <>
             <p className="home-tier-line">
-              醫院：<strong>{tier}</strong>
+              醫院：<strong>{tierLabel(tier)}</strong>
               {threshold !== null && next ? (
                 <>
                   {'　'}
@@ -198,7 +207,7 @@ export function HomePage() {
                   {' / '}
                   {threshold.toLocaleString('zh-TW')}
                   {' → '}
-                  {next})
+                  {tierLabel(next)})
                 </>
               ) : (
                 <> <EmojiIcon char="⭐" size={16} /> 已達頂峰</>
@@ -215,6 +224,15 @@ export function HomePage() {
                     {' 至少 1 位 P1'}
                   </>
                 )}
+              </p>
+            )}
+            {tier === '醫學中心' && (
+              <p className="home-tier-line home-tier-line--equipment">
+                T4 設備門檻：
+                <strong>
+                  {ownedEquipment.filter((e) => e.level >= 1).length} / 3
+                </strong>
+                {' 種設備已安裝'}
               </p>
             )}
           </>

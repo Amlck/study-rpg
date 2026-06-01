@@ -85,7 +85,7 @@ export const TUTORIAL_STEPS: ReadonlyArray<TutorialStep> = Object.freeze([
   {
     id: 'done',
     title: '基本操作完成',
-    body: '你已掌握基本操作，繼續念書解鎖更多功能：醫師進修、設施升級、特殊事件、命運卡都在等你。',
+    body: '你已掌握基本操作。繼續念書解鎖更多功能：醫師進修、設施升級、命運卡。醫院畫面下方可花營收買「設備」（CT / MRI / 達文西 等 10 件）加成看診效率與聲望；首頁「🏆 成就」可看 4 階段勳章解鎖進度；「🏆 排名」可選擇公開到全二階玩家排行榜。隨時點右上「？」可查所有機制說明。',
     completeOn: 'click-next',
   },
 ])
@@ -97,6 +97,10 @@ export type TutorialSurfaceId =
   | 'hospital'
   | 'fate-cards'
   | 'event-first'
+  | 'equipment'
+  | 'achievements'
+  | 'leaderboard'
+  | 'bookmarks'
 
 export interface SurfaceHint {
   id: TutorialSurfaceId
@@ -121,7 +125,7 @@ export const SURFACE_HINTS: ReadonlyArray<SurfaceHint> = Object.freeze([
   {
     id: 'hospital',
     title: '房間管理',
-    body: '點房間 → 從清單選一位醫師指派（同科加成最大）。Facility 升級放大該房間 throughput；區域醫院以上可花錢擴建。場景下方名牌牆顯示 assigned 醫師依房間分組；想改名到上方「醫師」tab → 卡片右上的 ✏️。',
+    body: '點房間 → 從清單選一位醫師指派（同科加成最大）。Facility 升級放大該房間 throughput；區域以上可花錢擴建。場景下方名牌牆顯示 assigned 醫師依房間分組；想改名到上方「醫師」tab → 卡片右上的 ✏️。',
   },
   {
     id: 'fate-cards',
@@ -132,6 +136,26 @@ export const SURFACE_HINTS: ReadonlyArray<SurfaceHint> = Object.freeze([
     id: 'event-first',
     title: '特殊事件',
     body: '正向事件直接接受；負面事件（如醫療糾紛）通常可選「私下和解」付營收，或「接受懲處」扣聲望。',
+  },
+  {
+    id: 'equipment',
+    title: '醫院設備（CT / MRI / 達文西 等 10 件）',
+    body: '花營收買設備可加成「聲望」與「看診效率」（看診效率 = 每分鐘看的病患數，連帶提升營收 + 被動聲望進帳）。L1/L2/L3 各一筆成本，加成 additive。安裝 ≥ 3 件不同設備也是升上「國家級教學醫院」的條件之一。',
+  },
+  {
+    id: 'achievements',
+    title: '成就 — 4 階段勳章',
+    body: '共 ~42 條成就，分 7 類（學習 / 答題 / 招募 / 經營 / 時運 / 隱藏 / 科別精通）× 4 tier（P1 💎 / P2 🥇 / P3 🥈 / P4 🥉）。解鎖後可獲得稱號（在排行榜設定挑選顯示）、勳章（出現在排行榜你的名字旁）。P1 鑽石需 composite 條件，不是每個人都拿得到。',
+  },
+  {
+    id: 'leaderboard',
+    title: '排名 — opt-in 全二階對位',
+    body: 'Opt-in（同意後才公開）— 公開 5 個欄位：醫院 tier / 聲望 / 醫師數 / 累積唸書時間 / 你設定的暱稱（2–12 字元）。可隨時關閉（紀錄保留）或從「重置此帳號進度」徹底刪除（暱稱重新可用）。',
+  },
+  {
+    id: 'bookmarks',
+    title: '我的題目 — ⭐ 收藏 + ❌ 錯題',
+    body: '答題畫面右上的「⭐」可加入手動收藏；錯題會自動進「❌ 錯題」tab。兩個 tab 都可匯出 Markdown 到 RemNote / Anki 加工複習。⭐ 收藏會雲端同步、跨裝置一致。',
   },
 ])
 

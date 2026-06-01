@@ -1,7 +1,8 @@
-// Hospital leaderboard page — Top 100 list + 4 filter tabs + my-rank chip.
+// Hospital leaderboard page — Top 100 list + 5 filter tabs + my-rank chip.
 //
 // Spec: openspec/changes/add-hospital-leaderboard/specs/hospital-leaderboard/spec.md
 //        §Requirement: Four filter tabs for ranking criteria
+//          (5th tab "correct" added by add-hospital-leaderboard-correct-count-filter)
 //        §Requirement: Top 100 list plus my-rank chip
 //        §Requirement: Hourly KV cache refresh (last-updated-at timestamp)
 //        §Requirement: Privacy and integrity disclosures (footer)
@@ -17,7 +18,7 @@
 //   - my-rank chip for opted-in players outside top 100 (needs Worker
 //     /my-rank endpoint — Phase 4 follow-up)
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   LEADERBOARD_FILTERS,
@@ -28,14 +29,18 @@ import {
 } from '@study-rpg/core'
 import { useAuth } from '../lib/auth/AuthContext'
 import { fetchLeaderboardSnapshot, upsertLeaderboard } from '../lib/leaderboard/api'
+import { BadgeSprite } from '../components/BadgeSprite'
+import type { AchievementCategory, AchievementTier } from '@study-rpg/core'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { LeaderboardOptInModal } from '../components/LeaderboardOptInModal'
+import { SurfaceHint } from '../components/SurfaceHint'
 import {
   getLeaderboardProfile,
   markDismissedForever,
   markOptedIn,
 } from '../services/leaderboard-profile'
 import { buildLeaderboardAttributes } from '../lib/sync/leaderboard'
+import { tierLabelFromNumber } from '../lib/tier-labels'
 
 type SnapshotState =
   | { kind: 'loading' }
@@ -152,6 +157,8 @@ export function LeaderboardPage() {
         </div>
       </header>
 
+      <SurfaceHint surfaceId="leaderboard" />
+
       <section className="filter-bar" aria-label="排名類別篩選">
         <div className="filter-bar__group">
           <span className="filter-bar__label">類別</span>
@@ -229,11 +236,18 @@ function LeaderboardBody({ snapshotState, activeFilter, currentUserId }: BodyPro
       {rows.length === 0 ? (
         <p className="leaderboard-status">期待第一個上榜的玩家！</p>
       ) : (
-        <LeaderboardList
-          rows={rows}
-          activeFilter={activeFilter}
-          currentUserId={currentUserId}
-        />
+        <>
+          <LeaderboardList
+            rows={rows}
+            activeFilter={activeFilter}
+            currentUserId={currentUserId}
+          />
+          <MyRowSticky
+            rows={rows}
+            activeFilter={activeFilter}
+            currentUserId={currentUserId}
+          />
+        </>
       )}
     </>
   )
@@ -277,7 +291,7 @@ function MyRankChip({ rows, currentUserId, total }: MyRankChipProps) {
   )
 }
 
-// ─── Top-100 list ────────────────────────────────────────────────────────────
+// ─── Top-100 tabular grid ────────────────────────────────────────────────────
 
 interface ListProps {
   rows: LeaderboardRow[]
@@ -285,40 +299,213 @@ interface ListProps {
   currentUserId: string | undefined
 }
 
-function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
-  // Precompute per-row primary stat shown depending on active filter — the
-  // other 3 stats render in secondary positions for context.
-  const primaryStatFor = useMemo(
-    () =>
-      ({
-        composite: (r: LeaderboardRow) => `T${r.hospital_tier}・聲望 ${r.reputation}`,
-        reputation: (r: LeaderboardRow) => `聲望 ${r.reputation}`,
-        doctor: (r: LeaderboardRow) => `醫師 ${r.doctor_count}`,
-        study: (r: LeaderboardRow) => `${r.total_study_min} 分鐘`,
-      }) satisfies Record<LeaderboardFilter, (r: LeaderboardRow) => string>,
-    [],
-  )
+type CellKey = 'rank' | 'nickname' | 'tier' | 'reputation' | 'doctors' | 'study' | 'correct'
 
+function isPrimaryFor(filter: LeaderboardFilter, cell: CellKey): boolean {
+  switch (filter) {
+    case 'composite':
+      return cell === 'tier' || cell === 'reputation'
+    case 'reputation':
+      return cell === 'reputation'
+    case 'doctor':
+      return cell === 'doctors'
+    case 'study':
+      return cell === 'study'
+    case 'correct':
+      return cell === 'correct'
+  }
+}
+
+function cellClass(cell: CellKey, filter: LeaderboardFilter): string {
+  return `leaderboard-cell leaderboard-cell--${cell}${
+    isPrimaryFor(filter, cell) ? ' leaderboard-cell--primary' : ''
+  }`
+}
+
+const MEDAL_BY_RANK: Record<1 | 2 | 3, { char: string; title: string }> = {
+  1: { char: '🥇', title: '第一名' },
+  2: { char: '🥈', title: '第二名' },
+  3: { char: '🥉', title: '第三名' },
+}
+
+function LeaderboardList({ rows, activeFilter, currentUserId }: ListProps) {
   return (
-    <ol className="leaderboard-list">
+    <ol className="leaderboard-list" role="list" data-active-filter={activeFilter}>
+      <li className="leaderboard-row leaderboard-row--header" role="row" aria-hidden="true">
+        <span className={cellClass('rank', activeFilter)}>排名</span>
+        <span className={cellClass('nickname', activeFilter)}>玩家</span>
+        <span className={cellClass('tier', activeFilter)}>等級</span>
+        <span className={cellClass('reputation', activeFilter)}>聲望</span>
+        <span className={cellClass('doctors', activeFilter)}>醫師</span>
+        <span className={cellClass('study', activeFilter)}>唸書</span>
+        <span className={cellClass('correct', activeFilter)}>答對</span>
+      </li>
       {rows.map((row, idx) => {
+        const rank = idx + 1
         const isMe = row.user_id === currentUserId
+        const medal = rank <= 3 ? MEDAL_BY_RANK[rank as 1 | 2 | 3] : null
+        const rowClasses = [
+          'leaderboard-row',
+          isMe ? 'leaderboard-row--me' : '',
+          rank === 1 ? 'leaderboard-row--rank-1' : '',
+          rank === 2 ? 'leaderboard-row--rank-2' : '',
+          rank === 3 ? 'leaderboard-row--rank-3' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
         return (
-          <li
-            key={row.user_id}
-            className={`leaderboard-list__row${isMe ? ' leaderboard-list__row--me' : ''}`}
-          >
-            <span className="leaderboard-list__rank">#{idx + 1}</span>
-            <span className="leaderboard-list__nickname">{row.nickname}</span>
-            <span className="leaderboard-list__primary-stat">
-              {primaryStatFor[activeFilter](row)}
+          <li key={row.user_id} className={rowClasses} role="row">
+            <span className={cellClass('rank', activeFilter)} aria-label={`第 ${rank} 名`}>
+              {medal ? (
+                <EmojiIcon char={medal.char} title={medal.title} size={28} />
+              ) : (
+                <span className="leaderboard-rank-number">#{rank}</span>
+              )}
             </span>
-            <span className="leaderboard-list__secondary-stats">
-              T{row.hospital_tier}・聲 {row.reputation}・醫 {row.doctor_count}・讀 {row.total_study_min}m
+            <span className={cellClass('nickname', activeFilter)}>
+              <NicknameWithBadges
+                nickname={row.nickname}
+                badgesCsv={row.badges_csv}
+                subjectMasteryCount={row.subject_mastery_count}
+              />
             </span>
+            <span className={cellClass('tier', activeFilter)}>{tierLabelFromNumber(row.hospital_tier)}</span>
+            <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
+            <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
+            <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
+            <span className={cellClass('correct', activeFilter)}>{row.total_correct ?? 0}</span>
           </li>
         )
       })}
     </ol>
+  )
+}
+
+// ─── Badge inline renderer (per add-achievement-system, hospital-leaderboard spec) ──
+
+const CATEGORY_ORDER: readonly AchievementCategory[] = [
+  'study',
+  'quiz',
+  'recruit',
+  'hospital',
+  'fortune',
+  'hidden',
+]
+
+function parseBadgesCsv(
+  csv: string | undefined,
+): Array<{ category: AchievementCategory; tier: AchievementTier }> {
+  if (!csv) return []
+  const result: Array<{ category: AchievementCategory; tier: AchievementTier }> = []
+  for (const pair of csv.split(',')) {
+    const [cat, tier] = pair.split(':')
+    if (!cat || !tier) continue
+    if (!CATEGORY_ORDER.includes(cat as AchievementCategory)) continue
+    if (!['P1', 'P2', 'P3', 'P4'].includes(tier)) continue
+    result.push({ category: cat as AchievementCategory, tier: tier as AchievementTier })
+  }
+  // Sort to match CATEGORY_ORDER for stable visual layout
+  result.sort(
+    (a, b) =>
+      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category),
+  )
+  return result
+}
+
+function NicknameWithBadges({
+  nickname,
+  badgesCsv,
+  subjectMasteryCount,
+}: {
+  nickname: string
+  badgesCsv?: string
+  subjectMasteryCount?: number
+}) {
+  const badges = parseBadgesCsv(badgesCsv)
+  const subjectCount = subjectMasteryCount ?? 0
+  return (
+    <span className="nickname-with-badges">
+      <span className="nickname-with-badges__name">{nickname}</span>
+      {badges.length > 0 && (
+        <span className="nickname-with-badges__badges" aria-hidden={false}>
+          {badges.map((b) => (
+            <BadgeSprite
+              key={`${b.category}:${b.tier}`}
+              category={b.category}
+              tier={b.tier}
+              size={20}
+            />
+          ))}
+        </span>
+      )}
+      {subjectCount > 0 && (
+        <span
+          className="nickname-with-badges__subject-chip"
+          data-tooltip={`已寫完 ${subjectCount} 科`}
+          aria-label={`科別精通 ${subjectCount} / 14`}
+        >
+          🩺 {subjectCount}/14
+        </span>
+      )}
+    </span>
+  )
+}
+
+// ─── My-row sticky duplicate (visible only when inline row is offscreen) ─────
+
+function MyRowSticky({ rows, activeFilter, currentUserId }: ListProps) {
+  // Default to `true` so the sticky stays hidden on first paint, before the
+  // observer's initial callback fires. Avoids a flash-of-sticky on mount when
+  // the user IS in viewport.
+  const [inlineVisible, setInlineVisible] = useState(true)
+
+  useEffect(() => {
+    if (!currentUserId) return
+    const el = document.querySelector('.leaderboard-list .leaderboard-row--me')
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setInlineVisible(entry.intersectionRatio > 0),
+      { threshold: 0 },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [currentUserId, rows, activeFilter])
+
+  if (!currentUserId) return null
+  const myIdx = rows.findIndex((r) => r.user_id === currentUserId)
+  if (myIdx < 0) return null
+  if (inlineVisible) return null
+
+  const row = rows[myIdx]
+  const rank = myIdx + 1
+  const medal = rank <= 3 ? MEDAL_BY_RANK[rank as 1 | 2 | 3] : null
+
+  return (
+    <div
+      className="leaderboard-row leaderboard-row--me leaderboard-row--me-sticky"
+      role="presentation"
+      aria-hidden="true"
+      data-active-filter={activeFilter}
+    >
+      <span className={cellClass('rank', activeFilter)}>
+        {medal ? (
+          <EmojiIcon char={medal.char} title={medal.title} size={28} />
+        ) : (
+          <span className="leaderboard-rank-number">#{rank}</span>
+        )}
+      </span>
+      <span className={cellClass('nickname', activeFilter)}>
+        <NicknameWithBadges
+          nickname={row.nickname}
+          badgesCsv={row.badges_csv}
+          subjectMasteryCount={row.subject_mastery_count}
+        />
+      </span>
+      <span className={cellClass('tier', activeFilter)}>{tierLabelFromNumber(row.hospital_tier)}</span>
+      <span className={cellClass('reputation', activeFilter)}>{row.reputation}</span>
+      <span className={cellClass('doctors', activeFilter)}>{row.doctor_count}</span>
+      <span className={cellClass('study', activeFilter)}>{row.total_study_min}m</span>
+      <span className={cellClass('correct', activeFilter)}>{row.total_correct ?? 0}</span>
+    </div>
   )
 }

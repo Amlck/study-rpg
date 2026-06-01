@@ -1,0 +1,22 @@
+{
+  "name": "@study-rpg/theme-pixel-neurons",
+  "version": "0.0.1",
+  "description": "Pixel-art theme pack scaffold for the neurons-themed (Long-term potentiation / Hebbian) reskin of study-rpg. Linnean phylogenetic taxonomy visual (4 NT branches), cute pixel neuron sprites, GBA-era aesthetic. Catalog content + sprite assets deferred to wire-neurons-content-and-theme and generate-neurons-sprites.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles/*": "./styles/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@study-rpg/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
 import {
   TIER_ROOMS,
   type HospitalTier,
   type Room,
 } from '@study-rpg/content-medexam2-tw'
 import { ensureSeed, getHospitalDB, refreshDailyTickets, type GameCountersRow } from './db/schema'
+import { getFontMode, DEFAULT_FONT_MODE } from './services/font-mode'
+import { seedLeaderboardProfileFromServer } from './services/leaderboard-profile'
 import { HomePage } from './pages/HomePage'
 import { DoctorRoster } from './pages/DoctorRoster'
 import { Hospital } from './pages/Hospital'
 import { StudySessionPage } from './pages/StudySessionPage'
-import { TrainingPage } from './pages/TrainingPage'
 import { FateCardPage } from './pages/FateCardPage'
 import { BookmarksPage } from './pages/BookmarksPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
+import { CustomTooltipHost } from './components/CustomTooltipHost'
+import { AchievementsPage } from './pages/AchievementsPage'
 import { useStudySessionTick } from './lib/tick'
 import { checkAssignmentInvariants } from './lib/assignment'
 import { useSync } from './lib/sync/useSync'
 import { AuthButton } from './components/AuthButton'
 import { MigrationUploadPrompt } from './components/MigrationUploadPrompt'
 import { MigrationBanner } from './components/MigrationBanner'
+import { DomainMigrationBanner } from './components/DomainMigrationBanner'
 import { getSupabase } from './lib/auth/client'
 import { getBackendConfig } from './lib/sync/backend-config'
 import { ConflictChooserModal } from './components/ConflictChooserModal'
@@ -27,8 +32,12 @@ import { AccountSwitchPrompt } from './components/AccountSwitchPrompt'
 import { SyncStatusChip } from './components/SyncStatusChip'
 import { SyncErrorToast } from './components/SyncErrorToast'
 import { V6MigrationModal } from './components/V6MigrationModal'
+import { GraceToastContainer } from './components/GraceToastContainer'
 import { TutorialOnboarding } from './components/TutorialOnboarding'
 import { MilestoneTipToast } from './components/MilestoneTipToast'
+import { AchievementUnlockToast } from './components/AchievementUnlockToast'
+import { AchievementUnlockModal } from './components/AchievementUnlockModal'
+import { useAchievementToasts } from './lib/useAchievementToasts'
 import { HelpMenu } from './components/HelpMenu'
 import { EventModal } from './components/EventModal'
 import { EventToast } from './components/EventToast'
@@ -40,7 +49,15 @@ import {
   type ToastEventOutcome,
 } from '@study-rpg/content-medexam2-tw'
 import { useAuth } from './lib/auth/AuthContext'
-import type { TickEventToastInfo } from './lib/tick'
+import {
+  hospitalEventToastQueue,
+  type HospitalToastEntry,
+} from './lib/hospital-event-toast-queue'
+import {
+  isPlayerContentRoute,
+  maybeRollNonReadingEvent,
+} from './services/non-reading-event-trigger'
+import { useLocation } from 'react-router-dom'
 
 const TIER_DELTA_LABEL: Record<Room['type'], string> = {
   outpatient: '門診',
@@ -61,6 +78,28 @@ function describeTierJump(prevTier: HospitalTier, newTier: HospitalTier): string
     if (delta[type] > 0) parts.push(`+${delta[type]} ${TIER_DELTA_LABEL[type]}`)
   }
   return `🎉 升級為 ${newTier}！${parts.join(' ')}`
+}
+
+/**
+ * Hook B for `rewire-hospital-events-to-non-reading-trigger`:
+ * fires `maybeRollNonReadingEvent('nav')` when the pathname changes and the
+ * new path is a player-content route. Lives inside `<HashRouter>` so
+ * `useLocation` resolves correctly. Skips initial mount (no synthetic nav
+ * roll on cold open) and skips same-path re-renders.
+ */
+function NonReadingNavListener(): null {
+  const location = useLocation()
+  const prevPathRef = useRef<string | null>(null)
+  useEffect(() => {
+    const current = location.pathname
+    const prev = prevPathRef.current
+    prevPathRef.current = current
+    if (prev === null) return // initial mount — not a nav event
+    if (prev === current) return
+    if (!isPlayerContentRoute(current)) return
+    void maybeRollNonReadingEvent('nav')
+  }, [location.pathname])
+  return null
 }
 
 function App() {
@@ -124,21 +163,18 @@ function App() {
     setTimeout(() => setUpgradeNotice(null), 8000)
   }, [])
 
-  const handleToastEvent = useCallback((info: TickEventToastInfo) => {
-    setEventToast({ event: info.event, outcome: info.outcome })
-  }, [])
-
-  // modal-event trigger relies on Dexie liveQuery in <EventModal/>; no React
-  // state needed here, but accept the callback to flush console logs in dev.
-  const handleModalEvent = useCallback((_event: EventDefinition) => {
-    // Modal renders via liveQuery on gameCounters.pendingEventId
+  // Subscribe to the hospital-event toast queue. Service-layer events
+  // (non-reading-event-trigger) push toast entries here. Modal events
+  // continue to render via Dexie liveQuery inside <EventModal />.
+  useEffect(() => {
+    return hospitalEventToastQueue.subscribe((entry: HospitalToastEntry | null) => {
+      if (entry) setEventToast({ event: entry.event, outcome: entry.outcome })
+    })
   }, [])
 
   useStudySessionTick(
     ready ? handleCapped : undefined,
     ready ? handleUpgrade : undefined,
-    ready ? handleToastEvent : undefined,
-    ready ? handleModalEvent : undefined,
   )
 
   // M4 cloud sync: mounts engine on authed + drives migration / conflict modals.
@@ -150,6 +186,29 @@ function App() {
   const supabase = getSupabase()
   const backendConfig = getBackendConfig()
   const showMigrationBanner = backendConfig.writeR2 && supabase !== null && user !== null
+
+  // Font mode preference — drives `<body data-font-mode>` so CSS can flip the
+  // quiz reading area between readable Noto Sans TC (default) and pixel Cubic 11.
+  // Per-device only; not cloud-synced. Toggled in HelpMenu「字型偏好」section.
+  const fontMode = useLiveQuery(() => getFontMode(), [], DEFAULT_FONT_MODE)
+  useEffect(() => {
+    document.body.dataset.fontMode = fontMode
+  }, [fontMode])
+
+  // Cross-origin seed-back for `leaderboardProfile` — recovers users who
+  // migrated BEFORE the m2 bundle adapter for leaderboardProfile shipped
+  // (their R2 m2 blob predates the field). One-shot check on sign-in:
+  // if Dexie row missing AND server has it, seed from GET /leaderboard/me.
+  // Silently no-ops on 404 (old Worker), empty server row, or network
+  // error — opt-in modal handles the genuine "never opted in" case.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    seedLeaderboardProfileFromServer(user.id).catch(() => {
+      // swallow — seed is best-effort, opt-in modal is the safe fallback
+    })
+    return () => { cancelled = true; void cancelled }
+  }, [user])
 
   // navigator.onLine for SyncStatusChip + AccountSwitchPrompt awareness.
   const [online, setOnline] = useState(
@@ -175,6 +234,9 @@ function App() {
 
   return (
     <HashRouter>
+      <CustomTooltipHost />
+      <NonReadingNavListener />
+      <DomainMigrationBanner />
       <div className="header-controls">
         <AuthButton />
         {user && (
@@ -237,6 +299,7 @@ function App() {
         onDismiss={sync.dismissSyncError}
         onRetry={sync.retrySyncError}
       />
+      <GraceToastContainer />
       {v6Migration && (
         <V6MigrationModal counters={v6Migration} onDismiss={() => setV6Migration(null)} />
       )}
@@ -250,13 +313,18 @@ function App() {
           onDismiss={() => void milestoneTip.dismiss()}
         />
       )}
+      <AchievementUnlockOverlay />
+
       <EventModal />
       <ERConsultDialog />
       {eventToast && (
         <EventToast
           event={eventToast.event}
           outcome={eventToast.outcome}
-          onDismiss={() => setEventToast(null)}
+          onDismiss={() => {
+            setEventToast(null)
+            hospitalEventToastQueue.clear()
+          }}
         />
       )}
       <HelpMenu onResetProgress={sync.safeResetAccountData} signedIn={!!user} />
@@ -275,13 +343,38 @@ function App() {
         <Route path="/roster" element={<DoctorRoster />} />
         <Route path="/hospital" element={<Hospital />} />
         <Route path="/study" element={<StudySessionPage />} />
-        <Route path="/training" element={<TrainingPage />} />
+        {/* /training kept for backward-compat (old share links) — redirects
+            to /roster?tab=training where the training panel is now hosted as
+            a sub-tab of 醫師. Spec: hospital-management-mode "Legacy /training
+            route SHALL redirect to /roster?tab=training". */}
+        <Route path="/training" element={<Navigate to="/roster?tab=training" replace />} />
         <Route path="/fate-cards" element={<FateCardPage />} />
         <Route path="/bookmarks" element={<BookmarksPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
+        <Route path="/achievements" element={<AchievementsPage />} />
       </Routes>
     </HashRouter>
   )
+}
+
+/**
+ * Achievement unlock overlay — subscribes to the global queue and routes
+ * each unlocked achievement to the appropriate renderer:
+ *   - P1 → full-screen AchievementUnlockModal (dismiss-required)
+ *   - P2/P3/P4 → AchievementUnlockToast (8s auto-dismiss)
+ *
+ * Concurrent unlocks: P1 modal blocks the queue (dismiss-required); toasts
+ * stack up to 3 visible at once (overflow stays queued). For MVP we render
+ * the first item only; UI polish (stacking) deferred.
+ */
+function AchievementUnlockOverlay() {
+  const { queue, dismiss } = useAchievementToasts()
+  if (queue.length === 0) return null
+  const next = queue[0]
+  if (next.tier === 'P1') {
+    return <AchievementUnlockModal achievement={next} onDismiss={() => dismiss(next.id)} />
+  }
+  return <AchievementUnlockToast achievement={next} onDismiss={() => dismiss(next.id)} />
 }
 
 export default App

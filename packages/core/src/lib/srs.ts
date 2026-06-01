@@ -30,8 +30,33 @@ export const WRONG_INTERVAL_MULTIPLIER = 0.5
 /** Multiplier applied to `easeFactor` on a wrong answer in the binary variant. */
 export const WRONG_EASE_MULTIPLIER = 0.85
 
-/** Initial interval seeds for the binary variant: [first correct, second correct]. */
-export const STANDARD_INITIAL_INTERVALS: readonly [number, number] = [1, 6]
+/**
+ * Initial interval seeds shared by both variants: [first correct, second correct].
+ *
+ * Wider seeds (was `[1, 6]`) align with FSRS default stability ≈ 3 days and
+ * fix the "我答對為何又考" complaint where players see correctly-answered
+ * questions resurface the next day.
+ */
+export const STANDARD_INITIAL_INTERVALS: readonly [number, number] = [3, 7]
+
+/**
+ * Multiplier applied to `ease` when player clicks the 「太簡單」 opt-in button.
+ * Combined with `EASY_INTERVAL_MULTIPLIER` to escalate next-due aggressively.
+ */
+export const EASY_EASE_MULTIPLIER = 1.5
+
+/**
+ * Multiplier applied to `interval` when player clicks the 「太簡單」 opt-in button.
+ * Clamped by `MAX_INTERVAL_DAYS`.
+ */
+export const EASY_INTERVAL_MULTIPLIER = 3
+
+/**
+ * Interval (days) forced when player clicks the 「我亂猜的」 opt-in button.
+ * Ease and lapses are intentionally unchanged — the player answered correctly
+ * per the canonical rule; this is an honesty modifier, not a lapse.
+ */
+export const GUESSED_RESET_INTERVAL = 1
 
 /** Global daily cap on surfaced due cards in the 二階 hospital mode SRS queue. */
 export const SRS_DAILY_CAP = 20
@@ -66,8 +91,8 @@ export function reviewCard(card: SrsCard, quality: number, now: number = Date.no
 
   const newEase = Math.max(EASE_FLOOR, card.ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)))
   let newInterval: number
-  if (card.interval === 0) newInterval = 1
-  else if (card.interval === 1) newInterval = 6
+  if (card.interval === 0) newInterval = STANDARD_INITIAL_INTERVALS[0]
+  else if (card.interval === STANDARD_INITIAL_INTERVALS[0]) newInterval = STANDARD_INITIAL_INTERVALS[1]
   else newInterval = Math.round(card.interval * newEase)
   newInterval = Math.min(newInterval, MAX_INTERVAL_DAYS)
 
@@ -76,6 +101,47 @@ export function reviewCard(card: SrsCard, quality: number, now: number = Date.no
     ease: newEase,
     interval: newInterval,
     dueAt: now + newInterval * DAY,
+  }
+}
+
+/**
+ * 一階 opt-in modifier: 「太簡單」 (too easy) escalator.
+ *
+ * Multiplicative escalator applied when player explicitly graduates a question
+ * after a correct answer. Replaces (not stacks with) the default
+ * `reviewCard(card, 4)` quality-good update.
+ *
+ * - `ease *= EASY_EASE_MULTIPLIER` (no upper cap — see design Open Q1)
+ * - `interval *= EASY_INTERVAL_MULTIPLIER`, clamped to `MAX_INTERVAL_DAYS`
+ * - `lapses` unchanged
+ */
+export function reviewCardEasy(card: SrsCard, now: number = Date.now()): SrsCard {
+  const newEase = card.ease * EASY_EASE_MULTIPLIER
+  const baseInterval = card.interval === 0 ? STANDARD_INITIAL_INTERVALS[0] : card.interval
+  const newInterval = Math.min(
+    Math.round(baseInterval * EASY_INTERVAL_MULTIPLIER),
+    MAX_INTERVAL_DAYS,
+  )
+  return {
+    ...card,
+    ease: newEase,
+    interval: newInterval,
+    dueAt: now + newInterval * DAY,
+  }
+}
+
+/**
+ * 一階 opt-in modifier: 「我亂猜的」 (I guessed) honesty reset.
+ *
+ * Forces `interval = GUESSED_RESET_INTERVAL` (1 day). Leaves `ease` and
+ * `lapses` untouched — the canonical answer was correct; the player merely
+ * signals lack of confidence so the question re-surfaces for verification.
+ */
+export function reviewCardGuessed(card: SrsCard, now: number = Date.now()): SrsCard {
+  return {
+    ...card,
+    interval: GUESSED_RESET_INTERVAL,
+    dueAt: now + GUESSED_RESET_INTERVAL * DAY,
   }
 }
 
@@ -143,6 +209,47 @@ export function reviewCardBinary(input: BinaryReviewInput): BinaryReviewResult {
     interval: newInterval,
     easeFactor: newEase,
     nextDueAt: now + newInterval * DAY,
+  }
+}
+
+/**
+ * 二階 opt-in modifier: 「太簡單」 (too easy) escalator.
+ *
+ * Binary-input analogue of `reviewCardEasy`. Applied when player explicitly
+ * graduates a question after a correct answer. The 「太簡單」 side effect of
+ * clearing `everWrong` lives in the 二階 mastery helper (mastery.ts), NOT in
+ * this engine function — `packages/core/` stays content-agnostic.
+ */
+export function reviewCardBinaryEasy(input: { prev: BinaryReviewPrev; now?: number }): BinaryReviewResult {
+  const { prev } = input
+  const now = input.now ?? Date.now()
+  const baseInterval = prev.interval === 0 ? STANDARD_INITIAL_INTERVALS[0] : prev.interval
+  const newInterval = Math.min(
+    Math.round(baseInterval * EASY_INTERVAL_MULTIPLIER),
+    MAX_INTERVAL_DAYS,
+  )
+  const newEase = prev.easeFactor * EASY_EASE_MULTIPLIER
+  return {
+    interval: newInterval,
+    easeFactor: newEase,
+    nextDueAt: now + newInterval * DAY,
+  }
+}
+
+/**
+ * 二階 opt-in modifier: 「我亂猜的」 (I guessed) honesty reset.
+ *
+ * Binary-input analogue of `reviewCardGuessed`. Forces `interval = 1` and
+ * preserves `easeFactor`. `everWrong` is NOT touched by this path (mastery
+ * helper enforces).
+ */
+export function reviewCardBinaryGuessed(input: { prev: BinaryReviewPrev; now?: number }): BinaryReviewResult {
+  const { prev } = input
+  const now = input.now ?? Date.now()
+  return {
+    interval: GUESSED_RESET_INTERVAL,
+    easeFactor: prev.easeFactor,
+    nextDueAt: now + GUESSED_RESET_INTERVAL * DAY,
   }
 }
 

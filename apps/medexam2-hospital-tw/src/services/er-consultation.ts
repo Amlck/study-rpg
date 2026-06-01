@@ -10,6 +10,7 @@
  * Telemetry: `erConsultLog` table, capped at ER_CONSULT_LOG_CAP rows (local-only).
  */
 
+import { computeReputationMultiplier, getOwnedEquipment } from '../lib/equipment'
 import {
   ER_CONSULT_AUTO_SKIP_MS,
   ER_CONSULT_LOG_CAP,
@@ -32,6 +33,7 @@ import {
 } from '../db/schema'
 import { loadSubjectQuestionIds } from '../lib/quiz'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
+import { emitGraceToast } from '../lib/grace-toast'
 import { ER_DOCTOR_SPRITE_KEYS } from '../lib/sprite-lookup'
 
 const SETTINGS_META_KEY = 'er-consult-settings'
@@ -254,6 +256,9 @@ export async function answerERConsult(opts: {
   reactionTimeMs: number
 }): Promise<AnswerERConsultResult | null> {
   const db = getHospitalDB()
+  // add-hospital-equipment-medexam2 (2026-05-24): pre-fetch equipment multiplier
+  const ownedEquipment = await getOwnedEquipment()
+  const equipmentReputationMultiplier = computeReputationMultiplier(ownedEquipment)
   return db.transaction(
     'rw',
     [
@@ -276,6 +281,7 @@ export async function answerERConsult(opts: {
         await recordCorrectAnswer(
           { subjectId, questionId: opts.active.questionId },
           null, // no partner doctor — ER doctor is NPC
+          { onTransitionToCorrect: (qid) => emitGraceToast({ questionId: qid }) },
         )
       } else {
         await recordWrongAnswer({ subjectId, questionId: opts.active.questionId })
@@ -289,8 +295,10 @@ export async function answerERConsult(opts: {
         revenueDelta = computeERConsultReward(
           Math.round(QUIZ_REVENUE_PER_CORRECT_BASE * tierMult),
         )
-        reputationDelta = computeERConsultReward(
-          Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult),
+        reputationDelta = Math.round(
+          computeERConsultReward(
+            Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult),
+          ) * equipmentReputationMultiplier,
         )
       }
 
@@ -299,6 +307,9 @@ export async function answerERConsult(opts: {
         revenue: counters.revenue + revenueDelta,
         reputation: counters.reputation + reputationDelta,
         erConsultActive: null,
+        // Stamp shared cooldown for `rewire-hospital-events-to-non-reading-trigger`
+        // — prevents nav-roll re-fire within 3 min of dialog close.
+        lastInteractionEventAt: now,
       })
 
       const rewardGained = revenueDelta + reputationDelta
@@ -328,15 +339,21 @@ export async function answerERConsult(opts: {
  */
 export async function skipERConsult(active: ERConsultActiveState): Promise<void> {
   const db = getHospitalDB()
+  const now = Date.now()
   await db.transaction('rw', [db.gameCounters, db.erConsultLog], async () => {
     const counters = await db.gameCounters.get('singleton')
     if (!counters) return
     const cur = counters.erConsultActive ?? null
     if (!cur || cur.questionId !== active.questionId) return
-    await db.gameCounters.put({ ...counters, erConsultActive: null })
+    await db.gameCounters.put({
+      ...counters,
+      erConsultActive: null,
+      // Stamp shared cooldown (per rewire-hospital-events-to-non-reading-trigger).
+      lastInteractionEventAt: now,
+    })
     await appendERConsultLog({
       triggeredAt: active.triggeredAt,
-      resolvedAt: Date.now(),
+      resolvedAt: now,
       subjectId: active.subjectId,
       questionId: active.questionId,
       resolution: 'skipped',

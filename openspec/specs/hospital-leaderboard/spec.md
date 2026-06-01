@@ -2,14 +2,12 @@
 
 ## Purpose
 
-Defines the opt-in global leaderboard for 二階 `apps/medexam2-hospital-tw`: a Cloudflare-D1-backed ranking system showing all opted-in players sorted by four criteria (綜合 / 聲望 / 醫師個數 / 累積唸書時間) up to top 100, with hourly KV-cached snapshots refreshed by a Worker scheduled cron. Lives in the Cloudflare data plane (`study-rpg-leaderboard` D1 + `LEADERBOARD_KV`) and integrates with the existing R2 sync engine (shares the 3-second debounce push window). Auth uses the existing Supabase JWT bridge — the Worker only consumes the public JWKS to verify tokens, never reads Supabase data.
+Defines the opt-in global leaderboard for 二階 `apps/medexam2-hospital-tw`: a Cloudflare-D1-backed ranking system showing all opted-in players sorted by five criteria (綜合 / 答對總題數 / 聲望 / 醫師個數 / 累積唸書時間) up to top 100, with hourly KV-cached snapshots refreshed by a Worker scheduled cron. Lives in the Cloudflare data plane (`study-rpg-leaderboard` D1 + `LEADERBOARD_KV`) and integrates with the existing R2 sync engine (shares the 3-second debounce push window). Auth uses the existing Supabase JWT bridge — the Worker only consumes the public JWKS to verify tokens, never reads Supabase data.
 
 Strict opt-in (unchecked consent checkbox + nickname required), case-insensitive unique nicknames (2–12 codepoints), full-trust anti-cheat (sanity bounds only + 「自填無驗證」UI disclosure), and toggle-based opt-out that preserves the D1 row while excluding it from KV snapshots. Account deletion is the only path that removes the leaderboard row entirely.
 
 The capability is independent of the M4 cloud sync data plane and the R2 migration — it does not write any Supabase tables and shares only the existing Cloudflare sync Worker for auth + endpoints.
-
 ## Requirements
-
 ### Requirement: Opt-in flow on first leaderboard visit
 
 The system SHALL present a one-time opt-in modal the first time an authenticated player opens the leaderboard tab. The modal MUST explicitly list the data fields that will be made public (醫院 tier、聲望、醫師個數、累積唸書時間、暱稱), MUST include an unchecked checkbox labelled「同意公開以上資訊」, and MUST require the checkbox be checked before the "加入排行榜" submit button becomes enabled. The modal MUST NOT auto-submit and MUST NOT pre-check the consent checkbox.
@@ -60,14 +58,17 @@ The system SHALL require the player to provide a display nickname during the opt
 
 ### Requirement: Four filter tabs for ranking criteria
 
-The leaderboard UI SHALL provide four filter tabs that determine the ranking criterion. The default tab SHALL be「綜合排名」. Switching tabs SHALL update the displayed ranking without re-querying if the data is already cached client-side for the current hour.
+The leaderboard UI SHALL provide **five** filter tabs that determine the ranking criterion. The default tab SHALL be「綜合排名」. Switching tabs SHALL update the displayed ranking without re-querying if the data is already cached client-side for the current hour.
 
-| Tab | Sort key |
-|---|---|
-| 綜合排名 | hospital_tier DESC, reputation DESC, doctor_count DESC |
-| 聲望排名 | reputation DESC |
-| 醫師個數排名 | doctor_count DESC |
-| 累積唸書時間排名 | total_study_min DESC |
+| Tab order | Tab | Sort key |
+|---|---|---|
+| 1 | 綜合排名 | hospital_tier DESC, reputation DESC, doctor_count DESC |
+| 2 | 答對總題數排名 | total_correct DESC |
+| 3 | 聲望排名 | reputation DESC |
+| 4 | 醫師個數排名 | doctor_count DESC |
+| 5 | 累積唸書時間排名 | total_study_min DESC |
+
+The「答對總題數排名」tab SHALL render at position 2 in the tab strip — immediately after「綜合排名」and before「聲望排名」— so that the most recently added discovery surface sits next to the default tab rather than at the far edge of the strip.
 
 #### Scenario: Default tab is 綜合排名
 
@@ -84,38 +85,68 @@ The leaderboard UI SHALL provide four filter tabs that determine the ranking cri
 - **WHEN** two players have identical hospital_tier and reputation in the 綜合排名 tab
 - **THEN** the player with higher doctor_count SHALL rank above the other; if doctor_count also ties, ordering between the tied players MAY be arbitrary but MUST be stable within a single snapshot
 
+#### Scenario: Answer-count tab orders by total_correct
+
+- **WHEN** the player clicks the「答對總題數排名」tab
+- **THEN** the displayed top-100 list SHALL re-order by `total_correct DESC` from the same hourly snapshot, and the my-rank chip SHALL update to show the player's rank within the `correct` filter; the「答對總題數」column SHALL be bolded as the primary stat in this tab
+
 ### Requirement: Top 100 list plus my-rank chip
 
-The leaderboard UI SHALL display up to 100 ranked rows for the active filter, in a single scrollable list without pagination. The player's own current rank SHALL be displayed as a sticky chip element regardless of whether the player's row appears within the visible top 100.
+The leaderboard UI SHALL display up to 100 ranked rows for the active filter as a **pixel-art tabular grid** (not an unstyled list), rendering one row per opted-in player with one cell per data attribute (rank / nickname / hospital tier / reputation / doctor count / total study minutes). The hospital tier cell SHALL render the canonical short label (「診所 / 區域 / 醫中 / 大廟」) via the shared `tierLabel()` helper from `apps/medexam2-hospital-tw/src/lib/tier-labels.ts`, NOT the raw integer (`T1` / `T2` / `T3` / `T4`). The grid SHALL use the existing pixel design tokens (`--frame-dark` border, `--accent-gold` highlight, Cubic 11 font for nicknames and numeric stats) so the visual style matches the rest of the 二階 hospital UI shell. The player's own current rank SHALL remain accessible regardless of scroll position via either the existing sticky top chip OR a new sticky-bottom "my row" repeat that mirrors the user's row data.
 
 #### Scenario: Top 100 displayed when ≥ 100 opted-in players
 
 - **WHEN** the leaderboard backend has ≥ 100 opted-in players and the player views any filter tab
-- **THEN** the UI SHALL display 100 rows in a single scrollable list
+- **THEN** the UI SHALL display 100 rows in a single scrollable tabular grid where each row aligns its cells vertically with the row above and below
 
 #### Scenario: All rows displayed when < 100 opted-in players
 
 - **WHEN** the leaderboard backend has fewer than 100 opted-in players
-- **THEN** the UI SHALL display all available rows and SHALL show a counter「目前 N 位玩家加入排行」at the top or bottom of the list
+- **THEN** the UI SHALL display all available rows and SHALL show a counter「目前 N 位玩家加入排行」 at the top or bottom of the grid
+
+#### Scenario: Rank 1 / 2 / 3 visually distinguished
+
+- **WHEN** any row's display rank is 1, 2, or 3
+- **THEN** that row's rank cell SHALL be styled with gold (rank 1) / silver (rank 2) / bronze (rank 3) accent color and pixel-art emboss, distinct from the default frame color used by ranks 4–100
+
+#### Scenario: My-row visually highlighted when present in top 100
+
+- **WHEN** the current authenticated user's `user_id` matches one of the rows in the active filter's top 100
+- **THEN** that row SHALL be highlighted with `--accent-gold` border (or equivalent pixel design token) so the user can spot themselves at a glance while scrolling
 
 #### Scenario: My-rank chip shows when player is opted in
 
 - **WHEN** an opted-in player views any filter tab
-- **THEN** a sticky chip SHALL display「你目前第 X 名 (共 N 人)」using the player's rank in the active filter; if the player is outside the top 100, the chip remains visible while scrolling the list
+- **THEN** a chip SHALL display「你目前第 X 名 (共 N 人)」using the player's rank in the active filter; if the player's row is scrolled offscreen the chip MAY be pinned (e.g., via `position: sticky` or a sticky-bottom repeat row that mirrors the player's data) so it stays visible while scrolling the grid
 
 #### Scenario: My-rank chip hidden when player is opted out
 
 - **WHEN** a player has not opted in (or has opted out)
-- **THEN** the my-rank chip SHALL be hidden and an explanation「未加入排行 — 至「設定」開啟以參與」SHALL be shown in its place
+- **THEN** the my-rank chip SHALL be hidden and an explanation「未加入排行 — 至「設定」開啟以參與」 SHALL be shown in its place
+
+#### Scenario: Mobile viewport prioritizes essential columns
+
+- **WHEN** the leaderboard page is rendered at viewport width < 768 px
+- **THEN** the grid SHALL show at minimum: rank, nickname, the **active filter's primary stat** bolded, and one secondary stat; non-essential columns MAY be hidden via CSS to prevent horizontal overflow; the row order and underlying row data MUST remain identical to the desktop layout
+
+#### Scenario: Empty state preserved
+
+- **WHEN** the active filter's snapshot has zero rows
+- **THEN** the existing message「期待第一個上榜的玩家！」 SHALL render in place of the grid; no empty grid frame SHALL appear
+
+#### Scenario: Tier cell renders canonical short label
+
+- **WHEN** a leaderboard row has `hospital_tier = 1` (or `2` / `3` / `4`)
+- **THEN** the tier cell SHALL render「診所」(or「區域」/「醫中」/「大廟」respectively) via `tierLabel(NUM_TO_TIER[row.hospital_tier])`, NOT the literal string `T1` / `T2` / `T3` / `T4`; if `hospital_tier` is outside the supported range the cell SHALL fall back to「診所」and log a `console.warn`, so a single malformed row never crashes the entire leaderboard tab
 
 ### Requirement: Hourly KV cache refresh
 
-The leaderboard backend SHALL pre-compute the top-100 ranking for each of the four filter tabs once per hour via a Worker scheduled cron trigger at minute `:00`. Client read requests SHALL fetch from the KV cache, NOT directly from D1. The system MAY serve a stale snapshot (older than 1 hour) if the cron has not yet refreshed, but MUST surface a「上次更新：HH:MM」timestamp in the leaderboard UI.
+The leaderboard backend SHALL pre-compute the top-100 ranking for each of the **five** filter tabs **twice per hour** via a Worker scheduled cron trigger at minutes `:00` and `:30`. Client read requests SHALL fetch from the KV cache, NOT directly from D1. The system MAY serve a stale snapshot (older than 30 min) if the cron has not yet refreshed, but MUST surface a「上次更新：HH:MM」timestamp in the leaderboard UI.
 
-#### Scenario: Hourly cron pre-computes all four filters
+#### Scenario: 30-min cron pre-computes all five filters
 
-- **WHEN** the Worker scheduled trigger fires at `:00` of each hour
-- **THEN** the system SHALL run four D1 queries (one per filter) and write the resulting top-100 row arrays to four KV keys (`leaderboard:m2:top100:composite|reputation|doctor|study`), and SHALL log a single line entry for monitoring
+- **WHEN** the Worker scheduled trigger fires at `:00` or `:30` of each hour
+- **THEN** the system SHALL run five D1 queries (one per filter) and write the resulting top-100 row arrays to five KV keys (`leaderboard:m2:top100:composite|reputation|doctor|study|correct`), and SHALL log a single line entry for monitoring
 
 #### Scenario: Client read serves KV cache
 
@@ -124,7 +155,7 @@ The leaderboard backend SHALL pre-compute the top-100 ranking for each of the fo
 
 #### Scenario: Stale snapshot served on cron failure
 
-- **WHEN** the Worker scheduled cron fails to run for two consecutive hours
+- **WHEN** the Worker scheduled cron fails to run for two consecutive scheduled slots
 - **THEN** the client SHALL still receive the most recent successful snapshot from KV; the UI SHALL surface the「上次更新：HH:MM」timestamp so the player can detect staleness
 
 ### Requirement: Push leaderboard row on cloud sync
@@ -134,7 +165,12 @@ The system SHALL upsert the player's leaderboard row to D1 via the Worker `POST 
 #### Scenario: Cloud sync triggers leaderboard upsert
 
 - **WHEN** an opted-in player completes a gameplay action that triggers cloud sync (e.g. recruits a doctor, completes a study session)
-- **THEN** within the next 3-second debounce window the sync engine SHALL POST the current `{user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, is_public, updated_at}` payload to `/leaderboard/upsert` in addition to the R2 bundle push
+- **THEN** within the next 3-second debounce window the sync engine SHALL POST the current `{user_id, nickname, hospital_tier, reputation, doctor_count, total_study_min, total_correct, is_public, updated_at}` payload to `/leaderboard/upsert` in addition to the R2 bundle push
+
+#### Scenario: total_correct computed from questionHistory aggregate
+
+- **WHEN** the leaderboard adapter computes the payload for an upsert
+- **THEN** the `total_correct` field SHALL equal `Math.max(0, Math.floor(SUM(questionHistory.correctCount)))` across all rows in the local Dexie `questionHistory` table; the adapter SHALL NOT read from `mastery.correct` for this value because `mastery.correct` carries a partner-specialty multiplier weighting that does not match the player's intuitive「答對總題數」count, and `mastery` upserts were historically subject to outer-transaction rollback regressions that left `questionHistory` as the more reliable source
 
 #### Scenario: Opted-out player still upserts is_public=0
 
@@ -148,7 +184,7 @@ The system SHALL upsert the player's leaderboard row to D1 via the Worker `POST 
 
 ### Requirement: Server-side LWW and sanity bounds
 
-The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantics using `updated_at` (millisecond epoch) and SHALL reject payloads whose values fall outside known sanity bounds: `hospital_tier ∈ [1, 3]`, `reputation ≥ 0`, `doctor_count ∈ [0, 50]`, `total_study_min ≥ 0`. Rejected payloads SHALL log a structured warning but MUST NOT surface a UI error to the player (silent server-side filtering).
+The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantics using `updated_at` (millisecond epoch) and SHALL reject payloads whose values fall outside known sanity bounds: `hospital_tier ∈ [1, 4]`, `reputation ≥ 0`, `doctor_count ∈ [0, 50]`, `total_study_min ≥ 0`, `total_correct ≥ 0`. Rejected payloads SHALL log a structured warning but MUST NOT surface a UI error to the player (silent server-side filtering). The D1 table `leaderboard_m2` SHALL declare `CHECK (hospital_tier BETWEEN 1 AND 4)` and `CHECK (total_correct >= 0)` as defence-in-depth so any divergence between Worker bound and schema is caught at the database layer. The `total_correct` field MAY be omitted from the payload by older clients; in that case it SHALL be treated as `0` for forward-compatibility during the rollout window.
 
 #### Scenario: Older updated_at rejected
 
@@ -157,8 +193,23 @@ The Worker `/leaderboard/upsert` endpoint SHALL enforce last-write-wins semantic
 
 #### Scenario: Out-of-bounds hospital_tier rejected
 
-- **WHEN** an upsert arrives with `hospital_tier = 4` or `hospital_tier = 0`
+- **WHEN** an upsert arrives with `hospital_tier = 5` or `hospital_tier = 0`
 - **THEN** the Worker SHALL discard the upsert, log a structured warning with the offending user_id, and respond `200 OK` without writing to D1
+
+#### Scenario: T4 (大廟) hospital_tier accepted
+
+- **WHEN** an upsert arrives with `hospital_tier = 4` and all other fields are within bounds
+- **THEN** the Worker SHALL accept the payload, upsert the D1 row with `hospital_tier = 4`, and the next KV snapshot refresh SHALL include this row sortable as a distinct tier above `hospital_tier = 3` rows in the composite filter
+
+#### Scenario: Negative total_correct rejected
+
+- **WHEN** an upsert arrives with `total_correct = -1` or `total_correct = NaN`
+- **THEN** the Worker SHALL discard the upsert, log a structured warning `"[leaderboard] dropped upsert: correct oob"` with the offending user_id and value, and respond `200 OK` with `dropped: "correct_oob"` without writing to D1
+
+#### Scenario: Missing total_correct in legacy client payload defaults to 0
+
+- **WHEN** a client whose JS bundle predates this change pushes an upsert without the `total_correct` field
+- **THEN** the Worker SHALL treat the missing field as `0` and persist the row with `total_correct = 0`, allowing the legacy client to keep syncing the four pre-existing numeric fields while the new field stays at the default until the client bundle refreshes
 
 ### Requirement: Opt-out hides row without deletion
 
@@ -167,7 +218,7 @@ The system SHALL provide a「公開到排行榜」toggle in the settings panel. 
 #### Scenario: Toggling opt-out hides player from snapshots
 
 - **WHEN** an opted-in player turns off the「公開到排行榜」toggle
-- **THEN** the next hourly KV refresh SHALL exclude this player's row from all four filter snapshots, and the player's my-rank chip SHALL switch to「未加入排行」state
+- **THEN** the next hourly KV refresh SHALL exclude this player's row from all five filter snapshots, and the player's my-rank chip SHALL switch to「未加入排行」state
 
 #### Scenario: Re-enabling opt-in restores ranking
 
@@ -220,3 +271,206 @@ The Worker SHALL expose a `GET /leaderboard/nickname-check?n=<candidate>` endpoi
 
 - **WHEN** the endpoint receives a request without a valid Supabase JWT in the Authorization header
 - **THEN** the Worker SHALL respond `401 Unauthorized` without executing the D1 query
+
+### Requirement: Cron dispatch handler matches wrangler trigger expression
+
+The Worker's `scheduled(event, env, ctx)` dispatch logic (in `cloudflare/sync-worker/src/index.ts`) SHALL compare `event.cron` against the **exact cron expression strings declared in `cloudflare/sync-worker/wrangler.jsonc` `triggers.crons` array**. The implementation SHALL declare those expressions as named module-scope constants (`CRON_BACKUP_DAILY`, `CRON_LEADERBOARD_30MIN`, etc.) so the dispatch switch references the canonical constant rather than re-typing the string literal at each case. Any unknown `event.cron` value SHALL be logged via `console.error` (not `console.warn`) with a structured payload `{ cron, knownCrons }` so dispatch mismatches surface in Workers Logs immediately.
+
+#### Scenario: Dispatch switch matches wrangler config exactly
+
+- **WHEN** Cloudflare invokes the scheduled handler with `event.cron` equal to any string declared in `wrangler.jsonc` `triggers.crons`
+- **THEN** the switch SHALL match that string via a named constant case and dispatch to the corresponding cron-handler function (e.g., `runBackupCron` / `runLeaderboardCron`); the `default` branch SHALL NOT fire for any cron string that is actually in wrangler config
+
+#### Scenario: Unknown cron trigger surfaces as error log
+
+- **WHEN** Cloudflare invokes the scheduled handler with an `event.cron` value not matching any declared constant
+- **THEN** the handler SHALL emit `console.error("[scheduled] unknown cron trigger ...", { cron, knownCrons })` so the mismatch is visible in Workers Logs error-level filters; the handler SHALL NOT silently succeed
+
+### Requirement: Homepage promo banner promotes leaderboard discovery
+
+The hospital app HomePage SHALL render a dismissible promo banner at the top of the page that surfaces the leaderboard feature to all visitors (authed + anonymous). The banner SHALL include a headline, sub-line description, a call-to-action link to `/#/leaderboard`, and a single dismiss button (✕). Dismiss state SHALL be persisted in localStorage under a versioned key (e.g., `leaderboard-promo-banner-dismissed-v1`) so future major leaderboard changes can force the banner to re-appear by bumping the version suffix. The banner styling SHALL use the existing pixel `.frame` design tokens (2px `--frame-dark` border + 4px offset shadow + `--bg-paper` background + Cubic 11 font) so it visually integrates with the rest of the 二階 hospital shell.
+
+#### Scenario: Banner visible on first homepage visit
+
+- **WHEN** any player (authed or anonymous) opens the HomePage and the localStorage key `leaderboard-promo-banner-dismissed-v1` is absent or not equal to `"true"`
+- **THEN** the banner SHALL render at the top of the page, above all other homepage cards / banners / hospital scene
+
+#### Scenario: Banner hidden after dismiss
+
+- **WHEN** the player clicks the dismiss button (✕) once
+- **THEN** the banner SHALL hide immediately and localStorage SHALL be updated to `"leaderboard-promo-banner-dismissed-v1" = "true"`; subsequent HomePage visits SHALL NOT render the banner unless localStorage is cleared or the version suffix bumps
+
+#### Scenario: CTA links to leaderboard
+
+- **WHEN** the player clicks the call-to-action link
+- **THEN** the app SHALL navigate to `/#/leaderboard` via the existing HashRouter (same route as the top-nav「排名」 link); banner SHALL remain rendered on the previous page (the navigation is by hash, leaderboard page is a separate route render)
+
+#### Scenario: Anonymous user clicks CTA
+
+- **WHEN** an anonymous (not signed in) player clicks the CTA and lands on the leaderboard page
+- **THEN** the existing「未登入 — 登入後可查看自己的排名」 chip SHALL render in place of the my-rank chip (existing behavior, unchanged); the player MAY sign in via the existing Sign-in button to participate
+
+#### Scenario: localStorage unavailable degrades gracefully
+
+- **WHEN** localStorage read / write throws (e.g., private mode, quota exceeded, disabled by browser policy)
+- **THEN** the banner SHALL treat the error as「not dismissed」 and render the banner; the dismiss ✕ button SHALL still hide the banner for the current page lifetime via React state, but the dismiss SHALL NOT persist across page loads
+
+### Requirement: Leaderboard endpoints accept requests from new domain via `api.med-study-rpg.com`
+
+The leaderboard endpoints (`/leaderboard/upsert`, `/leaderboard/:filter`, `/leaderboard/nickname-check`, `/leaderboard/opt-out`, `/leaderboard/me`) are hosted by the same Worker as the R2 sync API. Per the `cloud-sync` capability's new `Worker Custom Domain` requirement, those endpoints SHALL also be reachable under `https://api.med-study-rpg.com/leaderboard/...` once the Custom Domain binding is in place.
+
+Browser clients on `https://med-study-rpg.com/2nd/` SHALL issue leaderboard requests to `https://api.med-study-rpg.com/leaderboard/...` (constructed by concatenating `VITE_SYNC_WORKER_URL` + `/leaderboard/...`).
+
+The Worker's CORS allowed origins SHALL include `https://med-study-rpg.com` per the `cloud-sync` modification. No leaderboard-specific CORS configuration is required beyond what `cloud-sync` already covers — the Worker uses a single allowed-origins list for all routes.
+
+#### Scenario: 二階 client on new domain reads leaderboard
+
+- **GIVEN** a user on `https://med-study-rpg.com/2nd/` opens the leaderboard page
+- **WHEN** the leaderboard hook fetches `/leaderboard/composite`
+- **THEN** the network request SHALL be a GET to `https://api.med-study-rpg.com/leaderboard/composite`
+- **AND** the Worker SHALL return the same KV-cached top-100 snapshot as the workers.dev URL returns
+- **AND** the response SHALL include `Access-Control-Allow-Origin: https://med-study-rpg.com`
+
+#### Scenario: 二階 client on new domain pushes leaderboard row after successful sync
+
+- **GIVEN** an opted-in user on `https://med-study-rpg.com/2nd/` completes a sync push with `firstError === null && !anyOffline`
+- **WHEN** the `onPushComplete` callback fires
+- **THEN** the leaderboard upsert SHALL POST to `https://api.med-study-rpg.com/leaderboard/upsert`
+- **AND** the Worker SHALL verify the JWT, apply sanity bounds, and UPSERT into D1 (existing leaderboard write logic unchanged)
+- **AND** subsequent KV cron refresh SHALL pick up the new row in the snapshot
+
+#### Scenario: Nickname uniqueness check works on new domain
+
+- **GIVEN** a user on `https://med-study-rpg.com/2nd/` is choosing a nickname during opt-in
+- **WHEN** the nickname field debounces and calls `/leaderboard/nickname-check?n=<candidate>`
+- **THEN** the request SHALL go to `https://api.med-study-rpg.com/leaderboard/nickname-check?n=<candidate>`
+- **AND** the Worker SHALL respond with the same availability verdict as the workers.dev URL would
+
+#### Scenario: Account reset hard-deletes leaderboard row from new domain
+
+- **GIVEN** an opted-in user on `https://med-study-rpg.com/2nd/` triggers in-place account reset
+- **WHEN** `safeResetAccountData` calls `deleteLeaderboardMe`
+- **THEN** the request SHALL be a DELETE to `https://api.med-study-rpg.com/leaderboard/me` with a valid JWT
+- **AND** the Worker SHALL hard-delete the user's row from D1 (existing logic unchanged)
+- **AND** subsequent reads SHALL no longer surface that user in the leaderboard
+
+
+<!-- Added by add-achievement-system (synced 2026-05-24) -->
+
+
+### Requirement: Leaderboard row carries badges_csv and subject_mastery_count
+
+The `leaderboard_m2` D1 table SHALL gain two new columns via migration `cloudflare/sync-worker/migrations/0002_add_badges.sql`:
+
+- `badges_csv TEXT DEFAULT ''` — format: comma-separated `category:tier` pairs (max 6 entries, max 60 chars total). Example: `"study:P1,quiz:P2,recruit:P2,hospital:P3,fortune:P4,hidden:P1"`. Each pair represents the highest tier the player has unlocked in that category.
+- `subject_mastery_count INTEGER DEFAULT 0` — integer in range [0, 14] representing how many of the 14 subject mastery achievements the player has unlocked.
+
+The migration SHALL be applied manually via `wrangler d1 migrations apply study-rpg-leaderboard --remote` by the owner (sustaining the manual-apply discipline established by migration 0001).
+
+#### Scenario: Migration adds columns with safe defaults
+
+- **WHEN** the owner applies migration 0002_add_badges.sql to a D1 database that contains existing leaderboard_m2 rows
+- **THEN** every existing row SHALL receive `badges_csv = ''` and `subject_mastery_count = 0` automatically (no row-level update needed)
+
+#### Scenario: Old Worker reads new columns gracefully
+
+- **WHEN** an unpatched Worker (from before the deploy of new endpoints) queries the leaderboard_m2 table after migration apply
+- **THEN** the query SHALL succeed (columns are nullable with defaults); the Worker's SELECT statement does not need to be updated
+
+### Requirement: Worker upsert endpoint accepts badges_csv and subject_mastery_count
+
+The Worker endpoint `POST /leaderboard/upsert` SHALL extend its accepted JWT-authenticated request body to include two optional fields: `badges_csv: string` and `subject_mastery_count: number`. Validation:
+
+- `badges_csv` MUST match regex `^([a-z]+:P[1-4])(,[a-z]+:P[1-4]){0,5}$` (1–6 entries, lowercase category, P1-P4 tier) OR be empty string
+- `subject_mastery_count` MUST be an integer in [0, 14]
+
+Invalid values SHALL be rejected with `400 Bad Request`. Valid values SHALL be written to the D1 row via UPSERT with LWW on `updated_at`.
+
+#### Scenario: Valid badges_csv accepted
+
+- **WHEN** a client POSTs `{ "badges_csv": "study:P2,quiz:P1", "subject_mastery_count": 5, ... }` with a valid JWT
+- **THEN** the Worker SHALL upsert the row with these values and return 200
+
+#### Scenario: Out-of-range subject_mastery_count rejected
+
+- **WHEN** a client POSTs `{ "subject_mastery_count": 99, ... }`
+- **THEN** the Worker SHALL return 400 with an error message indicating the field is out of range
+
+#### Scenario: Malformed badges_csv rejected
+
+- **WHEN** a client POSTs `{ "badges_csv": "study:PURPLE,invalid-format" }`
+- **THEN** the Worker SHALL return 400
+
+### Requirement: KV snapshot includes badges_csv and subject_mastery_count
+
+The hourly leaderboard cron handler SHALL include both new fields when writing the Top 100 snapshots to KV (keys `leaderboard:m2:top100:<filter>`). Public read endpoints (`GET /leaderboard/:filter`) SHALL return these fields in the response JSON.
+
+#### Scenario: KV snapshot row carries badges
+
+- **WHEN** the hourly cron runs and a player is in the Top 100
+- **THEN** that player's entry in the KV snapshot SHALL include `badges_csv` and `subject_mastery_count` fields (alongside existing fields like nickname, hospital_tier, etc.)
+
+#### Scenario: Read endpoint exposes badges to client
+
+- **WHEN** any client makes `GET /leaderboard/composite`
+- **THEN** the response JSON SHALL include `badges_csv` and `subject_mastery_count` for each row
+
+### Requirement: LeaderboardPage renders 6 category badges + subject mastery chip
+
+The 二階 `LeaderboardPage.tsx` SHALL render each leaderboard row's nickname column with two additional visual elements (placed after nickname, before stat columns):
+
+1. **6 category badges** inline (fixed display order: study / quiz / recruit / hospital / fortune / hidden). For each category present in the player's `badges_csv`, render a `<BadgeSprite category={cat} tier={tier} size={24} />` (mobile) or `size={32}` (desktop). Missing categories render nothing for that slot (no placeholder).
+2. **Subject mastery chip** in the form `🩺 X/14` immediately after the 6 category badges. Render only when `subject_mastery_count > 0`; otherwise omit.
+
+Hovering / long-pressing a category badge SHALL show a tooltip with text `<TIER> 級<CATEGORY>成就`. Hovering the subject chip SHALL NOT show a tooltip in MVP (the full 14-subject grid lives in personal `/achievements` page).
+
+#### Scenario: Full badge profile renders
+
+- **WHEN** a leaderboard_m2 row has `badges_csv = "study:P1,quiz:P2,recruit:P2,hospital:P3,fortune:P4,hidden:P1"` and `subject_mastery_count = 5`
+- **THEN** the row displays 6 inline BadgeSprite components plus a chip `🩺 5/14`
+
+#### Scenario: Partial badge profile renders
+
+- **WHEN** a row has `badges_csv = "study:P3,quiz:P4"` and `subject_mastery_count = 0`
+- **THEN** the row displays 2 BadgeSprite components (study P3, quiz P4) and no chip
+
+#### Scenario: Row width does not break on max badges
+
+- **WHEN** a row has all 6 categories present and `subject_mastery_count = 14`
+- **THEN** the total badge + chip width on mobile (24px × 6 + chip ≈ 200px) MUST fit within the row without wrapping or horizontal overflow
+
+### Requirement: Client push includes derived badges_csv and subject_mastery_count
+
+The 二階 sync engine's `onPushComplete` callback in `apps/medexam2-hospital-tw/src/lib/sync/leaderboard.ts` SHALL derive `badges_csv` and `subject_mastery_count` from the local `achievements` Dexie table and include them in the upsert payload to the Worker. Derivation:
+
+- `badges_csv`: for each of 6 main categories, find the highest tier among unlocked achievements (tier order: P4 < P3 < P2 < P1). Skip categories with zero unlocks. Format as `cat:tier` and join with commas.
+- `subject_mastery_count`: count of unlocked achievements whose `id` matches pattern `subject-master-*` (NOT counting the `all-subjects-mastered` capstone).
+
+#### Scenario: Empty achievements yields empty badges
+
+- **WHEN** the player has not unlocked any achievements
+- **THEN** the client SHALL push `{ "badges_csv": "", "subject_mastery_count": 0 }`
+
+#### Scenario: One unlock per category produces expected CSV
+
+- **WHEN** the player has unlocked one P3 study achievement and one P4 hospital achievement
+- **THEN** the client SHALL push `{ "badges_csv": "study:P3,hospital:P4", "subject_mastery_count": 0 }`
+
+#### Scenario: 5 subject masteries push count=5
+
+- **WHEN** the player has unlocked `subject-master-內科` / `subject-master-外科` / `subject-master-小兒科` / `subject-master-皮膚科` / `subject-master-神經內科`
+- **THEN** the client SHALL push `subject_mastery_count: 5`
+
+### Requirement: total_correct column persists in D1
+
+The D1 `leaderboard_m2` table SHALL include a `total_correct INTEGER NOT NULL DEFAULT 0` column constrained by `CHECK (total_correct >= 0)`. A partial index `WHERE is_public = 1` SHALL exist on `total_correct DESC` to back the cron's `correct` filter query without a table scan. Existing rows at migration time SHALL receive `total_correct = 0` from the column default; no retroactive backfill from quiz history is required because each opted-in client's next sync push will overwrite the row with the real value.
+
+#### Scenario: Migration adds column without rewriting rows
+
+- **WHEN** the D1 migration `0005_add_total_correct.sql` is applied via `wrangler d1 migrations apply study-rpg-leaderboard --remote`
+- **THEN** all existing `leaderboard_m2` rows SHALL gain a `total_correct = 0` column value via SQLite's constant-default fast-path, and the new partial index `idx_leaderboard_m2_total_correct` SHALL be created with the same `WHERE is_public = 1` clause as the other indexes
+
+#### Scenario: Existing rows surface as zero on the correct tab until next push
+
+- **WHEN** a player who opted in before the migration opens the leaderboard within the first 30-min cron window after migration apply
+- **THEN** their row SHALL appear in the「答對總題數排名」tab with `total_correct = 0`; the value SHALL update to the real aggregate after their next `onPushComplete` upsert

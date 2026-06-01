@@ -16,9 +16,30 @@ const spriteModules = import.meta.glob('../sprites/doctor-*.png', {
   import: 'default',
 }) as Record<string, string>
 
-export const SPRITES_MAP: Record<string, string> = Object.fromEntries(
+// add-hospital-equipment-medexam2 (2026-05-24): equipment sprites live in a
+// dedicated subfolder for organization. Keys get `equipment-` prefix to
+// namespace away from doctor-* sprites in the shared SPRITES_MAP.
+const equipmentSpriteModules = import.meta.glob('../sprites/equipment/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
+const doctorSprites = Object.fromEntries(
   Object.entries(spriteModules).map(([path, url]) => {
     const key = path.replace(/.*\/(.+)\.png$/, '$1')
     return [key, url]
   }),
 )
+
+const equipmentSprites = Object.fromEntries(
+  Object.entries(equipmentSpriteModules).map(([path, url]) => {
+    const key = path.replace(/.*\/(.+)\.png$/, '$1')
+    return [`equipment-${key}`, url]
+  }),
+)
+
+export const SPRITES_MAP: Record<string, string> = {
+  ...doctorSprites,
+  ...equipmentSprites,
+}

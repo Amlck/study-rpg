@@ -2,8 +2,25 @@
 //
 // pushBundle: build snapshot → gzip → PUT with If-Match (or If-None-Match: *
 //   for first push); on 412 pull-merge-retry up to 3 attempts.
-// pullBundle: GET (conditional with If-None-Match if opts.conditional), 304
-//   short-circuits, 404 = no blob yet, otherwise decompress + applyToLocal.
+// pullBundle: HEAD-then-unconditional-GET pattern. When the caller wants a
+//   conditional pull AND we have a cached ETag AND force is not set, we first
+//   issue HEAD to peek the server's current ETag. If it matches the cache, we
+//   short-circuit with `notModified: true` and never fetch the body. Otherwise
+//   we issue an unconditional GET (NO `If-None-Match` request header).
+//
+//   This works around a Cloudflare R2 bug: R2's S3-compatible `304 Not
+//   Modified` responses omit the `Access-Control-Allow-Origin` header, so a
+//   browser cross-origin request that would have legitimately received a 304
+//   instead surfaces to JS as `TypeError: Failed to fetch`. The engine cannot
+//   distinguish that from a real network failure → every successful cache hit
+//   was being treated as a sync error. By never sending `If-None-Match` on the
+//   body-fetching GET we ensure R2 never has cause to respond with 304.
+//
+//   404 on HEAD = blob missing (first-ever pull). HEAD failures (network, CORS
+//   misconfig on HEAD method, unexpected status) log a `[sync:pullR2:<bundle>]`
+//   warning and fall back to the unconditional GET path — defensive, so a
+//   transient HEAD failure cannot turn into a pull error when fetching the body
+//   directly would still succeed.
 
 import type Dexie from 'dexie'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -16,7 +33,7 @@ import {
   type ApplyResult,
 } from './bundles'
 import { requestPresign, type Bundle } from './client'
-import { getEtag, setEtag } from './etag'
+import { getEtag, getSchemaVersion, setEtag, setSchemaVersion } from './etag'
 
 const MAX_PUSH_RETRIES = 3
 // Exponential backoff (ms) between push retries after a 412 stale-ETag.
@@ -52,11 +69,36 @@ export async function pushBundle(
   for (let attempt = 1; attempt <= MAX_PUSH_RETRIES; attempt++) {
     try {
       const snapshot = await buildBundleSnapshot(db, adapters, userId)
+      // Schema_version monotonic downgrade guard
+      // (fix-doctor-retire-cloud-resurrection-v2 Decision 8 / codex Attack 1).
+      // Refuse to overwrite a cloud bundle whose schema_version is strictly
+      // greater than this snapshot's — prevents a v3 client from silently
+      // stripping forward-compatibility keys (like `retirement_log`) from a
+      // v4 cloud bundle. The cached SV is set by pullBundle below; for fresh
+      // accounts (cached = null) the guard is a no-op so first-ever push is
+      // unblocked. Client-side enforcement only; Worker-side enforcement is
+      // a follow-up change (add-bundle-schema-version-guard).
+      const cachedRemoteSV = getSchemaVersion(bundle)
+      if (cachedRemoteSV != null && cachedRemoteSV > snapshot.meta.schema_version) {
+        throw new Error(
+          `r2_schema_downgrade_refused: cloud=${cachedRemoteSV} local=${snapshot.meta.schema_version} bundle=${bundle}`,
+        )
+      }
       const gz = await gzipBundle(snapshot)
-      const { url } = await requestPresign(supabase, bundle, 'put')
+      // Pass snapshot.meta.schema_version so the Worker can validate against
+      // the existing R2 blob's customMetadata['schema-version'] and bake the
+      // value into a signed `x-amz-meta-schema-version` header in the URL.
+      // (add-bundle-schema-version-guard P1 opt-in.)
+      const { url, requiredHeaders } = await requestPresign(
+        supabase,
+        bundle,
+        'put',
+        snapshot.meta.schema_version,
+      )
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/gzip',
+        ...(requiredHeaders ?? {}),
       }
       const known = getEtag(bundle)
       if (known) headers['If-Match'] = known
@@ -136,17 +178,46 @@ export async function pullBundle(
   opts?: { conditional?: boolean; force?: boolean },
 ): Promise<PullBundleResult> {
   const { url } = await requestPresign(supabase, bundle, 'get')
-  const headers: Record<string, string> = {}
-  if (opts?.conditional) {
-    const known = getEtag(bundle)
-    if (known) headers['If-None-Match'] = known
+
+  // HEAD probe applies only when the caller wants a conditional pull, isn't
+  // forcing, and we have a cached ETag to compare against. Otherwise skip to
+  // the unconditional GET below — no `If-None-Match` header, so R2 cannot
+  // respond with 304 (whose missing-CORS-header bug is the reason for this
+  // whole pattern).
+  const conditional = opts?.conditional !== false
+  const force = opts?.force === true
+  const cachedEtag = conditional && !force ? getEtag(bundle) : null
+
+  if (cachedEtag) {
+    try {
+      const headRes = await fetch(url, { method: 'HEAD' })
+      if (headRes.status === 404) {
+        return { etag: null, notModified: false, blobMissing: true, applied: null }
+      }
+      if (headRes.ok) {
+        const serverEtag = headRes.headers.get('ETag')
+        if (serverEtag && serverEtag === cachedEtag) {
+          return { etag: cachedEtag, notModified: true, blobMissing: false, applied: null }
+        }
+        // ETag differs or absent — fall through to unconditional GET.
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[sync:pullR2:${bundle}] HEAD probe returned ${headRes.status}, falling back to unconditional GET`,
+        )
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[sync:pullR2:${bundle}] HEAD probe failed, falling back to unconditional GET: ${
+          (err as { message?: string })?.message ?? 'unknown'
+        }`,
+      )
+    }
   }
 
-  const res = await fetch(url, { method: 'GET', headers })
+  const res = await fetch(url, { method: 'GET' })
 
-  if (res.status === 304) {
-    return { etag: getEtag(bundle), notModified: true, blobMissing: false, applied: null }
-  }
   if (res.status === 404) {
     return { etag: null, notModified: false, blobMissing: true, applied: null }
   }
@@ -173,6 +244,9 @@ export async function pullBundle(
   }
 
   if (etag) setEtag(bundle, etag)
+  // Cache cloud schema_version so subsequent pushes can detect downgrade
+  // attempts (per fix-doctor-retire-cloud-resurrection-v2 Decision 8).
+  setSchemaVersion(bundle, snapshot.meta.schema_version)
 
   const applied = await applyBundleSnapshot(db, adapters, snapshot, { force: opts?.force })
   return { etag, notModified: false, blobMissing: false, applied }
@@ -187,5 +261,10 @@ function isUnrecoverable(err: unknown): boolean {
   if (msg.includes('presign_no_session')) return true
   if (msg.includes('presign_failed_401')) return true
   if (msg.includes('presign_failed_403')) return true
+  // Schema-version downgrade is a deterministic refusal — retrying won't help
+  // until the client is upgraded. Surface immediately so the user sees the
+  // sync chip warning (per cloud-sync spec "R2 bundle push SHALL refuse
+  // schema_version downgrade").
+  if (msg.includes('r2_schema_downgrade_refused')) return true
   return false
 }

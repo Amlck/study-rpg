@@ -26,6 +26,7 @@ import { buildLeaderboardAttributes, pushLeaderboardIfOptedIn } from '../lib/syn
 import type { LeaderboardProfileRow } from '../db/schema'
 import { EmojiIcon } from './EmojiIcon'
 import { NicknameField, type NicknameValidity } from './NicknameField'
+import { AchievementTitleSelector } from './AchievementTitleSelector'
 
 type ToggleStatus = 'idle' | 'flipping' | 'error'
 
@@ -160,6 +161,8 @@ export function LeaderboardSettingsControls() {
       <p>
         目前暱稱：<strong>{profile.nickname ?? '（未設定）'}</strong>
       </p>
+
+      <AchievementTitleSelector userId={user.id} />
 
       <label className="help-menu__toggle-row">
         <input

@@ -15,6 +15,8 @@ import {
   getDB,
   newCard,
   reviewCard,
+  reviewCardEasy,
+  reviewCardGuessed,
   applyCheckIn,
   getStreakMultiplier,
   getTaipeiToday,
@@ -48,10 +50,12 @@ import { getContentPack } from '@study-rpg/content-medexam-tw'
 import { AuthButton } from './components/AuthButton'
 import { MigrationUploadPrompt } from './components/MigrationUploadPrompt'
 import { MigrationBanner } from './components/MigrationBanner'
+import { DomainMigrationBanner } from './components/DomainMigrationBanner'
 import { getSupabase } from './lib/auth/client'
 import { getBackendConfig } from './lib/sync/backend-config'
 import { ConflictChooserModal } from './components/ConflictChooserModal'
 import { AccountSwitchPrompt } from './components/AccountSwitchPrompt'
+import { LocalDataImportButton } from './components/LocalDataImportButton'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SyncStatusChip } from './components/SyncStatusChip'
 import { SyncErrorToast } from './components/SyncErrorToast'
@@ -173,7 +177,7 @@ export default function App() {
 
   // Load content pack at mount
   useEffect(() => {
-    getContentPack('/study-rpg/content/medexam-tw')
+    getContentPack(`${import.meta.env.BASE_URL}content/medexam-tw`)
       .then((pack) => {
         // Forward-compat filter: drop unrenderable option-image questions
         // before they reach QuizModal / BossModal / MentorDialog. 一階 corpus
@@ -530,7 +534,11 @@ export default function App() {
     for (let i = 0; i < correctCount; i++) {
       setTimeout(() => doRoll('quiz'), i * 150)
     }
-    // SRS write — per-question card upsert; quality 4 if correct, 2 if wrong (lapse)
+    // SRS write — per-question card upsert. Quality routing:
+    //  - wrong          → reviewCard(base, 2)               (lapse, interval=1)
+    //  - correct default → reviewCard(base, 4)              (standard SM-2 good)
+    //  - correct easy   → reviewCardEasy(base)              (ease×1.5, interval×3)
+    //  - correct guessed → reviewCardGuessed(base)          (interval=1, ease unchanged)
     ;(async () => {
       try {
         const db = getDB()
@@ -538,7 +546,16 @@ export default function App() {
         for (const qr of questionResults) {
           const existing = await db.srs.get(qr.questionId)
           const base = existing ?? newCard(qr.questionId, now)
-          const updated = reviewCard(base, qr.correct ? 4 : 2, now)
+          let updated
+          if (!qr.correct) {
+            updated = reviewCard(base, 2, now)
+          } else if (qr.quality === 'easy') {
+            updated = reviewCardEasy(base, now)
+          } else if (qr.quality === 'guessed') {
+            updated = reviewCardGuessed(base, now)
+          } else {
+            updated = reviewCard(base, 4, now)
+          }
           await db.srs.put(updated)
         }
         await refreshDueQueue()
@@ -628,6 +645,7 @@ export default function App() {
   const homeView = (
     <>
       <div className="header-controls">
+        <LocalDataImportButton />
         <AuthButton onOpenSettings={() => setSettingsOpen(true)} />
         {authUser && (
           <SyncStatusChip
@@ -904,6 +922,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <DomainMigrationBanner />
       <header className="app-header">
         <h1>一階國考 RPG</h1>
         <div className="tag">study-rpg · pixel-medical · medexam-tw</div>

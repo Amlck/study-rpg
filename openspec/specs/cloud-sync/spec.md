@@ -645,3 +645,618 @@ If the overwrite itself fails (e.g., the corrupt blob's ETag is stale because a 
 - **THEN** the engine SHALL preserve the underlying error message in the thrown exception, formatted as `r2_push_exhausted: <original error>` (so CORS misconfigurations remain identifiable in logs)
 - **AND** the engine SHALL NOT mask the network error with the corrupt-blob recovery messages
 
+### Requirement: Worker Custom Domain `api.med-study-rpg.com` serves as canonical API base
+
+The Cloudflare Worker `study-rpg-sync-worker` SHALL be bound to a Custom Domain `api.med-study-rpg.com` such that requests to `https://api.med-study-rpg.com/<path>` reach the same Worker instance as the existing `https://study-rpg-sync-worker.tony85314.workers.dev/<path>` URL. Both URLs SHALL resolve to identical Worker logic — no version split, no traffic split.
+
+Binding SHALL be configured via either:
+
+1. Cloudflare dashboard → Workers → `study-rpg-sync-worker` → Settings → Triggers → Custom Domains → Add Custom Domain (auto-creates DNS records since `med-study-rpg.com` is on Cloudflare), OR
+2. `cloudflare/sync-worker/wrangler.toml` with a `[[routes]]` entry: `{ pattern = "api.med-study-rpg.com/*", zone_name = "med-study-rpg.com" }`
+
+Either method satisfies the requirement; the chosen method SHALL be documented in `cloudflare/sync-worker/README.md`.
+
+The client-side env var `VITE_SYNC_WORKER_URL` SHALL be set to `https://api.med-study-rpg.com` for the Cloudflare Pages build, while the GitHub Pages workflow continues to default to `https://study-rpg-sync-worker.tony85314.workers.dev`.
+
+#### Scenario: api subdomain reaches the Worker
+
+- **GIVEN** the Custom Domain binding is active
+- **WHEN** any HTTP request is sent to `https://api.med-study-rpg.com/<any-path>`
+- **THEN** the request SHALL be handled by `study-rpg-sync-worker`
+- **AND** the response SHALL be byte-identical to what the same request to `https://study-rpg-sync-worker.tony85314.workers.dev/<same-path>` produces
+
+#### Scenario: New domain client pushes to R2 via api subdomain
+
+- **GIVEN** a user on `https://med-study-rpg.com/1st/` has dirty local state and is signed in
+- **WHEN** the sync engine debounce fires and pushes an R2 bundle snapshot
+- **THEN** the network request SHALL be a POST/PUT to `https://api.med-study-rpg.com/<r2-endpoint>`
+- **AND** the Worker SHALL mint a presigned URL and the client SHALL complete the binary upload
+- **AND** `Performance.getEntriesByType('resource')` SHALL show a successful round-trip (per the `chrome_mcp_preflight.md` PUT-via-Performance-API verification rule)
+
+### Requirement: Worker CORS allowed origins include both legacy and new domains during bake
+
+The Worker's CORS allowed origins list SHALL include:
+
+- `https://fireman333.github.io` (legacy GitHub Pages — required during bake)
+- `https://med-study-rpg.com` (new Cloudflare Pages — required for new domain clients)
+- `http://localhost:5173` (existing development — unchanged)
+
+Any other origin SHALL be rejected with the standard CORS deny response.
+
+The Worker SHALL apply CORS to all R2 sync endpoints (presign, healthz, etc.) and to all leaderboard endpoints (cross-referenced from the `hospital-leaderboard` capability — same Worker, same CORS code path).
+
+The bake-end follow-up change SHALL remove `https://fireman333.github.io` from the allowed origins once the GitHub Pages site is decommissioned (or switched to redirect-only mode).
+
+#### Scenario: New domain preflight succeeds
+
+- **GIVEN** the Worker's `ALLOWED_ORIGINS` includes `https://med-study-rpg.com`
+- **WHEN** a browser on `https://med-study-rpg.com/1st/` issues a CORS preflight OPTIONS to `https://api.med-study-rpg.com/<endpoint>`
+- **THEN** the Worker SHALL respond with `Access-Control-Allow-Origin: https://med-study-rpg.com`
+- **AND** the browser SHALL proceed with the actual request
+
+#### Scenario: Legacy GitHub Pages preflight still succeeds during bake
+
+- **GIVEN** the Worker's `ALLOWED_ORIGINS` still includes `https://fireman333.github.io`
+- **WHEN** a browser on `https://fireman333.github.io/study-rpg/` issues a CORS preflight to `https://study-rpg-sync-worker.tony85314.workers.dev/<endpoint>`
+- **THEN** the Worker SHALL respond with `Access-Control-Allow-Origin: https://fireman333.github.io`
+- **AND** existing sync flows SHALL function unchanged
+
+#### Scenario: Unrecognized origin is rejected
+
+- **WHEN** any browser on an origin not in the allowed list (e.g., `https://med-study-rpg.com.evil.tld/`) issues a CORS preflight
+- **THEN** the Worker SHALL NOT include that origin in the `Access-Control-Allow-Origin` response header
+- **AND** the browser SHALL block the subsequent fetch
+
+### Requirement: Client picks Worker URL from `VITE_SYNC_WORKER_URL` env, defaulting to workers.dev
+
+Each app's R2 sync client (and leaderboard client) SHALL read `import.meta.env.VITE_SYNC_WORKER_URL` at runtime. If the env var is unset or empty, the client SHALL default to `https://study-rpg-sync-worker.tony85314.workers.dev` (preserving GitHub Pages behavior).
+
+The env var SHALL be validated to be a `https://` URL with no trailing slash and a non-empty host before use. Empty strings, `undefined`, or whitespace-only values SHALL fall back to the default.
+
+The GitHub Pages workflow `.github/workflows/deploy.yml` MAY explicitly set `VITE_SYNC_WORKER_URL` to the workers.dev URL (preferred for explicitness) or leave it unset and rely on the default.
+
+The Cloudflare Pages build SHALL set `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com` in its build environment.
+
+#### Scenario: CF Pages build env switches Worker URL
+
+- **GIVEN** the Cloudflare Pages dashboard sets `VITE_SYNC_WORKER_URL=https://api.med-study-rpg.com` for both Production and Preview environments
+- **WHEN** the build runs `vite build` for either app
+- **THEN** the resulting bundle SHALL reference `https://api.med-study-rpg.com` as the sync API base
+- **AND** runtime sync operations on `med-study-rpg.com` SHALL hit `api.med-study-rpg.com`
+
+#### Scenario: Missing env var falls back to workers.dev
+
+- **GIVEN** the GitHub Pages workflow does not set `VITE_SYNC_WORKER_URL`
+- **WHEN** the build runs
+- **THEN** the resulting bundle SHALL reference `https://study-rpg-sync-worker.tony85314.workers.dev`
+- **AND** legacy clients SHALL continue using the workers.dev URL
+
+#### Scenario: Empty-string env var falls back to default
+
+- **GIVEN** the CI environment sets `VITE_SYNC_WORKER_URL=` (empty string)
+- **WHEN** the client reads the env var
+- **THEN** the client SHALL apply the default (`https://study-rpg-sync-worker.tony85314.workers.dev`)
+- **AND** no runtime error SHALL surface from an empty URL
+
+<!-- Added by add-achievement-system (synced 2026-05-24) -->
+
+### Requirement: Achievement TableAdapter registered in M2_ADAPTERS only
+
+A new `ACHIEVEMENTS: TableAdapter` SHALL be defined in `apps/medexam2-hospital-tw/src/lib/sync/tables.ts` following the existing `TableAdapter` contract (snapshotAll + applyToLocal + diff methods + `postgresTable` field). The adapter SHALL be registered in `M2_ADAPTERS` only and MUST NOT appear in `HOSPITAL_ADAPTERS`. This mirrors the `LEADERBOARD_PROFILE` precedent (commit `cfaaa32`, 2026-05-21).
+
+#### Scenario: Adapter feeds m2 bundle
+
+- **WHEN** the sync engine builds the m2-snapshot.json.gz bundle
+- **THEN** `buildBundleSnapshot` SHALL call `ACHIEVEMENTS.snapshotAll(db, userId, updatedAt, BUNDLE_APP_VERSION)` and include the rows under the bundle's `data[<postgresTable>]` key
+
+#### Scenario: Adapter NOT invoked on Supabase push path
+
+- **WHEN** the sync engine runs its legacy Supabase per-row push path (still active during Phase 2 dual-write window OR for backward compat)
+- **THEN** the engine SHALL iterate over `HOSPITAL_ADAPTERS` only, NOT touch `ACHIEVEMENTS`; no Supabase RPC call is made for achievements
+
+### Requirement: Achievement state survives R2 bundle pull-merge cycles
+
+When a client receives an R2 m2 bundle containing achievements rows (e.g., after pulling on a second device), `ACHIEVEMENTS.applyToLocal` SHALL be invoked for each row. Conflict resolution SHALL follow the existing per-row LWW pattern based on `updated_at`. Already-unlocked-locally achievements SHALL NOT be re-unlocked (notification not re-emitted) — the apply path MUST only update DB state, not trigger UI unlock toasts.
+
+#### Scenario: Cross-device pull does not double-fire unlock toast
+
+- **WHEN** device A unlocks achievement X (toast shown), pushes to R2; device B pulls the bundle and applies the row
+- **THEN** device B's IndexedDB gains the achievement row but NO unlock toast appears on device B for X (toast is local-event-driven, not sync-driven)
+
+#### Scenario: LWW resolves identical-id conflicts
+
+- **WHEN** device A applies a row with `id='first-quiz-answered'`, `unlockedAt: 1700000000`; device B has the same `id` with `unlockedAt: 1700000500`; sync merge happens
+- **THEN** the row with the larger `updated_at` wins; the unlockedAt of the local record is preserved if it is newer
+
+### Requirement: Achievements table absent from Supabase schema
+
+The achievement system SHALL NOT introduce any Supabase migration files. No `supabase/migrations/0009_*.sql` or later file SHALL be authored for achievements. The `upsert_lww` RPC whitelist SHALL NOT be extended. The reasoning: R2 has become the canonical write path post Phase-3 cut; new tables introduced after this point are R2-only by convention (established by `leaderboard_profile`).
+
+#### Scenario: No new Supabase migration in change
+
+- **WHEN** reviewing the file tree of this change
+- **THEN** `supabase/migrations/` SHALL contain no new files
+
+#### Scenario: Old upsert_lww whitelist preserved
+
+- **WHEN** examining the most-recent `upsert_lww` migration (currently `0006_upsert_lww_bookmarks.sql`)
+- **THEN** no newer migration extending the whitelist SHALL exist; the whitelist remains at 9 tables (the cap from before this change)
+
+### Requirement: Migration.ts handles fresh-start and silent-pull paths
+
+The existing `apps/medexam2-hospital-tw/src/lib/sync/migration.ts` state machine SHALL be extended to initialize the empty `achievements` table on the `fresh-start` and `silent-pull` gate states. Mirror the v14 leaderboardProfile initialization pattern.
+
+#### Scenario: Fresh-start gate creates empty achievements table
+
+- **WHEN** a new player completes Google OAuth sign-in for the first time and the migration state machine transitions to `fresh-start`
+- **THEN** the engine SHALL ensure an empty `achievements` table exists in IndexedDB (no rows); subsequent unlock writes proceed normally
+
+#### Scenario: Silent-pull initializes from R2 bundle
+
+- **WHEN** an existing player signs in on a new device, the migration state transitions to `silent-pull`, and the m2 bundle is pulled
+- **THEN** any achievements rows from the R2 bundle SHALL be applied to local IndexedDB via `ACHIEVEMENTS.applyToLocal`; locally unlocked achievements (if any from a prior session) SHALL be merged via LWW
+
+### Requirement: R2 conditional bundle pull SHALL use HEAD-then-unconditional-GET to work around R2 304 CORS bug
+
+The sync engine's `pullBundle(bundle, opts)` SHALL NOT issue a body-fetching `GET` with an `If-None-Match: <lastEtag>` request header against a cross-origin R2 presigned URL. When the caller requests a conditional pull (`opts.conditional !== false`) AND the engine has a cached `lastEtag` for the bundle AND `opts.force !== true`, the engine SHALL first issue a `HEAD` request against the presigned URL, extract the server's current `ETag` response header, and compare it byte-for-byte against the cached `lastEtag`. The engine SHALL issue a body-fetching `GET` ONLY when the etags differ or no cached etag is available; the body-fetching `GET` SHALL NOT carry an `If-None-Match` request header (so R2 SHALL respond with `200 OK` and a body, never `304`).
+
+**Rationale**: Cloudflare R2's S3-compatible `304 Not Modified` responses omit the `Access-Control-Allow-Origin` response header. When a browser receives a 304 from a cross-origin presigned R2 URL, the cross-origin policy treats the CORS-headerless response as inaccessible and surfaces it to JavaScript as `TypeError: Failed to fetch`. The sync engine cannot distinguish this from a real network failure. Switching to HEAD avoids the 304 path entirely (HEAD never returns 304 per HTTP/1.1 RFC 9110 §15.4.5). The `GET` issued on cache-miss carries no `If-None-Match` header so R2 cannot produce a 304 response.
+
+#### Scenario: Cache hit — HEAD etag matches lastEtag, body never fetched
+
+- **GIVEN** the engine has a cached `lastEtag` of `"a2686478f3307e2fc6f6393d0b1ae279"` for bundle `m2`
+- **AND** the R2 blob's current ETag is `"a2686478f3307e2fc6f6393d0b1ae279"` (unchanged)
+- **WHEN** `pullBundle('m2', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL issue exactly one `HEAD` request against the presigned R2 URL
+- **AND** the HEAD response SHALL be `200 OK` with an `ETag` header matching `lastEtag`
+- **AND** the engine SHALL return `{kind: 'noChange'}` without issuing any body-fetching `GET`
+- **AND** no `If-None-Match` request header SHALL appear on any request issued by this call
+
+#### Scenario: Cache miss — HEAD etag differs, unconditional GET fetches new body
+
+- **GIVEN** the engine has a cached `lastEtag` of `"oldetag"` for bundle `m1`
+- **AND** the R2 blob's current ETag is `"newetag"` (server-side updated since last pull)
+- **WHEN** `pullBundle('m1', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL first issue a `HEAD` request and read `ETag: "newetag"`
+- **AND** the engine SHALL then issue a `GET` request against the presigned URL
+- **AND** the `GET` request SHALL NOT carry an `If-None-Match` request header
+- **AND** the `GET` response SHALL be `200 OK` with the gzipped snapshot body
+- **AND** the engine SHALL unzip the body, return `{kind: 'changed', snapshot: <parsed>, etag: '"newetag"'}`
+- **AND** the call site SHALL update its `lastEtag` cache to `"newetag"`
+
+#### Scenario: Blob does not exist — HEAD returns 404
+
+- **GIVEN** the user has no prior cloud snapshot for bundle `bookmarks` (first-ever sign-in OR account-reset)
+- **WHEN** `pullBundle('bookmarks', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL issue a `HEAD` request
+- **AND** R2 SHALL respond `404 Not Found`
+- **AND** the engine SHALL return `{kind: 'blobMissing'}` without issuing any `GET`
+
+#### Scenario: HEAD throws — defensive fallback to unconditional GET
+
+- **GIVEN** the engine has a cached `lastEtag` of `"someEtag"` for bundle `m2`
+- **AND** the `HEAD` request rejects (network error, CORS misconfig on HEAD, or unexpected non-ok status)
+- **WHEN** `pullBundle('m2', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL emit a visible warning (e.g., `console.warn` with the `[sync:pullR2:<bundle>]` channel prefix matching the existing `[sync:pushR2:...]` convention) so the HEAD failure is not silently swallowed
+- **AND** the engine SHALL fall back to issuing an unconditional `GET` (no `If-None-Match` header) against the presigned URL
+- **AND** if the fallback `GET` succeeds with `200 OK`, the engine SHALL return `{kind: 'changed', snapshot, etag}` as in the cache-miss path
+- **AND** if the fallback `GET` itself fails, the engine SHALL surface the error normally (the call SHALL throw, which the engine.ts call-site catches and feeds into `recentErrors` via `recordError`)
+
+#### Scenario: Force pull skips HEAD probe entirely
+
+- **GIVEN** the caller invokes `pullBundle('m1', {conditional: true, force: true})` (e.g., from `pullAllNow({force: true})` cold-start path per the existing `Cold-start force-pull bypasses incremental cursor` requirement)
+- **WHEN** the engine evaluates the request
+- **THEN** the engine SHALL NOT issue a `HEAD` request
+- **AND** the engine SHALL issue a single unconditional `GET` (no `If-None-Match` header) and process the response per the cache-miss path
+
+#### Scenario: No cached etag — first conditional pull skips HEAD
+
+- **GIVEN** the engine has no cached `lastEtag` for bundle `m2` (e.g., first pull after a fresh engine `start()`)
+- **WHEN** `pullBundle('m2', {conditional: true, force: false})` is invoked
+- **THEN** the engine SHALL skip the HEAD probe (no etag to compare against)
+- **AND** the engine SHALL issue a single unconditional `GET` (no `If-None-Match` header)
+- **AND** on `200 OK` the engine SHALL store the returned ETag as `lastEtag` for subsequent calls
+
+#### Scenario: No If-None-Match header ever sent on body-fetching GET
+
+- **GIVEN** any invocation of `pullBundle(bundle, opts)` for any bundle and any opts
+- **WHEN** the engine issues a body-fetching `GET` request
+- **THEN** the request headers SHALL NOT include `If-None-Match`
+- **AND** R2 SHALL therefore never respond with `304 Not Modified` to a body-fetching `GET` issued by this engine
+
+### Requirement: Multi-table singleton adapters SHALL install Dexie hooks on every contributing table
+
+A `TableAdapter` whose `snapshotDirty()` / `snapshotAll()` reads from more than one Dexie table (i.e. its snapshot aggregates rows from multiple local tables into a single cloud blob) SHALL declare every additional contributing table in an optional `extraDexieTables: readonly string[]` field. The sync engine SHALL install identical `creating` / `updating` / `deleting` hooks on **every** table in `[adapter.dexieTable, ...adapter.extraDexieTables ?? []]`. Every hooked table SHALL call `markDirty` under the canonical `adapter.dexieTable` key (not the actual mutated table name), so the dirty marker stays singular per adapter and the existing `snapshotDirty` / `clear()` paths require no modification.
+
+The engine SHALL detect overlap at construction time: if any Dexie table name appears in `[adapter.dexieTable, ...adapter.extraDexieTables ?? []]` for two or more adapters within the same engine instance, engine construction SHALL throw a descriptive error in DEV builds. Prod builds MAY choose to log a warning and continue, since accidental overlap stacks hooks redundantly but does not corrupt data.
+
+Adapters with a single contributing Dexie table SHALL leave `extraDexieTables` unset (or empty); the engine SHALL treat the field as defaulting to an empty array.
+
+The `applyingFromCloud` echo-prevention gate inside each hook callback SHALL be unchanged. Hook callbacks for extra tables SHALL exercise the same gate: when `applyingFromCloud === true` (i.e. a pull is writing back the canonical singleton blob via `writeHospitalStateBlob` or equivalent), no dirty marker SHALL be emitted and no `_updatedAt` SHALL be stamped.
+
+#### Scenario: HOSPITAL_STATE write to a passenger table fires push within debounce window
+
+- **GIVEN** an authed 二階 session with `globalThis.__sync.getStatus() === 'idle'`
+- **AND** `HOSPITAL_STATE.extraDexieTables` contains `'rooms'`
+- **WHEN** `services/facility.ts` calls `db.rooms.put({ ...room, facilityLevel: nextLevel, roomFacility: newMultiplier })`
+- **AND** no other table is touched in the same debounce window
+- **THEN** within `debounceMs` (default 3000) the engine SHALL call `pushNow()` once
+- **AND** the upserted `hospital_state` cloud row's `data.rooms[<roomId>].facilityLevel` SHALL equal `nextLevel`
+
+#### Scenario: Burst writes across multiple passenger tables coalesce into one push
+
+- **GIVEN** the same authed session
+- **WHEN** within 100 ms the app writes to `rooms` (facility upgrade), `tickets` (gacha spend), and `gachaStats` (pity update)
+- **THEN** the engine SHALL schedule exactly one debounced push
+- **AND** the push SHALL upsert a single `hospital_state` row whose `data` blob reflects all three writes
+
+#### Scenario: Echo-prevention prevents pull-applied passenger writes from re-pushing
+
+- **GIVEN** an in-flight `pullNow` has set `applyingFromCloud = true`
+- **WHEN** `writeHospitalStateBlob` calls `db.rooms.bulkPut(...)`, `db.tickets.put(...)`, `db.gachaStats.put(...)`, `db.affinity.bulkPut(...)` inside the apply transaction
+- **THEN** no dirty marker SHALL be added for the `HOSPITAL_STATE` adapter
+- **AND** no debounced push SHALL be scheduled as a side effect of the apply
+
+#### Scenario: Engine rejects adapter list with duplicate Dexie tables
+
+- **GIVEN** two adapters A and B in the same `adapters` array
+- **AND** A has `dexieTable: 'rooms'`
+- **AND** B has `extraDexieTables: ['rooms']`
+- **WHEN** `createSyncEngine({ adapters: [A, B], ... })` runs in DEV
+- **THEN** the call SHALL throw an error naming `'rooms'` as the conflicting table
+- **AND** the error message SHALL identify both A's `postgresTable` and B's `postgresTable`
+
+### Requirement: Tab-close / network drop SHALL NOT lose unpushed singleton-passenger writes any more than other synced writes
+
+For any write to a Dexie table contributing to a singleton adapter's snapshot (whether the canonical `dexieTable` or any entry in `extraDexieTables`), the dirty-marker timing relative to tab close, network drop, and visibility-pull SHALL be identical to a write against a single-table adapter. The push SHALL be enqueued at write time (not at next tick / next cron / next user action), so the existing offline-queue requirement applies symmetrically.
+
+This requirement strengthens the existing **Debounced auto-push on local writes** requirement: every IndexedDB mutation to a synced table — including passenger tables of multi-table singleton adapters — SHALL enqueue a debounced cloud push at the time of the write.
+
+#### Scenario: Facility upgrade survives tab close after debounce flush
+
+- **GIVEN** an authed 二階 session, no active study session
+- **WHEN** the user clicks "升級設施" on `outpatient-1`, raising its `facilityLevel` from L0 to L0+1
+- **AND** the debounce window (default 3000 ms) elapses without further writes, allowing the engine to flush the push
+- **AND** after the flush completes, the user closes the browser tab
+- **AND** the user later reopens the tab (same browser session or cold-start re-auth)
+- **THEN** `db.rooms.get('outpatient-1').facilityLevel` SHALL equal L0+1
+- **AND** the cloud `hospital_state.data.rooms` row for `outpatient-1` SHALL also reflect L0+1
+
+Sub-debounce tab close (close < 3000 ms after click, before flush fires) falls under the same pre-existing failure mode as any unpushed Dexie write under cold-start force-pull (handled by the local-backup safety net in `services/snapshot.ts`); the contract here is parity with other synced tables, not stronger guarantees.
+
+#### Scenario: Cross-device pull preserves uncommitted facility upgrade
+
+- **GIVEN** device A and device B both signed into the same account
+- **AND** device B last pushed `hospital_state` 10 minutes ago with `rooms.outpatient-1.facilityLevel = L0`
+- **WHEN** device A upgrades `outpatient-1` to L0+1
+- **AND** within 500 ms of the upgrade, device B's tab returns to focus and triggers a visibility-pull
+- **THEN** the debounced push from device A SHALL fire before device B's pull resolves OR after; in either order, **device A's `db.rooms.get('outpatient-1').facilityLevel` SHALL remain L0+1**
+- **AND** within one push/pull cycle, both devices SHALL converge on L0+1
+
+<!-- Added by fix-doctor-retire-cloud-resurrection-v2 (synced 2026-05-27) -->
+
+### Requirement: Row deletion in collection tables SHALL propagate via tombstone-table mechanism
+
+The sync engine SHALL treat designated "tombstone tables" as authoritative records of deletion for their paired primary tables. When a local row in a primary table is deleted as part of a logical operation that also appends a row to the tombstone table (e.g., `retirementLog` for `doctors`), the tombstone row SHALL be the single carrier of the delete intent across devices — replacing the missing per-row tombstone column that the Supabase/R2 sync schema lacks.
+
+This requirement covers the gap left by the previous engine behavior, where the Dexie `deleting` hook merely cleared dirty markers (see `engine.ts`: "Deletes aren't synced yet (Postgres would need a tombstone column)"). Combined with the `Cold-start force-pull bypasses incremental cursor` requirement, that gap caused force-pulled cloud rows to resurrect locally-deleted records.
+
+**Designated tombstone pairings (M_2nd app)**:
+
+- `retirement_log` (logical pk = `doctor_id`; Dexie physical pk = `++id` auto-increment with plain non-unique `doctorId` secondary index — non-unique because Dexie 4.x activates new unique indexes BEFORE the upgrade callback runs, aborting the versionchange transaction for any pre-existing duplicate-doctorId rows from the ghost-resurrection bug; uniqueness invariant is enforced at the app layer via destructive retire, the cloud layer via Supabase composite pk `(user_id, doctor_id)`, and the adapter layer via `.where('doctorId').equals(x).first()`) → `hospital_doctors` (pk = `id`)
+
+Future tombstone pairings (e.g., for `targeted_tickets` consumption events) SHALL be added to this requirement when introduced; do not invent a generic per-row tombstone column without an explicit follow-up change.
+
+**Push path**: The tombstone table SHALL be registered as a standard collection `TableAdapter` (with `snapshotDirty` / `snapshotAll` / `applyToLocal`) in `HOSPITAL_ADAPTERS` (Supabase write path) and `M2_ADAPTERS` (R2 m2 bundle). Dexie hooks SHALL mark each new tombstone row dirty so the debounced push includes it in the same `pushNow()` cycle that pushes the primary table's surviving rows. The retire transaction in `services/retire.ts` already appends to `retirementLog` in the same Dexie `db.transaction('rw', ...)` block as the primary delete; no service-layer logic change is required (the only diff is adding an explicit `_updatedAt: Date.now()` to the row literal).
+
+**Apply path carve-out**: When `HOSPITAL_DOCTORS.applyToLocal(db, cloudRow)` is invoked, it SHALL FIRST query `db.retirementLog.where('doctorId').equals(cloudRow.id).first()` (secondary-index lookup, NOT pk lookup — Dexie pk on retirementLog remains `++id` for backward compatibility, per the v18→v19 additive migration described in the change design). If such a row exists, the adapter SHALL:
+
+1. Skip writing the cloud row to local Dexie (`return false`)
+2. Delete any locally-present `doctors` row with that `id` (covers the prior-resurrection cleanup case)
+3. NOT throw, NOT log warning above `console.info` level
+
+This carve-out applies whether `opts.force` is true or false — `force=true` (used by `pullAllNow`) SHALL still respect tombstones, because cold-start force-pull is the very pathway that previously caused resurrection.
+
+**Apply ordering**: The R2 bundle apply iterates adapters in `M2_ADAPTERS` array order. The `retirementLog` adapter SHALL appear in the array BEFORE `HOSPITAL_DOCTORS`, so that when a v4+ bundle carrying both keys is applied, retirementLog rows land in Dexie before the doctor adapter's carve-out check runs. For Supabase per-table pull (where each table is fetched in a separate SELECT and applied independently), apply order across tables is not guaranteed within a single `pullNow()`, so the carve-out's `db.retirementLog.where('doctorId').equals(id).first()` check SHALL be the canonical guard (not array order).
+
+**Post-pull reconcile**: A `reconcileRetiredDoctors()` helper SHALL run inside the existing `onPullComplete` chain (`useSync.ts`), positioned BEFORE `checkAssignmentInvariants()`. It SHALL iterate every row in `db.retirementLog.toArray()` and `db.doctors.delete(row.doctorId)` for any matching local doctor row. This covers two race-condition cases the carve-out alone cannot guarantee: (a) Supabase per-table fetch returns doctors before retirementLog within the same `pullNow()` cycle, applying the doctor row to local Dexie before the tombstone arrives; (b) the user installs a v4 client on a device that previously ran v3 and accumulated ghost doctors.
+
+**Cold-start interaction**: The `Cold-start force-pull bypasses incremental cursor` requirement remains in full effect — `engine.start()` SHALL still invoke `pullAllNow({force:true})`. The tombstone mechanism is the layer that prevents force-pull from being destructive. Force-pull MUST fetch the retirementLog table FROM CLOUD before the apply phase considers any doctor row safe to resurrect; this is satisfied automatically because `pullAllNow` fetches all registered adapter tables.
+
+**Dexie schema invariant (v18 → v19)**: The Dexie schema upgrade adding `retirementLog` as a synced collection SHALL be **additive** — Dexie pk on `retirementLog` MUST remain `++id` (auto-increment); the `doctorId` field SHALL remain a plain (non-unique) secondary index; new `_updatedAt` indexed LWW field SHALL be added. The upgrade callback SHALL perform defensive dedup-by-doctorId (keep smallest `retiredAt`) as a one-shot cleanup of historical ghost-resurrection duplicates and to keep the first-sync payload minimal; the dedup is NOT required for schema correctness (uniqueness invariant lives at the app + cloud + adapter layers, not at the Dexie index layer — see "Designated tombstone pairings" note above). The Dexie pk SHALL NOT be changed in this or any future schema bump — Dexie 4.x throws `UpgradeError Not yet support for changing primary key` and bricks all existing users. Additionally, no future schema bump SHALL promote `doctorId` (or any field with potentially-duplicate existing data) to a `&` unique secondary index without first proving via Vitest fixture that the v18 dataset is duplicate-free; Dexie 4.x activates new unique indexes BEFORE the upgrade callback runs, aborting the versionchange transaction with `AbortError` if violators exist. Vitest fixture SHALL exercise the v(N-1)→v(N) upgrade from a real Dexie at v(N-1) (not deleteDatabase + reopen at v(N)) to enforce these invariants in CI.
+
+#### Scenario: Retire on device A, refresh on device A, doctor stays retired
+
+- **GIVEN** device A signed in as user U with 5 live doctors including doctor X (`id = 'doc-x'`)
+- **AND** the sync engine has completed at least one successful pull/push cycle
+- **WHEN** the player retires doctor X (refund applied to revenue, retirementLog row appended with `doctorId = 'doc-x'`)
+- **AND** the debounced push completes (3s after retire), uploading the `retirementLog` row to cloud
+- **AND** the player refreshes the browser tab (engine cold-start fires `pullAllNow({force:true})`)
+- **THEN** the post-pull `db.doctors.get('doc-x')` SHALL return `undefined`
+- **AND** the tick loop SHALL NOT include doctor X in any throughput / reputation / revenue calculation
+- **AND** `db.retirementLog.where('doctorId').equals('doc-x').count()` SHALL equal 1
+
+#### Scenario: Retire on device A, sign in on device B, doctor stays retired
+
+- **GIVEN** device A and device B both signed in as user U
+- **AND** both devices have doctor X (`id = 'doc-x'`) in their local Dexie
+- **WHEN** device A retires doctor X and the push cycle completes
+- **AND** device B refreshes / signs in fresh, triggering `pullAllNow({force:true})`
+- **THEN** device B's `db.doctors.get('doc-x')` SHALL return `undefined` after the pull
+- **AND** device B's `db.retirementLog.where('doctorId').equals('doc-x').first()` SHALL return the doctor-X tombstone row
+- **AND** device B's tick loop SHALL NOT generate revenue from doctor X on the next tick
+
+#### Scenario: Force-pull cloud row for an already-retired doctor SHALL NOT resurrect
+
+- **GIVEN** the cloud `hospital_doctors` table still contains a stale row for doctor X (because the pre-fix engine never deleted it on retire)
+- **AND** the cloud `retirement_log` table also contains a row for doctor X (pushed by the new tombstone adapter)
+- **WHEN** any device fetches both tables during `pullAllNow({force:true})`
+- **THEN** `HOSPITAL_DOCTORS.applyToLocal` for the stale doctor-X cloud row SHALL detect the local retirementLog row via the secondary-index carve-out check (`db.retirementLog.where('doctorId').equals('doc-x').first()`)
+- **AND** SHALL skip writing the doctor row to local Dexie
+- **AND** SHALL delete any locally-resurrected doctor-X row left over from prior cold-starts
+
+#### Scenario: Pull-order race — doctor row arrives before retirementLog row in same pull cycle
+
+- **GIVEN** a Supabase per-table pull fetches `hospital_doctors` BEFORE `retirement_log` within the same `pullNow()` invocation
+- **AND** the carve-out for doctor X cannot fire because the local retirementLog row is not yet present
+- **WHEN** the doctor-X row is force-written to local Dexie
+- **AND** the subsequent `retirement_log` SELECT applies the tombstone row to local Dexie
+- **AND** the `onPullComplete` callback fires
+- **THEN** `reconcileRetiredDoctors()` SHALL iterate the now-populated retirementLog and `db.doctors.delete('doc-x')`
+- **AND** post-reconcile `db.doctors.get('doc-x')` SHALL return `undefined`
+- **AND** the reconcile SHALL run BEFORE `checkAssignmentInvariants()` so any room assignment cleanup observes the corrected doctor roster
+
+#### Scenario: Tombstone push failure SHALL NOT silently corrupt local state
+
+- **GIVEN** the player retires doctor X (local Dexie tx commits: doctor deleted, retirementLog row appended, revenue +refund)
+- **WHEN** the debounced push of the `retirement_log` row fails (network drop, RLS denial, transient 500)
+- **THEN** the local retirementLog row SHALL remain in `db.retirementLog` (Dexie is source of truth)
+- **AND** the dirty marker for that retirementLog row SHALL be retained for retry on the next push cycle
+- **AND** local apply carve-out SHALL continue to function (uses local retirementLog, not cloud)
+- **AND** ANY subsequent successful push cycle SHALL re-attempt the retirementLog upload
+
+#### Scenario: v3 client reading v4 R2 bundle ignores unknown retirementLog key
+
+- **GIVEN** a v3 client (pre-fix build) signed in as user U
+- **AND** the cloud R2 m2 bundle has `schema_version: 4` and contains a top-level `retirement_log` data key
+- **WHEN** the v3 client pulls and decodes the bundle
+- **THEN** `applyBundleSnapshot` SHALL ignore the unknown `retirement_log` key (no adapter registered for it)
+- **AND** the v3 client SHALL still resurrect locally-deleted doctors (known regression — v3 has no carve-out)
+- **AND** the v3 client SHALL NOT crash or refuse the bundle
+- **AND** v4 clients on the same account SHALL keep correct state via their own carve-out + reconcile
+- **AND** the v3 client SHALL be unable to push back to the same R2 bundle (per the schema_version monotonic guard requirement below) — protecting cloud bundle integrity even when the v3 client makes a local write attempt
+
+#### Scenario: v4 client reading v3 R2 bundle defaults retirementLog to empty
+
+- **GIVEN** a v4 client signed in as user U
+- **AND** the cloud R2 m2 bundle has `schema_version: 3` (last written by a pre-fix v3 client) and lacks a `retirement_log` data key
+- **WHEN** the v4 client pulls and decodes the bundle
+- **THEN** the missing `retirement_log` adapter snapshot SHALL be treated as an empty array `[]`
+- **AND** the carve-out check SHALL still consult `db.retirementLog` (local, not cloud) and find any local rows from prior v4 retires
+- **AND** local-only retirements SHALL keep working until the next push cycle upgrades the cloud bundle to v4
+
+#### Scenario: Dexie v18 → v19 additive upgrade opens cleanly with existing v18 retirementLog data
+
+- **GIVEN** an existing v18 IndexedDB state with N retirementLog rows including K duplicate-doctorId rows (from pre-fix ghost-resurrection cycles)
+- **WHEN** the v4 client (containing v19 Dexie schema) is loaded for the first time
+- **AND** Dexie runs the v18 → v19 upgrade callback
+- **THEN** the upgrade callback SHALL NOT throw `DatabaseClosedError: UpgradeError Not yet support for changing primary key` (Dexie pk MUST remain `++id`)
+- **AND** the upgrade callback SHALL dedup retirementLog by doctorId keeping the row with smallest `retiredAt`
+- **AND** the plain `doctorId` secondary index SHALL materialize without throwing ConstraintError or AbortError (non-unique index has no row-content validation step)
+- **AND** the resulting `db.retirementLog.count()` SHALL equal `N − K` (unique doctorId count)
+- **AND** the app UI SHALL transition from "啟動中…" to normal hospital UI in under 2 seconds
+- **AND** `db.retirementLog.where('doctorId').equals(<any-existing-doctorId>).first()` SHALL return the deduped row with the smaller original `retiredAt` and a backfilled `_updatedAt` equal to that `retiredAt`
+
+#### Scenario: Adapter snapshotDirty / snapshotAll for retirementLog use secondary-index lookup
+
+- **GIVEN** the v4 client has 3 retirementLog rows for doctors X, Y, Z (auto-incr ids 1, 2, 3 internally)
+- **WHEN** `RETIREMENT_LOG.snapshotAll(db, userId)` is invoked by R2 bundle build
+- **THEN** the returned RowPayload array SHALL expose `doctor_id: 'doc-x' | 'doc-y' | 'doc-z'` (logical pk) at top level, NOT the auto-incr `id` field
+- **AND** the bundle apply path SHALL key by `doctor_id` for LWW comparison, never by the auto-incr `id`
+- **AND** subsequent pulls from cloud SHALL upsert rows using `db.retirementLog.where('doctorId').equals(cloud.doctor_id).first()` lookup pattern, NOT `db.retirementLog.get(...)`
+
+### Requirement: R2 bundle push SHALL refuse schema_version downgrade
+
+`pushBundle` SHALL refuse to overwrite a cloud R2 bundle whose `schema_version` is strictly greater than the local snapshot's `schema_version`. The refusal SHALL throw a typed error (`r2_schema_downgrade_refused`) before any network PUT is attempted; no bytes are sent in the downgrade case.
+
+**Rationale**: codex adversarial review 2026-05-26 Attack 1 — current `pushBundle` ([engine-r2.ts:60-146]) uses only ETag concurrency control with no schema_version monotonic guard. A v3 client that pulled a v4 bundle (caching the ETag) and then triggered any local write would overwrite the cloud bundle with its own v3 snapshot, silently stripping forward-compatibility keys (like `retirement_log`). Without this guard, every future `SCHEMA_VERSION` bump (not just the retirementLog one) is vulnerable to mixed-version downgrade corruption — the cloud bundle could regress to an earlier shape and propagate that loss to all other devices on the next pull.
+
+**Mechanism**:
+
+- The R2 ETag cache module (`r2/etag.ts` or sibling) SHALL expose `setSchemaVersion(bundle, sv)`, `getSchemaVersion(bundle)`, and `clearSchemaVersion(bundle)`. These read/write a per-bundle localStorage entry alongside the existing ETag cache.
+- `pullBundle` SHALL call `setSchemaVersion(bundle, snapshot.meta.schema_version)` after every successful gunzip + ETag stash. The 304 short-circuit path SHALL leave the cached schema_version intact (the cached value remains valid because the cloud blob has not changed). The `blobMissing` path SHALL NOT modify the cached schema_version (no cloud bundle → no constraint).
+- `pushBundle` SHALL call `getSchemaVersion(bundle)` BEFORE the PUT loop. If the cached value is non-null AND strictly greater than the local snapshot's schema_version, the function SHALL throw `Error('r2_schema_downgrade_refused: cloud=X local=Y bundle=Z')` immediately, without contacting R2.
+- The refusal SHALL surface to the engine's standard `firstError` channel so the existing `consecutiveErrors` mechanism, sync status chip, and toast on consecutive failures all observe the failure.
+- Local Dexie writes SHALL continue to commit normally during the refused period (local-first invariant is unchanged). Only the cloud push is blocked.
+- Account-switch / account-reset flows SHALL call `clearSchemaVersion(bundle)` for all m2-side bundles so the next user's first push is not constrained by the previous user's cached cloud SV.
+
+**Caveat (out of scope, follow-up)**: this requirement specifies client-side enforcement only. A future change `add-bundle-schema-version-guard` SHALL add Worker-side enforcement (R2 custom metadata `x-amz-meta-schema-version` + Worker rejects PUT when incoming SV < existing SV) as a second-layer defense against rogue or modified clients. For this change, client-side guard is sufficient because all production clients ship the same engine.ts.
+
+#### Scenario: v3 client refuses to overwrite a v4 cloud bundle
+
+- **GIVEN** a v3 client (without `retirement_log` adapter registered) signed in as user U
+- **AND** the cloud R2 m2 bundle has `schema_version: 4`
+- **AND** the v3 client has just pulled that bundle, caching `etag = "abc"` and `schemaVersion = 4`
+- **WHEN** any local Dexie write triggers a debounced `pushBundle` cycle
+- **AND** the local snapshot's `meta.schema_version` evaluates to 3
+- **THEN** `pushBundle` SHALL throw `r2_schema_downgrade_refused: cloud=4 local=3 bundle=m2` BEFORE attempting any network PUT
+- **AND** no `fetch(url, {method:'PUT'})` call SHALL be made
+- **AND** the engine SHALL record this in `firstError` and update the sync status chip accordingly
+- **AND** the cached `schemaVersion` and `etag` for bundle m2 SHALL remain at the v4 values (no cache invalidation)
+
+#### Scenario: v4 client upgrading a v3 cloud bundle succeeds
+
+- **GIVEN** a v4 client signed in as user U
+- **AND** the cloud R2 m2 bundle has `schema_version: 3` (last written by a v3 client pre-fix)
+- **AND** the v4 client has just pulled, caching `schemaVersion = 3`
+- **WHEN** a local write triggers `pushBundle`
+- **AND** the local snapshot's `meta.schema_version` is 4 (current SCHEMA_VERSION constant)
+- **THEN** `pushBundle` SHALL pass the guard (`local 4 ≥ cloud 3`) and proceed with PUT
+- **AND** on PUT success, `pullBundle`-style update SHALL set `schemaVersion = 4` in cache via `setSchemaVersion`
+
+#### Scenario: First-ever push from a fresh account succeeds
+
+- **GIVEN** a v4 client signed in as user U for the first time on this device (no localStorage cache for bundle m2)
+- **AND** `getSchemaVersion('m2')` returns `null`
+- **WHEN** the first `pushBundle` fires
+- **THEN** the guard SHALL pass (`cachedRemoteSchemaVersion === null` → no constraint)
+- **AND** the PUT SHALL proceed with the v4 snapshot
+- **AND** on PUT success, the response ETag SHALL be cached AND `setSchemaVersion('m2', 4)` SHALL run
+
+#### Scenario: 304 short-circuit during pull preserves cached schema_version
+
+- **GIVEN** the v4 client has previously pulled and has `etag = "xyz"`, `schemaVersion = 4` cached for bundle m2
+- **WHEN** a subsequent `pullBundle({conditional: true})` issues a HEAD probe and receives `ETag: "xyz"` matching the cache
+- **AND** the short-circuit `{notModified: true}` branch returns
+- **THEN** the cached `schemaVersion` SHALL remain `4` (no modification)
+- **AND** the next `pushBundle` SHALL still see the correct constraint
+
+#### Scenario: Account switch clears cached schemaVersion so next user is unconstrained
+
+- **GIVEN** user A has cached `schemaVersion = 4` for bundle m2 on this device
+- **WHEN** user A signs out and user B signs in via the account-switch flow
+- **AND** `clearLocalSyncTables` runs and explicitly calls `clearSchemaVersion('m2')` + `clearSchemaVersion('bookmarks')`
+- **THEN** `getSchemaVersion('m2')` SHALL return `null` after wipe
+- **AND** user B's first `pushBundle` SHALL be unblocked by previous cached cloud SV
+- **AND** user B's first successful pull SHALL re-cache `schemaVersion` from user B's actual cloud bundle
+
+### Requirement: `upsert_lww` whitelist coverage SHALL be probed at engine startup before any pushAllNow can fire
+
+The sync engine SHALL perform a no-op probe of every `upsert_lww` table the engine's adapters intend to push, before transitioning from `pending` → `idle` state. If any probe fails (RPC returns `unknown table` or RLS denies the empty payload), the engine SHALL refuse to leave `pending` state, set status to `'paused'` with a typed reason, and emit a one-line console warning naming the missing table. No `pushNow` / `pushAllNow` cycle SHALL be permitted in this state.
+
+**Rationale**: codex adversarial review 2026-05-26 Attack 3 — `pushAllNow` ([engine.ts:412-413]) unconditionally clears `dirty.perTable.values()` at the end of every cycle ("pushAll covers everything pending."), regardless of whether the per-adapter try/catch caught an RPC error. In a partial migration state (Supabase table created via `0013` but `upsert_lww` whitelist not yet extended via `0014`), the RPC raises `unknown table retirement_log`, the error is caught, but the dirty markers for ALL pending tables (not just retirement_log) are cleared at the bottom of the function. Any pending tombstone marker created BEFORE the failed pushAllNow SHALL be permanently lost — the next push cycle has no record it was ever pending. Even when the owner finishes applying `0014` later, the dirty marker is already gone and the tombstone never reaches cloud.
+
+The startup probe is the only robust mitigation: refuse to enter a state where pushAllNow can fire if the whitelist is incomplete. Fixing `pushAllNow` to conditionally clear markers is a larger refactor that touches other code paths (sign-out flush, account-switch upload, migration UI) and is out of scope for this change (follow-up `audit-pushAllNow-dirty-marker-semantics` to do that work).
+
+**Mechanism**:
+
+- On `engine.start(uid)` completion (after `installHooks` + `installVisibilityListener`, before the cold-start `pullAllNow({force:true})` fires), the engine SHALL iterate `adapters` and for each `adapter.postgresTable` value invoke `supabase.rpc('upsert_lww', { table_name: adapter.postgresTable, rows: [] })`.
+- If ALL probes return success (no error), proceed with normal startup.
+- If ANY probe throws an `unknown table` error (matched via regex `/unknown table/i` to be tolerant of pgsql RAISE formatting), the engine SHALL:
+  1. Set `status = 'paused'`
+  2. Set internal `pausedReason = 'whitelist_missing:<table>'` so `getDiagnosticSnapshot` surfaces the failure
+  3. NOT install the debounce timer for pushNow
+  4. NOT invoke `pullAllNow` (cold-start force-pull stays off in this degenerate state)
+  5. Log `console.warn('[sync] startup probe failed: upsert_lww whitelist missing <table>; sync paused until backend migration completes')`
+- The sync status chip SHALL render the paused-with-reason state visibly so the player knows they're not syncing.
+- The engine SHALL retry the probe on the next manual `pullNow` / `pushNow` invocation, automatically resuming if the probe now passes.
+- The probe SHALL be skipped entirely when `backendConfig.writeSupabase === false` (pure-R2 path doesn't go through `upsert_lww`). When backend is `dual`, the probe SHALL still run because Supabase write is in play.
+
+#### Scenario: 0013 applied but 0014 missing — engine refuses to start sync
+
+- **GIVEN** the Supabase project has `retirement_log` table created (migration 0013 applied)
+- **AND** the `upsert_lww` RPC still has the 9-table whitelist (0014 NOT yet applied)
+- **AND** a v4 client signs in
+- **WHEN** the engine completes `engine.start(uid)` and runs the startup probe
+- **AND** `supabase.rpc('upsert_lww', { table_name: 'retirement_log', rows: [] })` returns error `unknown table retirement_log`
+- **THEN** the engine SHALL set `status = 'paused'` with `pausedReason = 'whitelist_missing:retirement_log'`
+- **AND** the engine SHALL NOT invoke `pullAllNow({force:true})`
+- **AND** the engine SHALL NOT install the debounce push timer
+- **AND** the sync status chip SHALL render the paused state with the whitelist-missing reason
+- **AND** any local Dexie writes during this period SHALL commit locally but accumulate no risk of dirty-marker loss (since pushAllNow cannot fire)
+
+#### Scenario: Probe passes on re-attempt after owner finishes migration
+
+- **GIVEN** the engine is currently in `paused` state with `pausedReason = 'whitelist_missing:retirement_log'`
+- **WHEN** the owner applies migration 0014 in Supabase dashboard
+- **AND** the player triggers any manual sync action (status chip click → pullNow, or page refresh → engine.start)
+- **AND** the startup probe re-runs and now succeeds
+- **THEN** the engine SHALL transition from `paused` to `idle`
+- **AND** the cold-start `pullAllNow({force:true})` SHALL fire
+- **AND** the debounce push timer SHALL be installed
+- **AND** any local retirementLog rows accumulated during the paused period SHALL be pushed on the next dirty event (their dirty markers were never cleared because pushAllNow never fired)
+
+#### Scenario: Pure-R2 backend skips Supabase probe
+
+- **GIVEN** `backendConfig.writeSupabase === false` (Phase 3 R2-only cutover complete)
+- **AND** a v4 client signs in
+- **WHEN** the engine completes `engine.start(uid)`
+- **THEN** the engine SHALL skip the `upsert_lww` probe entirely
+- **AND** SHALL transition directly to `idle` (cold-start force-pull fires normally)
+- **AND** the absence of Supabase whitelist alignment SHALL NOT affect engine state
+
+### Requirement: pushAllNow clears dirty markers conditionally per adapter outcome
+
+The `pushAllNow` engine function SHALL track success/failure on a per-adapter (Supabase) and per-bundle (R2) basis. After all push attempts have completed, the engine SHALL clear a Dexie table's `dirty.perTable[tableName]` set ONLY IF every active write backend's push for that table succeeded:
+
+- If `backendConfig.writeSupabase` is true AND the Supabase per-adapter `pushBatch` for that table's adapter threw an error, the dirty marker SHALL NOT be cleared
+- If `backendConfig.writeR2` is true AND the per-bundle `pushBundle` for any R2 bundle containing that table's adapter threw an error, the dirty marker SHALL NOT be cleared
+- Only when BOTH active backends' push succeeded (or the backend is disabled by config) SHALL the engine clear the marker
+
+This requirement does NOT apply to `pushNow` (single-table fast path), which already implements conditional clearing via an `if (allBundlesOk)` gate at the equivalent code path.
+
+This requirement does NOT apply to `apps/neurons-tw` whose sync engine uses a different `pending: boolean` architecture without per-table dirty markers.
+
+#### Scenario: Single adapter fails — only its dirty marker persists, others clear
+
+- **GIVEN** an authed user with two dirty Dexie tables `gameCounters` (rows pending push) and `hospitalDoctors` (rows pending push), both wired to Supabase write
+- **WHEN** `pushAllNow` is invoked AND the `pushBatch('game_counters', ...)` RPC throws (e.g. network error)
+- **AND** the `pushBatch('hospital_doctors', ...)` RPC succeeds
+- **THEN** after `pushAllNow` returns, `dirty.perTable.get('gameCounters')` SHALL retain its row PKs
+- **AND** `dirty.perTable.get('hospitalDoctors')` SHALL be cleared (empty Set)
+
+#### Scenario: Retry on next push succeeds — previously-failed table clears
+
+- **GIVEN** the state at end of the previous scenario (only `gameCounters` retains dirty marker)
+- **WHEN** the next `pushAllNow` invocation runs AND this time `pushBatch('game_counters', ...)` succeeds
+- **THEN** after that `pushAllNow` returns, `dirty.perTable.get('gameCounters')` SHALL be cleared (empty Set)
+- **AND** the engine SHALL NOT have lost any data — the rows were successfully pushed to cloud on the retry
+
+#### Scenario: R2 bundle failure propagates to all adapters in that bundle
+
+- **GIVEN** an authed user in R2-write mode with two R2 bundles `m2` (containing N adapters covering tables T1, T2, T3) and `bookmarks` (containing M adapters covering table T4), all with dirty rows
+- **WHEN** `pushAllNow` is invoked AND `pushBundle(..., 'm2')` throws
+- **AND** `pushBundle(..., 'bookmarks')` succeeds
+- **THEN** after `pushAllNow` returns, `dirty.perTable.get('T1')`, `dirty.perTable.get('T2')`, `dirty.perTable.get('T3')` SHALL all retain their row PKs
+- **AND** `dirty.perTable.get('T4')` SHALL be cleared (empty Set)
+
+#### Scenario: Dual-write mode requires BOTH backends to succeed before clearing
+
+- **GIVEN** an authed user in dual-write mode (`backendConfig.writeSupabase === true && backendConfig.writeR2 === true`) with one dirty table T that is mapped to both a Supabase adapter AND an R2 bundle adapter
+- **WHEN** `pushAllNow` runs AND the Supabase `pushBatch` for T succeeds
+- **AND** the R2 `pushBundle` containing T's adapter throws
+- **THEN** after `pushAllNow` returns, `dirty.perTable.get('T')` SHALL retain its row PKs
+- **AND** the next `pushAllNow` SHALL attempt to push T to both backends again (Supabase push being a redundant LWW write is acceptable per idempotent upsert semantics)
+
+#### Scenario: Happy-path zero-failure behaviour unchanged
+
+- **GIVEN** an authed user with N dirty Dexie tables (any combination, single or dual write)
+- **WHEN** `pushAllNow` is invoked AND every per-adapter Supabase `pushBatch` succeeds (when writeSupabase enabled)
+- **AND** every per-bundle R2 `pushBundle` succeeds (when writeR2 enabled)
+- **THEN** after `pushAllNow` returns, every entry in `dirty.perTable` SHALL be a cleared Set (empty)
+- **AND** the sync status SHALL transition to `idle` and the chip SHALL show 🟢「已同步」 per the existing "Sync status chip in app header" requirement
+
+### Requirement: Multi-table singleton blob apply SHALL use the max contributing-table timestamp for LWW
+
+When applying a pulled multi-table singleton blob under the non-force LWW path, the system SHALL compare the cloud blob's `updated_at` against the **maximum** local `_updatedAt` across **all** contributing Dexie tables — NOT against a single designated table's `_updatedAt`.
+
+This applies to any `TableAdapter` whose snapshot collapses multiple Dexie tables into one cloud blob. For 二階's `HOSPITAL_STATE` adapter the contributing tables are `gameCounters`, `gachaStats`, `tickets`, `rooms`, and `affinity`; the local comparison baseline SHALL be `max(_updatedAt)` over the `gameCounters` / `gachaStats` / `tickets` singleton rows and over every `rooms` / `affinity` row (treating absent rows as having no timestamp). The comparison SHALL match the push-side blob timestamp, which is `max(rows.updated_at)` across the same tables.
+
+Consequently, a local write to any passenger table (`tickets`, `gachaStats`, `rooms`, `affinity`) that does NOT also write the canonical `gameCounters` table SHALL raise the blob's local comparison baseline, and SHALL NOT be reverted by a pulled cloud blob whose `updated_at` merely exceeds the canonical table's last-write timestamp.
+
+The force-apply path (account-switch after local wipe, or explicit "use cloud" migration choice) SHALL remain unaffected: it continues to overwrite local unconditionally regardless of any local `_updatedAt`.
+
+#### Scenario: tickets-only local write survives a stale cloud blob pull
+
+- **GIVEN** an authed 二階 session where local `gameCounters._updatedAt = T0`
+- **AND** a passenger-only write set local `tickets._updatedAt = T2` with `T2 > T0` (e.g. daily refresh or banner-unlock bonus, neither of which writes `gameCounters`)
+- **AND** the pulled cloud `hospital_state` blob has `updated_at = T1` where `T0 < T1 < T2`
+- **WHEN** the engine applies the cloud blob via the non-force LWW path
+- **THEN** the local comparison baseline SHALL be `max(_updatedAt) = T2` (from `tickets`), not `T0`
+- **AND** `cloudIsNewer(T1, T2)` SHALL be false → the cloud blob SHALL be skipped
+- **AND** the local `tickets` row SHALL retain its newer value
+
+#### Scenario: Genuinely newer cloud blob still wins
+
+- **GIVEN** the local blob's `max(_updatedAt)` across all five contributing tables = T2
+- **AND** the pulled cloud `hospital_state` blob has `updated_at = T3` with `T3 > T2`
+- **WHEN** the engine applies the cloud blob via the non-force LWW path
+- **THEN** `cloudIsNewer(T3, T2)` SHALL be true → the cloud blob SHALL overwrite local
+
+#### Scenario: Force apply still overwrites unconditionally after local wipe
+
+- **GIVEN** account switch has run `clearLocalSyncTables`, leaving all contributing tables empty (no local `_updatedAt`)
+- **WHEN** the cold-start `pullAllNow({ force: true })` applies the new account's cloud blob with `force: true`
+- **THEN** the LWW comparison SHALL be skipped entirely
+- **AND** the cloud blob SHALL be written to local unconditionally
+

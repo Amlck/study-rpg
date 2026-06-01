@@ -1,0 +1,144 @@
+// Bundle build / apply / gzip — wraps Dexie state into the R2 blob shape
+// for the `neurons` bundle.
+//
+// Bundle name on the server: users/<sub>/neurons-snapshot.json.gz
+//
+// SCHEMA_VERSION history:
+//   v1 — initial (add-neurons-deploy 2026-05-25): synapses / familyAccrual /
+//        meta / familyMastery / neuronVariants / leaderboardProfile /
+//        achievements
+//   v2 — add-neurons-dmn-fate-card 2026-05-27: adds dmnCards / dmnEventLog /
+//        dmnActiveBuffs adapters + 8 new dmn-* keys to the meta allowlist.
+//        Schema is additive — v1 clients pulling v2 bundles silently drop
+//        unknown adapter keys (see validateBundleMeta below).
+//   v3 — add-neurons-question-bookmarks 2026-05-29: adds questionBookmarks
+//        and questionBookmarkTombstones adapters. Additive — v2 clients drop
+//        the new keys, no breaking changes.
+//   v4 — add-neurons-srs-binary-modifiers 2026-05-29: adds questionFlags
+//        adapter (✨ 太簡單 / 🤔 我亂猜的 binary flags). Additive — v3
+//        clients drop the new field.
+
+import type { NeuronsDB } from '../../db'
+import { NEURONS_ADAPTERS } from '../tables'
+
+export const SCHEMA_VERSION = 4
+export const BUNDLE_APP_VERSION = '0.4.0'
+
+const CLIENT_ID_KEY = 'neurons-rpg.sync.clientId'
+
+export interface BundleMeta {
+  schema_version: number
+  updated_at: string  // ISO 8601
+  client_id: string
+  app_version: string
+}
+
+export interface BundleSnapshot {
+  meta: BundleMeta
+  data: Record<string, unknown[]>  // keyed by adapter.name
+}
+
+export function getClientId(): string {
+  // Defensive: tolerate environments where localStorage is undefined (Node
+  // tests), a partial shim missing methods, or read-throws (private browsing
+  // quota errors). Returns an ephemeral id rather than throwing.
+  if (
+    typeof localStorage === 'undefined' ||
+    typeof (localStorage as { getItem?: unknown })?.getItem !== 'function'
+  ) {
+    return 'no-storage'
+  }
+  try {
+    let id = localStorage.getItem(CLIENT_ID_KEY)
+    if (!id) {
+      id = crypto.randomUUID()
+      try {
+        localStorage.setItem(CLIENT_ID_KEY, id)
+      } catch {
+        // quota / private mode — ephemeral id
+      }
+    }
+    return id
+  } catch {
+    return 'no-storage'
+  }
+}
+
+export async function buildBundleSnapshot(db: NeuronsDB): Promise<BundleSnapshot> {
+  const data: Record<string, unknown[]> = {}
+  for (const adapter of NEURONS_ADAPTERS) {
+    data[adapter.name] = await adapter.snapshot(db)
+  }
+  return {
+    meta: {
+      schema_version: SCHEMA_VERSION,
+      updated_at: new Date().toISOString(),
+      client_id: getClientId(),
+      app_version: BUNDLE_APP_VERSION,
+    },
+    data,
+  }
+}
+
+export interface ApplyResult {
+  applied: number
+  skipped: number
+  perTable: Record<string, { applied: number; skipped: number }>
+}
+
+export async function applyBundleSnapshot(
+  db: NeuronsDB,
+  snapshot: BundleSnapshot,
+): Promise<ApplyResult> {
+  let applied = 0
+  let skipped = 0
+  const perTable: Record<string, { applied: number; skipped: number }> = {}
+  for (const adapter of NEURONS_ADAPTERS) {
+    const rows = snapshot.data[adapter.name] ?? []
+    const result = await adapter.apply(db, rows)
+    perTable[adapter.name] = result
+    applied += result.applied
+    skipped += result.skipped
+  }
+  return { applied, skipped, perTable }
+}
+
+export function validateBundleMeta(
+  snapshot: unknown,
+): asserts snapshot is BundleSnapshot {
+  if (!snapshot || typeof snapshot !== 'object') throw new Error('invalid_bundle_root')
+  const s = snapshot as Partial<BundleSnapshot>
+  if (!s.meta || typeof s.meta !== 'object') throw new Error('invalid_bundle_meta')
+  if (typeof s.meta.schema_version !== 'number' || s.meta.schema_version < 1) {
+    throw new Error('invalid_schema_version')
+  }
+  // Forward-compat tolerance (per add-neurons-dmn-fate-card spec
+  // "neurons-deploy MODIFIED"): clients SHALL accept bundles with
+  // `schema_version > SCHEMA_VERSION`. Unknown adapter keys are silently
+  // dropped at apply time because applyBundleSnapshot iterates only the local
+  // NEURONS_ADAPTERS — keys not registered locally are never read. We log
+  // once per pull so operators can see when newer clients are pushing.
+  if (s.meta.schema_version > SCHEMA_VERSION) {
+    console.info(
+      `[sync] bundle schema_version ${s.meta.schema_version} > local ${SCHEMA_VERSION}; unknown fields will be dropped`,
+    )
+  }
+  if (typeof s.meta.updated_at !== 'string') throw new Error('invalid_meta_updated_at')
+  if (typeof s.meta.client_id !== 'string') throw new Error('invalid_meta_client_id')
+  if (!s.data || typeof s.data !== 'object') throw new Error('invalid_bundle_data')
+}
+
+export async function gzipBundle(snapshot: BundleSnapshot): Promise<Blob> {
+  const json = JSON.stringify(snapshot)
+  const stream = new Blob([json], { type: 'application/json' }).stream()
+  const compressed = stream.pipeThrough(new CompressionStream('gzip'))
+  return new Response(compressed).blob()
+}
+
+export async function gunzipBundle(blob: Blob): Promise<BundleSnapshot> {
+  const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'))
+  const text = await new Response(stream).text()
+  const parsed = JSON.parse(text)
+  validateBundleMeta(parsed)
+  return parsed
+}

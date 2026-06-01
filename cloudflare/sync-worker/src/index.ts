@@ -20,7 +20,21 @@ import { handlePresign } from "./presign";
 import { handleDeleteOrReset } from "./delete";
 import { runBackupCron } from "./backup";
 import { handleLeaderboard, runLeaderboardCron } from "./leaderboard";
+import {
+  handleNeuronsLeaderboard,
+  runNeuronsLeaderboardCron,
+} from "./neurons-leaderboard";
 import { corsHeaders, preflightResponse } from "./cors";
+
+// Cron expressions — MUST stay byte-for-byte identical with the strings in
+// `cloudflare/sync-worker/wrangler.jsonc` `triggers.crons` array. Cloudflare
+// passes the literal wrangler expression as `event.cron` to scheduled(), so
+// the switch below dispatches on string equality. If wrangler.jsonc changes
+// a cron schedule, update the matching constant here AND redeploy — otherwise
+// the dispatch falls to the default branch and emits a console.error (loud
+// failure, surfaces in Workers Logs).
+const CRON_BACKUP_DAILY = "0 0 * * *" as const;
+const CRON_LEADERBOARD_30MIN = "0,30 * * * *" as const;
 
 export interface Env {
   // R2 bindings
@@ -59,8 +73,13 @@ export default {
     const headers = corsHeaders(origin, corsAllowed);
 
     try {
-      // Leaderboard routes are sub-path matched (/leaderboard/*) — dispatch
-      // to the module which handles its own sub-routing.
+      // Neurons leaderboard routes (more specific prefix; must come BEFORE
+      // the general /leaderboard/* dispatch since `/leaderboard/neurons/...`
+      // also matches `/leaderboard/`).
+      if (url.pathname.startsWith("/leaderboard/neurons/")) {
+        return await handleNeuronsLeaderboard(request, env, headers);
+      }
+      // 二階 leaderboard routes (catches the remaining /leaderboard/* paths).
       if (url.pathname.startsWith("/leaderboard/")) {
         return await handleLeaderboard(request, env, headers);
       }
@@ -90,17 +109,40 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     // Dispatch by cron expression so a single scheduled() handler can serve
-    // both the daily R2 backup and the hourly leaderboard pre-compute.
-    // Cron strings come from wrangler.jsonc `triggers.crons` array.
+    // both the daily R2 backup and the every-30-min leaderboard pre-compute.
+    // Cron strings come from wrangler.jsonc `triggers.crons` array and MUST
+    // match the module-scope constants declared above; if mismatched, the
+    // default branch logs a loud error (see `fix-leaderboard-cron-dispatch-
+    // case-mismatch` change).
     switch (event.cron) {
-      case "0 0 * * *":
+      case CRON_BACKUP_DAILY:
         ctx.waitUntil(runBackupCron(env));
         return;
-      case "0 * * * *":
-        ctx.waitUntil(runLeaderboardCron(env));
+      case CRON_LEADERBOARD_30MIN:
+        // Run 二階 + 神經元 leaderboard crons sequentially within the same
+        // scheduled invocation per add-neurons-leaderboard design D6. Each
+        // is independently fault-tolerant — if one throws, the other still
+        // runs. Errors logged via console.error but not re-thrown.
+        ctx.waitUntil(
+          (async (): Promise<void> => {
+            try {
+              await runLeaderboardCron(env);
+            } catch (err) {
+              console.error("[scheduled] runLeaderboardCron failed", { err: String(err) });
+            }
+            try {
+              await runNeuronsLeaderboardCron(env);
+            } catch (err) {
+              console.error("[scheduled] runNeuronsLeaderboardCron failed", { err: String(err) });
+            }
+          })(),
+        );
         return;
       default:
-        console.warn("[scheduled] unknown cron trigger", { cron: event.cron });
+        console.error(
+          "[scheduled] unknown cron trigger — wrangler.jsonc may be out of sync with src/index.ts",
+          { cron: event.cron, knownCrons: [CRON_BACKUP_DAILY, CRON_LEADERBOARD_30MIN] },
+        );
     }
   },
 };

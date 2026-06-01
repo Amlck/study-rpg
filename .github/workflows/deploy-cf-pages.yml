@@ -1,0 +1,118 @@
+name: Deploy Cloudflare Pages
+
+# Deploys both apps to Cloudflare Pages (med-study-rpg.com/1st/ + /2nd/) when
+# main updates. The CF Pages project is configured in **Direct Upload** mode
+# (Git Provider: No), so the dashboard does NOT auto-deploy on git push —
+# this workflow is what bridges the gap.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   CF_API_TOKEN     Cloudflare API token. Scopes needed for THIS workflow:
+#                    Pages:Edit (in addition to the Worker scopes already
+#                    used by deploy-worker.yml). Regenerate token in CF
+#                    dashboard → My Profile → API Tokens if missing.
+#   CF_ACCOUNT_ID    Cloudflare account ID (already set for deploy-worker.yml).
+#
+# Two parallel deploys during the bake period (per openspec/specs/deploy-pipeline):
+#   - .github/workflows/deploy.yml         → GitHub Pages (legacy)
+#   - .github/workflows/deploy-cf-pages.yml → Cloudflare Pages (new home)
+# Both fire on main push; failures in one do NOT block the other.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cf-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies (monorepo)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build 一階 (medexam-tw) for /1st/
+        env:
+          VITE_DEPLOY_BASE: /1st/
+          # Supabase Auth / cloud sync — same secrets as deploy.yml. Without
+          # these, useAuth() returns status='disabled' and the AuthButton
+          # + SyncStatusChip never render (verified on prod 2026-05-23).
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_CLOUD_SYNC_ENABLED: 'true'
+          VITE_COMMIT_SHA: ${{ github.sha }}
+          # R2 migration flags — pass-through secrets, safe defaults via
+          # backend-config nonEmpty() when unset.
+          VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
+          VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
+          # Worker custom domain — CF-specific override of the default
+          # workers.dev URL the secret might point at.
+          VITE_SYNC_WORKER_URL: https://api.med-study-rpg.com
+          # VITE_DEPLOY_TARGET intentionally NOT set — banner must stay
+          # hidden on the new domain.
+        run: pnpm --filter @study-rpg/medexam-tw build
+
+      - name: Build 二階 (medexam2-hospital-tw) for /2nd/
+        env:
+          VITE_DEPLOY_BASE: /2nd/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_CLOUD_SYNC_ENABLED: 'true'
+          VITE_COMMIT_SHA: ${{ github.sha }}
+          VITE_CLOUD_SYNC_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_BACKEND }}
+          VITE_CLOUD_SYNC_READ_BACKEND: ${{ secrets.VITE_CLOUD_SYNC_READ_BACKEND }}
+          VITE_SYNC_WORKER_URL: https://api.med-study-rpg.com
+        run: pnpm --filter @study-rpg/medexam2-hospital-tw build
+
+      # neurons-tw scaffold (M_3rd). Currently auth-less / sync-less, so only
+      # VITE_DEPLOY_BASE + VITE_COMMIT_SHA are needed. Added 2026-05-25 to
+      # unbreak CF Pages deploy after `add-neurons-deploy` registered the app
+      # in scripts/build-cf-pages-dist.mjs ROUTES but forgot to add the build
+      # step here — every CF Pages deploy since then failed at the
+      # `Assemble dist-cf` step with "Required input missing: apps/neurons-tw/dist".
+      - name: Build neurons-tw for /neurons/
+        env:
+          VITE_DEPLOY_BASE: /neurons/
+          VITE_COMMIT_SHA: ${{ github.sha }}
+          # Scaffold has 免疫學 subject with zero questions assigned —
+          # content-neurons-tw build script normally errors on orphan subjects
+          # but supports the same MEDEXAM_ALLOW_SKIPS=1 escape as
+          # content-medexam-tw. Remove this once neurons content fully wired.
+          MEDEXAM_ALLOW_SKIPS: '1'
+        run: pnpm --filter @study-rpg/neurons-tw build
+
+      - name: Assemble dist-cf
+        run: node scripts/build-cf-pages-dist.mjs
+
+      - name: Deploy via Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          # workingDirectory hops into cloudflare/sync-worker so wrangler-action
+          # can locate the wrangler devDep already pinned there — avoids the
+          # ERR_PNPM_ADDING_TO_ROOT error that fires when the action tries
+          # `pnpm add wrangler` against the monorepo root. The deploy command
+          # path is relative to that subdir.
+          workingDirectory: cloudflare/sync-worker
+          command: pages deploy ../../dist-cf --project-name med-study-rpg --branch main
+          packageManager: pnpm

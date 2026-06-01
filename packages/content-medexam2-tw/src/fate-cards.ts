@@ -31,19 +31,24 @@ export const FATE_CARD_LABELS: Record<FateCardTier, string> = {
   legendary: '傳奇命運',
 }
 
+// TUNED 2026-05-25 by redesign-fate-card-economy (Option C):
+// - epic 100k → 50k (≈ 10 days at typical 5k rep/day, ~17% of 60-day arc)
+// - legendary 1M → 300k (= TIER_UPGRADE_THRESHOLDS.醫學中心 — "tier-up tribute" loop)
+// - epic bad luck 5% → 0% (parity with legendary; top tiers are pure-positive)
+// See openspec/changes/archive/<archive-id>/design.md Decision 1 for full rationale.
 /** Reputation cost per draw. */
 export const FATE_CARD_COSTS: Record<FateCardTier, number> = {
   common: 1_000,
   rare: 10_000,
-  epic: 100_000,
-  legendary: 1_000_000,
+  epic: 50_000,
+  legendary: 300_000,
 }
 
-/** Bad-luck probability per draw. Legendary has 0% (no bad luck possible). */
+/** Bad-luck probability per draw. Both top tiers have 0% (no bad luck possible). */
 export const FATE_CARD_BAD_LUCK_RATES: Record<FateCardTier, number> = {
   common: 0.05,
   rare: 0.05,
-  epic: 0.05,
+  epic: 0,
   legendary: 0,
 }
 
@@ -51,7 +56,7 @@ export const FATE_CARD_BAD_LUCK_RATES: Record<FateCardTier, number> = {
 export const FATE_CARD_BAD_LUCK_PENALTIES: Record<FateCardTier, number> = {
   common: 1_000,
   rare: 10_000,
-  epic: 50_000,
+  epic: 0,
   legendary: 0,
 }
 
@@ -89,7 +94,7 @@ export const FATE_CARD_POOLS: Record<FateCardTier, ReadonlyArray<FateCardReward>
   epic: Object.freeze([
     { key: 'targeted-p3-ticket', label: '指定科 P3+ 招募券' },
     { key: 'facility-plus-0.5', label: '隨機 facility +0.5（永久）' },
-    { key: 'salary-waiver-1-week', label: '1 週薪水免除' },
+    { key: 'targeted-p3-ticket-x2', label: '指定科 P3+ 招募券 ×2' },
   ]),
   legendary: Object.freeze([
     { key: 'targeted-p2-ticket', label: '指定科 P2 招募券' },

@@ -1,0 +1,320 @@
+/**
+ * Build script: generates content-neurons-tw dist artifacts from
+ * medexam-tw JSON + re-splits 微生物暨免疫學 → 微生物學 + 免疫學 via
+ * source markdown per-Q `**科目**：` tag lookup.
+ *
+ * Per design.md Decision 1 (11-subject mapping) + Decision 4 (build pipeline).
+ * Spec: openspec/changes/wire-neurons-content-and-theme/specs/neurons-mode/spec.md
+ */
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import { NEURONS_ACHIEVEMENTS, NEURONS_ACHIEVEMENTS_STATS } from '../src/achievements'
+import { validateNeuronsAchievementCatalog } from '../src/achievement-validator'
+
+// 一階 corpus source = 考選部-authoritative reconciled artifacts committed under
+// packages/content-neurons-tw/data/medexam-reconciled (see reconcile/README.md).
+// Self-contained so the neurons build survives the planned removal of
+// apps/medexam-tw / packages/content-medexam-tw. Override with MEDEXAM_TW_DIST.
+const MEDEXAM_TW_DIST =
+  process.env.MEDEXAM_TW_DIST ?? resolve(import.meta.dirname, '..', 'data', 'medexam-reconciled')
+const MEDEXAM_SOURCE_ROOT =
+  process.env.MEDEXAM_SOURCE_ROOT ??
+  resolve(process.env.HOME ?? '/', 'Desktop/國考/一階國考/陽明國考考古/_extracted')
+const ALLOW_SKIPS = process.env.MEDEXAM_ALLOW_SKIPS === '1'
+const OUT_DIR = resolve(import.meta.dirname, '..', 'dist')
+
+const NT_COLOR = {
+  DA: '#d4a04d',
+  '5HT': '#c44d4d',
+  GABA: '#6a9bc4',
+  Glu: '#6a8c3f',
+} as const
+
+type NtBranch = keyof typeof NT_COLOR
+
+interface FamilyMap {
+  family: string
+  ntBranch: NtBranch
+  persona: string
+}
+
+/** 11-subject mapping per design.md Decision 1. Key = subject.id (verbatim from medexam-tw for 9; new ids 微生物學 / 免疫學 for split). */
+const FAMILY_BY_SUBJECT: Record<string, FamilyMap> = {
+  藥理學: {
+    family: 'VTA Dopaminergic — Thrill-Seeker',
+    ntBranch: 'DA',
+    persona: 'The Thrill-Seeker 尋樂者',
+  },
+  公共衛生學: {
+    family: 'SNc Dopaminergic — Aging Guardian',
+    ntBranch: 'DA',
+    persona: 'The Aging Guardian 長者守護',
+  },
+  寄生蟲學: {
+    family: "Enteric Serotonergic — Puppeteer's Puppet",
+    ntBranch: '5HT',
+    persona: "The Puppeteer's Puppet 寄生木偶",
+  },
+  組織學: {
+    family: 'MRN Serotonergic — Quiet Curator',
+    ntBranch: '5HT',
+    persona: 'The Quiet Curator 沉默策展人',
+  },
+  生物化學: {
+    family: 'Cerebellar Purkinje — Mathematician',
+    ntBranch: 'GABA',
+    persona: 'The Mathematician 數學家',
+  },
+  病理學: {
+    family: 'Striatal MSN — Judge',
+    ntBranch: 'GABA',
+    persona: 'The Judge 法官',
+  },
+  免疫學: {
+    family: 'PV+ Cortical Interneuron — Sentry Under Siege',
+    ntBranch: 'GABA',
+    persona: 'The Sentry Under Siege 圍城警衛',
+  },
+  解剖學: {
+    family: 'DRG Sensory Afferent — Scout',
+    ntBranch: 'Glu',
+    persona: 'The Scout 探險家',
+  },
+  生理學: {
+    family: 'Cortical Pyramidal L5 — CEO',
+    ntBranch: 'Glu',
+    persona: 'The CEO 執行長',
+  },
+  胚胎學: {
+    family: 'Cajal-Retzius — Pioneer Architect',
+    ntBranch: 'Glu',
+    persona: 'The Pioneer Architect 拓荒建築師',
+  },
+  微生物學: {
+    family: 'Olfactory Sensory — Sentinel',
+    ntBranch: 'Glu',
+    persona: 'The Sentinel 哨兵（前線守門員）',
+  },
+}
+
+/** Split heuristic for 微生物暨免疫學 per design Decision 4. Order matters: 免疫 must come BEFORE 微生 because `微免` matches both. */
+const TAG_TO_SUBJECT: Array<{ pattern: RegExp; subject: '微生物學' | '免疫學' }> = [
+  { pattern: /免疫|微免/, subject: '免疫學' },
+  { pattern: /微生物|微⽣物|微生|細菌|病毒|黴菌/, subject: '微生物學' },
+]
+const DEFAULT_MICROIMMUNE_FALLBACK: '微生物學' = '微生物學'
+
+interface MedexamQuestion {
+  id: string
+  subject: string
+  stem: string
+  options: Record<string, string>
+  answer: string
+  explanation: string
+  hasImage?: boolean
+  hasOptionImages?: boolean
+  microImmune?: '微生物學' | '免疫學'  // baked split (self-contained; no _extracted needed in CI)
+  meta: { year: number; session: number; book: string; paper: string; qNumber: number; pageRef?: string }
+  sourceCredit?: string
+}
+
+interface MedexamSubject {
+  id: string
+  displayName: string
+  group?: string
+  color: string
+  iconKey?: string
+  totalQuestions: number
+}
+
+interface MedexamMeta {
+  id: string
+  displayName: string
+  locale: string
+  builtAt: string
+  sourceCredit: string
+  sourceUrl: string
+  license: string
+  stats?: { totalQuestions?: number; parsedFiles?: number; totalFiles?: number; subjects?: number }
+}
+
+/** Cached file content for source .md lookups; avoid re-reading the same year/session file for every question. */
+const fileCache = new Map<string, string | null>()
+
+function lookupSourceTag(year: number, session: number, qNumber: number): string | null {
+  const filePath = resolve(MEDEXAM_SOURCE_ROOT, '醫學二', '微生物暨免疫學', `${year}-${session}.md`)
+  let content = fileCache.get(filePath) ?? null
+  if (!fileCache.has(filePath)) {
+    content = existsSync(filePath) ? readFileSync(filePath, 'utf-8') : null
+    fileCache.set(filePath, content)
+  }
+  if (content === null) return null
+  const blockRegex = new RegExp(`^## Q${qNumber}\\b`, 'm')
+  const blockStart = content.search(blockRegex)
+  if (blockStart === -1) return null
+  const afterStart = content.slice(blockStart)
+  const nextBlockOffset = afterStart.slice(1).search(/^## Q\d+/m)
+  const block = nextBlockOffset === -1 ? afterStart : afterStart.slice(0, nextBlockOffset + 1)
+  const tagMatch = block.match(/\*\*科目\*\*[：:]\s*(.+?)\r?$/m)
+  return tagMatch ? tagMatch[1].trim() : null
+}
+
+function classifyMicroImmune(q: MedexamQuestion): { subject: '微生物學' | '免疫學'; tagged: boolean } {
+  // Prefer the split baked into the reconciled corpus (self-contained; no _extracted in CI).
+  if (q.microImmune === '微生物學' || q.microImmune === '免疫學') {
+    return { subject: q.microImmune, tagged: true }
+  }
+  // Legacy fallback: per-Q `**科目**：` tag in the source .md (needs _extracted; CI lacks it).
+  const tag = lookupSourceTag(q.meta.year, q.meta.session, q.meta.qNumber)
+  if (tag === null) {
+    return { subject: DEFAULT_MICROIMMUNE_FALLBACK, tagged: false }
+  }
+  for (const { pattern, subject } of TAG_TO_SUBJECT) {
+    if (pattern.test(tag)) return { subject, tagged: true }
+  }
+  return { subject: DEFAULT_MICROIMMUNE_FALLBACK, tagged: false }
+}
+
+function main(): void {
+  // Step 1: Read medexam-tw artifacts
+  const metaPath = resolve(MEDEXAM_TW_DIST, 'meta.json')
+  const subjectsPath = resolve(MEDEXAM_TW_DIST, 'subjects.json')
+  const questionsPath = resolve(MEDEXAM_TW_DIST, 'questions.json')
+  for (const p of [metaPath, subjectsPath, questionsPath]) {
+    if (!existsSync(p)) {
+      console.error(`✗ Missing medexam-tw artifact: ${p}`)
+      console.error(
+        '  Run `pnpm build:content` (root) first to build medexam-tw, OR set MEDEXAM_TW_DIST env var.',
+      )
+      process.exit(1)
+    }
+  }
+  const medexamMeta: MedexamMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+  const medexamSubjects: MedexamSubject[] = JSON.parse(readFileSync(subjectsPath, 'utf-8'))
+  const medexamQuestions: MedexamQuestion[] = JSON.parse(readFileSync(questionsPath, 'utf-8'))
+
+  console.log(
+    `Read medexam-tw: ${medexamSubjects.length} subjects, ${medexamQuestions.length} questions`,
+  )
+
+  // Step 2 + 3: 直送 9 subjects verbatim + split 微生物暨免疫學
+  let splitMicro = 0
+  let splitImmune = 0
+  let untaggedFallback = 0
+  const outputQuestions = medexamQuestions.map((q) => {
+    if (q.subject !== '微生物暨免疫學') return q
+    const { subject, tagged } = classifyMicroImmune(q)
+    if (!tagged) untaggedFallback += 1
+    if (subject === '微生物學') splitMicro += 1
+    else splitImmune += 1
+    const { microImmune: _drop, ...rest } = q // strip build-only hint from output
+    return { ...rest, subject }
+  })
+
+  // Step 4: Generate subjects.json from FAMILY_BY_SUBJECT
+  const subjectTotals: Record<string, number> = {}
+  for (const q of outputQuestions) {
+    subjectTotals[q.subject] = (subjectTotals[q.subject] ?? 0) + 1
+  }
+  const outputSubjects = Object.entries(FAMILY_BY_SUBJECT).map(([id, m]) => ({
+    id,
+    displayName: m.family,
+    group: m.ntBranch,
+    color: NT_COLOR[m.ntBranch],
+    iconKey: `subject:${id}`,
+    totalQuestions: subjectTotals[id] ?? 0,
+  }))
+
+  // Step 8: Assertions
+  const orphanSubjects = outputSubjects.filter((s) => s.totalQuestions === 0)
+  if (orphanSubjects.length > 0 && !ALLOW_SKIPS) {
+    console.error(
+      `✗ Orphan subjects (no questions): ${orphanSubjects.map((s) => s.id).join(', ')}`,
+    )
+    process.exit(1)
+  }
+  const validIds = new Set(outputSubjects.map((s) => s.id))
+  const orphanQuestions = outputQuestions.filter((q) => !validIds.has(q.subject))
+  if (orphanQuestions.length > 0) {
+    console.error(
+      `✗ Orphan questions (subject not in 11-subject framework): ${orphanQuestions.length}`,
+    )
+    console.error(`  Sample IDs: ${orphanQuestions.slice(0, 5).map((q) => q.id).join(', ')}`)
+    process.exit(1)
+  }
+
+  // Step 5: Generate meta.json with statSchema
+  const outputMeta = {
+    id: 'neurons-tw',
+    displayName: '神經元 RPG — Long-term Potentiation Edition',
+    locale: 'zh-TW',
+    builtAt: new Date().toISOString(),
+    sourceCredit: '陽明國考考古題小組 + 中華民國考選部歷屆考題 + neurons reskin',
+    sourceUrl: 'https://sites.google.com/view/ymmedexam/ans',
+    license: 'CC-BY-NC-4.0 (詳解) + public domain (試題) + AGPL-3.0-or-later (neurons reskin)',
+    stats: {
+      totalQuestions: outputQuestions.length,
+      parsedFiles: medexamMeta.stats?.parsedFiles ?? 0,
+      totalFiles: medexamMeta.stats?.totalFiles ?? 0,
+      subjects: outputSubjects.length,
+      splitMicro,
+      splitImmune,
+      untaggedFallback,
+    },
+    statSchema: {
+      // Default stat keys (knowledge / reflex / memory / stamina) preserved
+      // to remain compatible with core's hardcoded SkillBranchStatKey type.
+      // Labels + colors overridden to 4 NT theming per neurons-mode Requirement 2:
+      //   knowledge ↔ Glu (學習 / LTP)
+      //   reflex    ↔ DA  (動機 / 反應 / reward)
+      //   memory    ↔ GABA (專注 / 控制 / 抑制)
+      //   stamina   ↔ 5-HT (耐力 / 情緒 / mood)
+      order: ['knowledge', 'reflex', 'memory', 'stamina'],
+      labels: {
+        knowledge: 'Glutamate 麩胺酸 (學習)',
+        reflex: 'Dopamine 多巴胺 (動機)',
+        memory: 'GABA γ-胺基丁酸 (專注)',
+        stamina: 'Serotonin 血清素 (耐力)',
+      },
+      colors: {
+        knowledge: 'var(--nt-glu)',
+        reflex: 'var(--nt-da)',
+        memory: 'var(--nt-gaba)',
+        stamina: 'var(--nt-5ht)',
+      },
+    },
+  }
+
+  // Step 6: Write artifacts
+  mkdirSync(OUT_DIR, { recursive: true })
+  writeFileSync(resolve(OUT_DIR, 'meta.json'), JSON.stringify(outputMeta, null, 2))
+  writeFileSync(resolve(OUT_DIR, 'subjects.json'), JSON.stringify(outputSubjects, null, 2))
+  writeFileSync(resolve(OUT_DIR, 'questions.json'), JSON.stringify(outputQuestions))
+
+  // Step 7: Counters
+  const ntCount = (br: NtBranch) => outputSubjects.filter((s) => s.group === br).length
+  console.log(`---`)
+  console.log(
+    `imported: ${outputQuestions.length} / skipped: 0 / total: ${outputQuestions.length}`,
+  )
+  console.log(
+    `微生物暨免疫學 split: 微生物學=${splitMicro}, 免疫學=${splitImmune}, untagged fallback (→ 微生物學)=${untaggedFallback}`,
+  )
+  console.log(
+    `subjects: ${outputSubjects.length} (DA ${ntCount('DA')} / 5-HT ${ntCount('5HT')} / GABA ${ntCount('GABA')} / Glu ${ntCount('Glu')})`,
+  )
+  console.log(`Written: ${OUT_DIR}`)
+
+  // Step 8: Validate achievement catalog (fail build on rule violation)
+  validateNeuronsAchievementCatalog(NEURONS_ACHIEVEMENTS)
+  console.log(
+    `achievements: ${NEURONS_ACHIEVEMENTS_STATS.total} entries — ` +
+      Object.entries(NEURONS_ACHIEVEMENTS_STATS.byCategory)
+        .map(([c, n]) => `${c}:${n}`)
+        .join(', '),
+  )
+}
+
+main()
