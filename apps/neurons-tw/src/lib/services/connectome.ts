@@ -1,4 +1,11 @@
-import { db, todayISO, type FamilyAccrualRow, type SynapseRow, type SynapseState } from '../db'
+import {
+  db,
+  todayISO,
+  HOMEPAGE_ONBOARDING_DISMISSED_KEY,
+  type FamilyAccrualRow,
+  type SynapseRow,
+  type SynapseState,
+} from '../db'
 import {
   AP_THRESHOLDS,
   ConnectomeEventEmitter,
@@ -298,6 +305,8 @@ export async function resetConnectomeForDebug(): Promise<void> {
       row.sameDayCorrect = 0
     })
     await db.meta.put({ key: 'lastResetDate', value: todayISO() })
+    // Re-surface the homepage onboarding for a reset (fresh-start) user.
+    await db.meta.delete(HOMEPAGE_ONBOARDING_DISMISSED_KEY)
   })
 }
 

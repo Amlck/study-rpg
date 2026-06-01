@@ -124,3 +124,62 @@ body:has(.modal-backdrop) {
     display: block;
   }
 }
+
+/* ── Resting-state ambient firing (revamp-neurons-homepage-experience) ──────
+ *
+ * Compositor-driven (opacity / transform only) so the animation keeps running
+ * in a backgrounded tab (no JS requestAnimationFrame to throttle) and stays
+ * cheap at 60fps. Consumed by the AmbientFiring primitive + ConnectomeHero.
+ * Every rule is wrapped so a single `prefers-reduced-motion: reduce` media
+ * query disables all of it (the primitives also gate in JS as a belt-and-braces).
+ */
+@keyframes neuron-firing-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes neuron-signal-travel {
+  0% {
+    stroke-dashoffset: var(--signal-dash, 40);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+.neuron-firing-node {
+  animation: neuron-firing-pulse 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.neuron-signal-edge {
+  stroke-dasharray: var(--signal-dash, 40);
+  animation: neuron-signal-travel 2.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neuron-firing-node,
+  .neuron-signal-edge {
+    animation: none;
+  }
+  .neuron-signal-edge {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+}
