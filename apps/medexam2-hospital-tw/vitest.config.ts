@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: false,
-    include: ['src/**/__tests__/**/*.test.ts'],
+    include: ['src/**/__tests__/**/*.test.ts', 'test/**/*.test.ts'],
     setupFiles: ['./src/__tests__/setup-fake-indexeddb.ts'],
     testTimeout: 15_000,
   },
