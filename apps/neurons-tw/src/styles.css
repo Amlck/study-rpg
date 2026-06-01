@@ -85,3 +85,42 @@ body:has(.modal-backdrop) {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Leaderboard rows (LeaderboardPage) ──────────────────────────────────── */
+
+/* Desktop base = the former inline gridTemplateColumns (moved here per
+ * Decision 1 so the @media below can retune it). The var lives on the list so
+ * the header + data rows share one source of truth (custom props inherit). */
+.neurons-lb-list {
+  --neurons-lb-cols: 3rem 1fr 4rem 4rem 5rem 4.5rem 5.5rem;
+}
+
+.neurons-lb-row {
+  grid-template-columns: var(--neurons-lb-cols);
+}
+
+/* ≤480px: collapse to rank + nickname + the active-sorted stat only, mirroring
+ * 二階's --leaderboard-cols + cell-hiding. Hiding the 4 off-stats leaves exactly
+ * 3 cells for the 3-col template (else the extra cells would wrap to new rows). */
+@media (max-width: 480px) {
+  .neurons-lb-list {
+    --neurons-lb-cols: 2.6rem minmax(0, 1fr) 4.5rem;
+  }
+
+  .neurons-lb-cell--variant,
+  .neurons-lb-cell--family,
+  .neurons-lb-cell--ap,
+  .neurons-lb-cell--synapse,
+  .neurons-lb-cell--study {
+    display: none;
+  }
+
+  /* Re-show only the cell matching the active sort (FILTER_PRIMARY_STAT).
+   * `family` is never a sort key, so it has no re-show rule (stays hidden). */
+  .neurons-lb-list[data-active-stat='variant_count'] .neurons-lb-cell--variant,
+  .neurons-lb-list[data-active-stat='total_AP'] .neurons-lb-cell--ap,
+  .neurons-lb-list[data-active-stat='synapse_strong'] .neurons-lb-cell--synapse,
+  .neurons-lb-list[data-active-stat='total_study_min'] .neurons-lb-cell--study {
+    display: block;
+  }
+}

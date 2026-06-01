@@ -4,8 +4,8 @@
  * Responsibilities (per add-neurons-dmn-fate-card spec):
  * - Maintain time-axis + behavior-axis daily counters with caps
  * - Listen to 3 connectome events for behavior-axis bonus draws
- * - Expose ReadingTimerSubscriber interface for the (not-yet-wired) reading-timer
- *   to push minutes into the time-axis counter
+ * - Expose ReadingTimerSubscriber interface that the reading-timer service uses
+ *   to push minutes into the time-axis counter (wired via reading-timer.ts)
  * - Daily-reset lazily at first interaction crossing local-TZ midnight
  *
  * Capability spec: openspec/specs/neurons-dmn-fate-cards/spec.md
@@ -163,9 +163,10 @@ export async function accrueReadingMinutes(deltaMinutes: number): Promise<void> 
 // ─── ReadingTimerSubscriber interface ──────────────────────────────────────
 
 /**
- * Contract for the reading-timer service to publish minute ticks. Currently
- * a stub: timer service not implemented in this change. The polish-neurons-
- * pre-ship change wires the real timer; nothing else uses this interface yet.
+ * Contract for the reading-timer service to publish minute ticks.
+ * WIRED: reading-timer.ts `fireMinuteSideEffects` calls
+ * `dmnReadingTimerSubscriber.onMinutesAccrued(1)` each accrued minute, so the
+ * DMN time-axis (30-min accrual → bonus draw) is live.
  */
 export interface ReadingTimerSubscriber {
   /** Called by the timer each time accrued minutes advance. */
