@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom'
 import type { ContentPack } from '@study-rpg/core'
 import { getContentPack } from '@study-rpg/content-neurons-tw'
 import { THEME_PIXEL_NEURONS } from '@study-rpg/theme-pixel-neurons'
 import OverviewPage from './routes/OverviewPage'
-import ConnectomePage from './routes/ConnectomePage'
 import MotionDemoPage from './routes/MotionDemoPage' // dev self-verify only — not linked from prod navbar
 import LeaderboardPage from './routes/LeaderboardPage'
 import ConnectomeToastHost from './components/SynapseFormationToast'
@@ -92,11 +91,6 @@ export default function App(): JSX.Element {
             <nav className="neurons-nav">
               <NavLink to="/" style={navLinkStyle} end>
                 {({ isActive }) => (
-                  <span style={isActive ? activeNavBoxStyle : navBoxStyle}>總覽 →</span>
-                )}
-              </NavLink>
-              <NavLink to="/connectome" style={navLinkStyle}>
-                {({ isActive }) => (
                   <span style={isActive ? activeNavBoxStyle : navBoxStyle}>連結組 →</span>
                 )}
               </NavLink>
@@ -128,7 +122,8 @@ export default function App(): JSX.Element {
           </header>
           <Routes>
             <Route path="/" element={<OverviewPage pack={pack} />} />
-            <Route path="/connectome" element={<ConnectomePage pack={pack} />} />
+            {/* /connectome is fused into the homepage — redirect old bookmarks. */}
+            <Route path="/connectome" element={<Navigate to="/" replace />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/dmn" element={<DmnCollectionPage />} />

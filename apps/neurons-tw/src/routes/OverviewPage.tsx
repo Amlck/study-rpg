@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { liveQuery } from 'dexie'
 import type { ContentPack } from '@study-rpg/core'
-import { initMasteryForPack, loadConnectome } from '../lib/services/connectome'
+import { initMasteryForPack } from '../lib/services/connectome'
 import LeaderboardPromoBanner from '../components/LeaderboardPromoBanner'
 import QuizHotkeysAnnouncementBanner from '../components/QuizHotkeysAnnouncementBanner'
 import { QuizModal } from '../components/QuizModal'
-import { FamilyPicker } from '../components/FamilyPicker'
-import { ConnectomeHero } from '../components/ConnectomeHero'
+import { FamilyPicker, type FamilyAccrual } from '../components/FamilyPicker'
+import { ConnectomeTreeSvg } from '../components/connectome/ConnectomeTreeSvg'
 import { DmnDrawProgressRing } from '../components/DmnDrawProgressRing'
 import { HomepageOnboarding } from '../components/HomepageOnboarding'
 import { useReadingTimer } from '../lib/hooks/useReadingTimer'
@@ -39,6 +39,8 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
     synapsesWeak: 0,
     dmnOwned: 0,
   })
+  const [synapseCount, setSynapseCount] = useState(0)
+  const [accrualByFamily, setAccrualByFamily] = useState<Map<string, FamilyAccrual>>(new Map())
   const timer = useReadingTimer()
 
   const quizPool = useMemo(
@@ -54,20 +56,39 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
   }, [pack])
 
   useEffect(() => {
+    // Read-only table reads — do NOT call loadConnectome() here: it runs the
+    // daily-reset WRITE transaction, which Dexie liveQuery forbids inside its
+    // querier (throws DexieError → stats/synapseCount/accrual would never update).
+    // The daily reset is owned by ConnectomeTreeSvg's mount + recordCorrectAnswer.
     const sub = liveQuery(async () => {
-      const [variants, dmn, snapshot] = await Promise.all([
+      const [variants, dmn, synapses, familyAccrual] = await Promise.all([
         db.neuronVariants.toArray(),
         db.dmnCards.toArray(),
-        loadConnectome(),
+        db.synapses.toArray(),
+        db.familyAccrual.toArray(),
       ])
+      const accrual = new Map<string, FamilyAccrual>(
+        familyAccrual.map((r) => [
+          r.familyId,
+          { ap: r.ap, unlockedSlots: r.unlockedSlots, firedToday: r.firedToday },
+        ]),
+      )
       return {
-        variants: variants.length,
-        synapsesStrong: snapshot.synapses.filter((s) => s.state === 'strong').length,
-        synapsesWeak: snapshot.synapses.filter((s) => s.state === 'weak').length,
-        dmnOwned: dmn.length,
+        stats: {
+          variants: variants.length,
+          synapsesStrong: synapses.filter((s) => s.state === 'strong').length,
+          synapsesWeak: synapses.filter((s) => s.state === 'weak').length,
+          dmnOwned: dmn.length,
+        },
+        synapseCount: synapses.length,
+        accrual,
       }
     }).subscribe({
-      next: (val) => setStats(val),
+      next: (val) => {
+        setStats(val.stats)
+        setSynapseCount(val.synapseCount)
+        setAccrualByFamily(val.accrual)
+      },
       error: (err) => console.warn('[OverviewPage] stats query failed:', err),
     })
     return () => sub.unsubscribe()
@@ -114,11 +135,58 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
         </div>
       </header>
 
-      {/* ── Hook (top): live connectome hero + DMN-draw progress ring ── */}
-      <section style={hookStyle} aria-label="connectome 預覽與 DMN 進度">
-        <ConnectomeHero pack={pack} />
-        <DmnDrawProgressRing />
+      {/* ── CTA toolbar (above the tree): reading toggle + cross-family random quiz ── */}
+      <section style={quizCtaSectionStyle} aria-label="核心循環入口">
+        <div style={ctaButtonRowStyle}>
+          <button
+            type="button"
+            style={timer.status === 'reading' ? readingActiveButtonStyle : readingCtaButtonStyle}
+            onClick={onTimerToggle}
+            aria-label="閱讀計時器"
+          >
+            {timerButtonLabel}
+          </button>
+          <button
+            type="button"
+            style={randomQuizButtonStyle}
+            onClick={() => setQuizEntry(null)}
+            aria-label="跨 family 隨機答題"
+            title={`從全部 ${totalPoolSize} 題隨機抽題`}
+          >
+            🎲 隨機跨 family 答題
+            <span style={randomQuizCountStyle}>{totalPoolSize} 題</span>
+          </button>
+        </div>
+        <p style={quizCtaHintStyle}>
+          開始閱讀累積時間，或直接答題。下方點任何 family 卡片即可指定範圍練習。
+        </p>
       </section>
+
+      {/* ── First-visit guidance while the connectome is still empty (stateless;
+            auto-hides on first synapse). Replaces the old "0 連線" framing. ── */}
+      {synapseCount === 0 && (
+        <section role="region" aria-label="新手指引" style={emptyStateCalloutStyle}>
+          <strong style={emptyStateOpenerStyle}>👋 連結組還是空的 — 先 wire 出第一條 synapse</strong>
+          <p style={emptyStateBodyStyle}>
+            用上方 <strong>🎲 隨機跨 family 答題</strong>，或下方任一 family 卡片的 <strong>🎯 答題</strong> 開始作答。
+            同一天讓 <strong>兩個 family 各答對 5 題</strong>，就會 wire 出你的第一條 synapse，下面樹上的連線會亮起來。
+          </p>
+          <p style={emptyStateFlavorStyle}>
+            Hebbian rule — &ldquo;Neurons that fire together, wire together.&rdquo;
+          </p>
+        </section>
+      )}
+
+      {/* ── The connectome IS the homepage: fixed-height interactive tree panel.
+            When empty it reads as a dimmed skeleton of what the tree can grow into. ── */}
+      <div
+        style={synapseCount === 0 ? treePanelEmptyStyle : treePanelStyle}
+        aria-label="connectome 連結組（互動）"
+      >
+        <ConnectomeTreeSvg pack={pack} interactive panelHeight="min(72vh, 600px)" />
+      </div>
+
+      <DmnDrawProgressRing />
 
       <section style={statusChipStyle} aria-label="進度狀態">
         <div style={statusItemStyle}>
@@ -150,33 +218,11 @@ export default function OverviewPage({ pack }: Props): JSX.Element {
         </div>
       </section>
 
-      <section style={quizCtaSectionStyle} aria-label="核心循環入口">
-        <div style={ctaButtonRowStyle}>
-          <button
-            type="button"
-            style={timer.status === 'reading' ? readingActiveButtonStyle : readingCtaButtonStyle}
-            onClick={onTimerToggle}
-            aria-label="閱讀計時器"
-          >
-            {timerButtonLabel}
-          </button>
-          <button
-            type="button"
-            style={randomQuizButtonStyle}
-            onClick={() => setQuizEntry(null)}
-            aria-label="跨 family 隨機答題"
-            title={`從全部 ${totalPoolSize} 題隨機抽題`}
-          >
-            🎲 隨機跨 family 答題
-            <span style={randomQuizCountStyle}>{totalPoolSize} 題</span>
-          </button>
-        </div>
-        <p style={quizCtaHintStyle}>
-          開始閱讀累積時間，或直接答題。下方點任何 family 卡片即可指定範圍練習。
-        </p>
-      </section>
-
-      <FamilyPicker pack={pack} onStartQuiz={(familyId) => setQuizEntry(familyId)} />
+      <FamilyPicker
+        pack={pack}
+        accrualByFamily={accrualByFamily}
+        onStartQuiz={(familyId) => setQuizEntry(familyId)}
+      />
 
       {quizEntry !== undefined && (
         <QuizModal pool={quizPool} onClose={() => setQuizEntry(undefined)} />
@@ -260,14 +306,50 @@ const heroStyle: React.CSSProperties = {
   borderRadius: '6px',
 }
 
-// Hook region (top): the live connectome hero + the DMN-draw progress ring,
-// stacked (hero full-width on top, ring bar below).
-const hookStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'stretch',
-  gap: '0.5rem',
+// Fixed-height interactive tree panel — the connectome IS the homepage. Bounds
+// the tree so it's a centerpiece, not a full-page-tall block; ConnectomeTreeSvg
+// gets panelHeight so its SVG fits via preserveAspectRatio meet. overflow:hidden
+// + the tree's own overscroll-behavior:contain keep gestures from chaining out.
+const treePanelStyle: React.CSSProperties = {
   marginBottom: '1rem',
+  overflow: 'hidden',
+}
+
+// Empty connectome: lightly desaturate the tree so it reads as a skeleton of what
+// it can grow into (paired with the guidance callout above).
+const treePanelEmptyStyle: React.CSSProperties = {
+  ...treePanelStyle,
+  filter: 'saturate(0.7)',
+}
+
+const emptyStateCalloutStyle: React.CSSProperties = {
+  background: 'linear-gradient(135deg, #fdf2e8 0%, #f5e6d3 100%)',
+  border: '2px solid #d4a04d',
+  borderRadius: '8px',
+  padding: '0.9rem 1.1rem',
+  marginBottom: '1rem',
+  boxShadow: '0 2px 6px rgba(212, 160, 77, 0.15)',
+}
+
+const emptyStateOpenerStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '1.05rem',
+  color: '#5a3f29',
+  marginBottom: '0.4rem',
+}
+
+const emptyStateBodyStyle: React.CSSProperties = {
+  margin: '0 0 0.45rem',
+  fontSize: '0.92rem',
+  lineHeight: 1.55,
+  color: '#3a2a1a',
+}
+
+const emptyStateFlavorStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: '0.8rem',
+  fontStyle: 'italic',
+  color: '#8c6d4a',
 }
 
 const heroTitleStyle: React.CSSProperties = {

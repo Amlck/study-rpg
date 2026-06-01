@@ -88,7 +88,7 @@ const SECTIONS: Section[] = [
         </p>
         <p>
           門檻為 P5 = 1、P4 = 5、P3 = 15、P2 = 40、P1 = 100 AP。
-          解鎖後變體會跑出 reveal 動畫並登錄在「<a href="/connectome">連結組</a>」的家族分支樹上。
+          解鎖後變體會跑出 reveal 動畫並登錄在首頁的連結組家族分支樹上。
         </p>
         <p>
           11 個 family × 5 slot = 55 variants 為完整收集目標。
@@ -110,15 +110,16 @@ const SECTIONS: Section[] = [
         </p>
         <p>
           已存在的 synapse 持續被「兩端 family 同日 co-fire」喂養會升級成
-          <strong> strong synapse</strong>（粗實線）。
+          <strong> strong synapse</strong>（線越粗代表累積越強）。
         </p>
         <p>
-          7 天內若該 synapse 兩端都沒有 co-fire，synapse 會 decay 回 weak，
-          再 7 天無活動則消失。隔天歸零的「同日 5 題」 counter 在午夜重置。
+          連續 7 天兩端都沒 co-fire，synapse 會 decay 一級（strong → weak → dormant）。
+          樹上的對應做法：連線越久沒共激發就越<strong>暗</strong>，重新 co-fire 立刻再<strong>亮</strong>起來。
+          但 synapse <strong>永遠不會消失</strong>（LTD 不 rupture），最弱也只是一條暗淡的細線。隔天歸零的「同日 5 題」 counter 在午夜重置。
         </p>
         <p>
           這就是 Hebb 那句「Neurons that fire together, wire together」。
-          詳細可視化在「<a href="/connectome">連結組</a>」頁面。
+          連結組樹就是首頁本身 — 線的<strong>粗細＝累積強度</strong>、<strong>亮度＝近期共激發</strong>。
         </p>
       </>
     ),

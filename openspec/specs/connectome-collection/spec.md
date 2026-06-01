@@ -210,116 +210,107 @@ The reset SHALL handle multi-day gaps (user opens the app after a multi-day abse
 - **THEN** the daily reset sequence SHALL NOT run again
 - **AND** `meta.lastResetDate` SHALL remain `"2026-05-31"`
 
-### Requirement: Stub Connectome view SHALL display all 11 families grouped by NT branch plus a synapse table
+### Requirement: Connectome homepage view SHALL display all 11 families grouped by NT branch on the homepage with a dimmed-skeleton empty state
 
-The neurons mode SHALL ship a `/connectome` route view containing:
+The neurons mode SHALL render the connectome on the homepage route (`/`) consisting of:
 
-- A polished SVG Linnean phylogenetic tree as the primary visual (per the "Polished SVG Linnean tree" requirement below) rendered at the top of the route
-- Below the tree, a supplemental detail section organized into 4 columns labeled by NT branch (`DA` / `5-HT` / `GABA` / `Glu`), with each column listing the family cards assigned to that branch (per content pack metadata)
+- The polished SVG Linnean tree (per the tree requirement below) as the primary visual, mounted in the homepage's fixed-height interactive panel
+- A family-detail section organized into 4 columns/groups labeled by NT branch (`DA` / `5-HT` / `GABA` / `Glu`), each listing the family cards assigned to that branch (per content-pack metadata)
 - Each family card SHALL display: family `displayName`, sprite (via `artKey`), current `actionPotential`, next slot threshold (or "MAX" if all 5 slots unlocked), and a `firedToday` badge when applicable
-- A synapse table section listing all rows from the `synapses` table with columns: family A `displayName`, family B `displayName`, state (`dormant` / `weak` / `strong`), `lastCoFireDate`, `daysSinceCoFire`
-- An empty-state message when no synapses exist explaining the N=5 same-day co-fire rule
 
-The supplemental column-card + table sections SHALL remain accessible (screen-reader friendly, keyboard navigable) and SHALL NOT be hidden behind a collapsed section by default. Synapse formation feedback to the user SHALL come from toast notifications (per the toast requirement) in addition to the tree's edge draw-in animation.
+There SHALL be NO synapse table anywhere in the app. When the `synapses` table is empty, the tree SHALL render a **dimmed grayscale skeleton** of all 11 families + NT-branch structure (so the player can see what the connectome will grow into) plus an action-guidance callout naming the N=5 same-day co-fire rule, replacing any "0 連線 / 尚無 synapse" count framing. The family-card detail section SHALL remain accessible (screen-reader friendly, keyboard navigable) and SHALL NOT be hidden behind a default-collapsed section.
 
-#### Scenario: Connectome view renders all 11 families in correct NT-branch columns
+#### Scenario: Homepage renders all 11 families in correct NT-branch groups
+- **WHEN** the homepage (`/`) renders
+- **THEN** there SHALL be exactly 4 NT-branch groups labeled `DA`, `5-HT`, `GABA`, `Glu` in the family-detail section
+- **AND** every content-pack family SHALL appear in exactly one group matching its `ntBranch` field, each card showing `displayName`, sprite via `artKey`, `actionPotential`, and next slot threshold
 
-- **GIVEN** the player navigates to `/connectome`
-- **WHEN** the page renders
-- **THEN** there SHALL be exactly 4 NT-branch columns labeled `DA`, `5-HT`, `GABA`, `Glu` in the supplemental detail section
-- **AND** every family from the content pack SHALL appear in exactly one column matching its `ntBranch` field
-- **AND** every family card SHALL display `displayName`, sprite via `artKey`, `actionPotential`, and next slot threshold
+#### Scenario: No synapse table is present
+- **WHEN** the homepage renders with any number of synapses
+- **THEN** there SHALL be no synapse list table; synapse state is conveyed only by the tree edges and the per-edge hover/focus tooltip
 
-#### Scenario: Empty-state message appears when no synapses exist
+#### Scenario: Empty connectome renders a dimmed skeleton plus guidance
+- **WHEN** the `synapses` table is empty
+- **THEN** the tree SHALL render a dimmed grayscale skeleton of all 11 family leaves + the 4 NT-branch structure
+- **AND** an action-guidance callout SHALL name the rule (≥ 5 correct in 2 families on the same day forms a synapse)
+- **AND** there SHALL be no "0 連線 / 尚無 synapse" count-as-failure framing
 
-- **GIVEN** the `synapses` table is empty
-- **WHEN** the page renders
-- **THEN** the synapse table section SHALL show an empty-state message that names the rule (≥ 5 correct in 2 families on the same day forms a synapse)
-- **AND** no rows SHALL appear in the synapse table
+### Requirement: Polished SVG Linnean phylogenetic tree SHALL render the connectome on the homepage with two-channel recency-and-strength edge styling
 
-#### Scenario: Synapse table renders one row per synapse with state and lastCoFireDate
-
-- **GIVEN** the `synapses` table contains a row with `pairKey = "藥理學|解剖學"`, `state = weak`, `lastCoFireDate = "2026-05-30"`
-- **AND** today is `"2026-06-02"`
-- **WHEN** the page renders
-- **THEN** the synapse table SHALL contain a row showing family A `藥理學`, family B `解剖學`, state `weak`, `lastCoFireDate` `2026-05-30`, `daysSinceCoFire` `3`
-
-### Requirement: Polished SVG Linnean phylogenetic tree SHALL render the connectome at the top of /connectome with state-driven edge styling
-
-The `/connectome` route SHALL render a polished SVG visualization as its primary visual, organized as a Linnean phylogenetic tree with:
+The homepage SHALL render a polished SVG visualization as its primary visual, organized as a Linnean phylogenetic tree with:
 
 - A root spanning the full width of the visualization
-- Exactly 4 NT-branch sub-roots labeled `DA`, `5-HT`, `GABA`, `Glu`, fanning out from the root with vertical spacing computed by a pure layout function (`layout.ts`); each sub-root SHALL be visually distinguishable via its label and the family color of its first child leaf
+- Exactly 4 NT-branch sub-roots labeled `DA`, `5-HT`, `GABA`, `Glu`, fanning out from the root with vertical spacing computed by a pure layout function; each sub-root SHALL be visually distinguishable via its label and the family color of its first child leaf
 - 11 neuron-family leaf nodes — each family from the content pack SHALL appear as exactly one leaf attached to its declared `ntBranch` sub-root
-- Each leaf node SHALL render the family's sprite (via `artKey`) at a size legible without zoom (≥ 32px on desktop, ≥ 28px on mobile), plus the family's `displayName` label adjacent to the sprite, plus the family's current `actionPotential` value in a small chip
-- A `firedToday` indicator (visual halo or 🔥 glyph) SHALL appear on the leaf node when `firedToday` is true for that family
+- Each leaf node SHALL render the family's sprite (via `artKey`) at a size legible without zoom (≥ 32px desktop, ≥ 28px mobile), the family's `displayName` label adjacent, and the family's current `actionPotential` in a small chip
+- A `firedToday` indicator (visual halo or 🔥 glyph) SHALL appear on the leaf node when `firedToday` is true
 
-Synapses SHALL render as SVG `<path>` elements drawn between non-sibling family leaves (cross-NT-branch pairs only — same-NT-branch pairs do not form synapses per existing co-fire rules; the layout SHALL position them so cross-branch paths arc smoothly without crossing labels):
+Synapses SHALL render as SVG `<path>` elements between cross-NT-branch family leaves, styled by **two orthogonal channels** derived at render time from `(state, lastCoFireDate, today)`:
 
-- `dormant` synapses (synapse row exists with state `dormant`): SHALL NOT render (no visible edge)
-- `weak` synapses: SHALL render with stroke width 1.5px, color amber (`#b58900`), opacity 1.0, no glow
-- `strong` synapses: SHALL render with stroke width 3px, color blue (`#268bd2`), opacity 1.0, plus a subtle glow filter (SVG `feGaussianBlur` or CSS `filter: drop-shadow`)
+- **Channel 1 — stroke width / weight encodes accumulated strength** (the internal `SynapseState`): `dormant` = thin, `weak` = medium, `strong` = thick.
+- **Channel 2 — brightness (opacity + glow) encodes recency**: computed from `daysSinceCoFire = today − lastCoFireDate`, mapping `0` days → brightest and `≥ 7` days → a dim but legible floor (never invisible). Co-firing resets recency to brightest.
+- **Every formed synapse renders a visible edge, including `dormant`** (reversing the prior "dormant SHALL NOT render"). A newly-formed synapse (`dormant`, `daysSinceCoFire = 0`) SHALL therefore render at brightest.
+- The EEG cyan/amber color tokens MAY be retained for aesthetic coherence; numeric `lastCoFireDate` / days-since SHALL be available only via the per-edge hover/focus tooltip (the only numeric surface — no text state labels on the tree).
 
-The SVG SHALL be responsive: at viewport width ≥ 768px it SHALL use a wide horizontal layout (root left, branches fanning right); at viewport width < 768px it SHALL switch to a compact vertical layout (root top, branches stacking down) without DOM remount (CSS / viewBox-driven, not React conditional rendering).
+The SVG SHALL be responsive: at viewport width ≥ 768px a wide horizontal layout (root left, branches fanning right); at < 768px a compact vertical layout (root top, branches stacking down) without DOM remount (CSS / viewBox-driven, not React conditional rendering).
 
 #### Scenario: SVG tree renders 4 NT-branch sub-roots and 11 family leaves
-
-- **GIVEN** the player navigates to `/connectome` and the page renders
-- **WHEN** the SVG tree mounts
+- **WHEN** the homepage renders and the SVG tree mounts
 - **THEN** there SHALL be exactly 4 NT-branch sub-root elements with `aria-label` attributes containing `DA`, `5-HT`, `GABA`, `Glu`
-- **AND** there SHALL be exactly 11 family leaf elements, one per content-pack family
-- **AND** each leaf SHALL be visually anchored under its declared `ntBranch` sub-root
+- **AND** there SHALL be exactly 11 family leaf elements, one per content-pack family, each anchored under its declared `ntBranch` sub-root
 
-#### Scenario: Synapse renders with state-driven styling
-
-- **GIVEN** the `synapses` table contains a row with `pairKey = "藥理學|解剖學"`, `state = weak`
+#### Scenario: Dormant synapse renders a visible edge
+- **GIVEN** the `synapses` table contains a row with `state = dormant` and `lastCoFireDate = today`
 - **WHEN** the SVG tree mounts
-- **THEN** the SVG SHALL contain a `<path>` element connecting the `藥理學` leaf and `解剖學` leaf with stroke width 1.5px and amber color
-- **AND** no other dormant-state rows SHALL render a visible edge
+- **THEN** a visible `<path>` edge SHALL render for that pair at thin stroke width and brightest recency styling (it SHALL NOT be hidden)
+
+#### Scenario: Fresh synapse is brightest; idle synapse dims toward the 7-day floor
+- **GIVEN** synapse A has `lastCoFireDate = today` and synapse B has `lastCoFireDate = 6 days ago`
+- **WHEN** the SVG tree mounts
+- **THEN** edge A SHALL render at the brightest recency level
+- **AND** edge B SHALL render dimmed toward the floor (visibly fading) while remaining legible
+
+#### Scenario: Strong vs weak distinguished by thickness
+- **GIVEN** a `strong` synapse and a `weak` synapse both co-fired today
+- **WHEN** the SVG tree mounts
+- **THEN** the `strong` edge SHALL render thicker than the `weak` edge (thickness encodes accumulated strength), both at brightest recency
 
 #### Scenario: Compact vertical layout activates below 768px viewport
-
-- **GIVEN** the page renders inside a viewport of width 600px
+- **GIVEN** the homepage renders inside a viewport of width 600px
 - **WHEN** the SVG tree mounts
-- **THEN** the tree SHALL use a vertical (top-to-bottom) layout
-- **AND** the root SHALL be positioned at the top with the 4 NT-branch sub-roots stacked beneath
-- **AND** the same SVG DOM structure SHALL be used (no React conditional re-mount between layouts)
+- **THEN** the tree SHALL use a vertical (top-to-bottom) layout with the root at the top and the 4 NT-branch sub-roots stacked beneath, using the same SVG DOM structure (no React conditional re-mount)
 
 ### Requirement: SVG tree synapse formation, strengthening, decay, and slot-unlock SHALL drive Framer Motion animations gated by useRespectsReducedMotion
 
 The SVG tree SHALL animate state transitions using Framer Motion (`motion.path`, `motion.g`) and the timing tokens defined in `neurons-motion-library`'s `SYNAPSE_TIMINGS` requirement:
 
-- **Synapse formation** (`connectome.synapseFormed` event arrives): the new edge `<path>` SHALL animate `pathLength` from 0 → 1 over `SYNAPSE_TIMINGS.formation` ms with an ease-out curve, while opacity holds at 1
-- **Synapse strengthening** (`connectome.synapseStrengthened` event arrives): the existing edge `<path>` SHALL animate stroke width and color from weak (1.5px amber) to strong (3px blue), plus glow opacity 0 → 1, over `SYNAPSE_TIMINGS.strengthen` ms
-- **Synapse decay** (`connectome.synapseDecayed` event arrives, transitioning strong→weak or weak→dormant): the edge SHALL animate either stroke style (strong→weak: width + color morph downward) or opacity (weak→dormant: fade to 0 and then remove from DOM after animation completes) over `SYNAPSE_TIMINGS.decay` ms
+- **Synapse formation** (`connectome.synapseFormed` event arrives): the new edge `<path>` SHALL animate `pathLength` from 0 → 1 over `SYNAPSE_TIMINGS.formation` ms with an ease-out curve, accompanied by a brief birth glow burst that lands the edge at its brightest recency level, then settling to its steady thin `dormant` width — celebrating the new connection rather than hiding it
+- **Synapse strengthening** (`connectome.synapseStrengthened` event arrives): the existing edge `<path>` SHALL animate stroke width upward along the accumulated-strength channel (thin → medium → thick for dormant → weak → strong), over `SYNAPSE_TIMINGS.strengthen` ms; brightness stays at the brightest level (the pair just co-fired)
+- **Synapse decay** (`connectome.synapseDecayed` event arrives, transitioning strong→weak or weak→dormant): the edge SHALL animate stroke width DOWNWARD to its new state's thickness over `SYNAPSE_TIMINGS.decay` ms and SHALL REMAIN in the SVG DOM at its new (possibly `dormant`-thin) styling — the edge SHALL NOT be removed from the DOM (dormant edges are now visible)
+- **Recency dimming** (no event; continuous): edge brightness SHALL be re-evaluated as a function of `daysSinceCoFire` on render and on each daily reset, so idle edges visibly dim toward the 7-day floor without requiring a discrete event
 - **AP slot unlock** (`connectome.variantSlotUnlocked` event arrives): the family leaf node SHALL pulse — scale 1 → 1.15 → 1 with a brief halo glow expand and fade — over `SYNAPSE_TIMINGS.slotUnlock` ms
 
-When the `useRespectsReducedMotion()` hook returns `true`, the tree SHALL skip all animations and apply the new visual state instantly (no `pathLength` draw-in, no stroke morph, no scale pulse, no glow expansion). State colors and stroke widths SHALL still reflect dormant / weak / strong correctly so that the visual hierarchy is preserved.
+When the `useRespectsReducedMotion()` hook returns `true`, the tree SHALL skip all animations and apply the new visual state instantly (no `pathLength` draw-in, no birth glow burst, no stroke-width morph, no scale pulse). Stroke widths (accumulated strength) and brightness (recency) SHALL still reflect the correct end-state so the visual hierarchy is preserved, and dormant edges SHALL still render (never removed).
 
-#### Scenario: Synapse formation animates pathLength draw-in over SYNAPSE_TIMINGS.formation ms
-
+#### Scenario: Synapse formation animates pathLength draw-in and a birth glow burst
 - **GIVEN** the SVG tree is mounted and `useRespectsReducedMotion()` returns `false`
 - **WHEN** a `connectome.synapseFormed` event fires for the `藥理學|解剖學` pair
-- **THEN** the new edge `<path>` SHALL animate `pathLength` from 0 to 1 over `SYNAPSE_TIMINGS.formation` ms
-- **AND** the curve SHALL be ease-out (later half of duration slower than first half)
-- **AND** the animation SHALL complete within `SYNAPSE_TIMINGS.formation` ms of the event
+- **THEN** the new edge `<path>` SHALL animate `pathLength` from 0 to 1 over `SYNAPSE_TIMINGS.formation` ms with an ease-out curve
+- **AND** a brief birth glow burst SHALL land the edge at its brightest recency level before settling to its steady thin `dormant` width
+- **AND** the edge SHALL be visible (not hidden) immediately after the animation completes
 
-#### Scenario: Synapse decay weak→dormant fades the edge out and removes from DOM
-
-- **GIVEN** the SVG tree shows a weak edge for the `藥理學|解剖學` pair
-- **AND** `useRespectsReducedMotion()` returns `false`
+#### Scenario: Synapse decay weak→dormant thins the edge but keeps it in the DOM
+- **GIVEN** the SVG tree shows a `weak` edge for the `藥理學|解剖學` pair and `useRespectsReducedMotion()` returns `false`
 - **WHEN** a `connectome.synapseDecayed` event fires transitioning the pair from `weak` → `dormant`
-- **THEN** the edge SHALL animate opacity from 1 to 0 over `SYNAPSE_TIMINGS.decay` ms
-- **AND** after the animation completes the edge SHALL be removed from the SVG DOM
-- **AND** the surrounding leaf nodes SHALL NOT visually shift during the fade
+- **THEN** the edge SHALL animate stroke width down to the thin `dormant` width over `SYNAPSE_TIMINGS.decay` ms
+- **AND** the edge SHALL REMAIN in the SVG DOM at its new dormant styling (it SHALL NOT be removed)
+- **AND** the surrounding leaf nodes SHALL NOT visually shift during the transition
 
-#### Scenario: Reduced motion skips all animations but preserves state styling
-
-- **GIVEN** the user has set OS preference `prefers-reduced-motion: reduce`
-- **AND** `useRespectsReducedMotion()` therefore returns `true`
+#### Scenario: Reduced motion skips all animations but preserves state styling and keeps dormant edges visible
+- **GIVEN** the user has set OS preference `prefers-reduced-motion: reduce` and `useRespectsReducedMotion()` returns `true`
 - **WHEN** a `connectome.synapseFormed` event fires for the `藥理學|解剖學` pair
-- **THEN** the edge `<path>` SHALL appear instantly at its final weak styling (stroke width 1.5px amber, opacity 1)
-- **AND** there SHALL be no `pathLength` draw-in animation
+- **THEN** the edge `<path>` SHALL appear instantly at its final thin `dormant` width and brightest recency styling, with no `pathLength` draw-in and no birth glow burst
+- **AND** on a subsequent `connectome.synapseDecayed` weak→dormant event the edge SHALL snap to thin dormant styling and remain in the DOM (not removed)
 - **AND** the leaf nodes SHALL NOT pulse on subsequent `connectome.variantSlotUnlocked` events
 
 ### Requirement: Synapse formation and strengthening SHALL surface user-facing toast notification, decay SHALL NOT
@@ -339,7 +330,7 @@ The toast host (`ConnectomeToastHost`) SHALL consume `neurons-motion-library` pr
 
 The host SHALL retain its existing top-right anchored fixed-position vertical-stack layout (distinct from the motion library's single-`<Toast>` top-center primitive) so that multiple concurrent toasts remain visible without overlap.
 
-Decay events (`connectome.synapseDecayed`) SHALL NOT trigger toast notifications (to avoid negative-feedback fatigue). Decay is visible only via the synapse table's state and `daysSinceCoFire` columns.
+Decay events (`connectome.synapseDecayed`) SHALL NOT trigger toast notifications (to avoid negative-feedback fatigue). Decay is visible only via the tree edge's recency dimming (edge brightness fading toward the 7-day decay) and the per-edge hover/focus tooltip; there is no synapse table.
 
 #### Scenario: New synapse formation triggers a toast naming both families
 
@@ -351,7 +342,7 @@ Decay events (`connectome.synapseDecayed`) SHALL NOT trigger toast notifications
 
 - **WHEN** a `connectome.synapseDecayed` event fires
 - **THEN** no toast SHALL render
-- **AND** the user discovers the decay only by inspecting the synapse table or seeing a future strengthening event
+- **AND** the user discovers the decay only via the edge's recency dimming / hover tooltip or a future strengthening event
 
 #### Scenario: Standard motion users see slide-from-right entry animation
 
