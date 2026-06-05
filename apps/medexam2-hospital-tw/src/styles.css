@@ -5106,8 +5106,35 @@ body:has(.modal-backdrop) {
   color: var(--frame-dark);
 }
 
+.equipment-draw-panel__actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+  flex: 1 1 560px;
+  min-width: 0;
+}
+
 .equipment-draw-panel__button {
-  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 72px;
+  padding: 10px 14px;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.equipment-draw-panel__button-title {
+  font-size: 15px;
+}
+
+.equipment-draw-panel__button-detail {
+  font-size: 11px;
+  color: rgba(26, 20, 16, 0.72);
+  white-space: nowrap;
 }
 
 .equipment-filter-bar {
@@ -5758,6 +5785,11 @@ body:has(.modal-backdrop) {
   .equipment-draw-panel {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .equipment-draw-panel__actions {
+    grid-template-columns: 1fr;
+    flex-basis: auto;
   }
 
   .equipment-draw-panel__button {

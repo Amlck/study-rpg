@@ -330,33 +330,48 @@ export function EquipmentPage() {
             ⚙ {fmt(materials?.parts ?? 0)}
           </p>
         </div>
-        <button
-          type="button"
-          className="primary-btn equipment-draw-panel__button"
-          onClick={() => void handleRoll()}
-          disabled={rolling || !equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.equipmentPull}
-          title={equipmentUnlocked ? `${HOSPITAL_CREDIT_PRICES.equipmentPull} ${HOSPITAL_CREDIT_LABEL}` : '區域醫院解鎖'}
-        >
-          {rolling ? '補給中…' : '器材補給'}
-        </button>
-        <button
-          type="button"
-          className="secondary-btn equipment-draw-panel__button"
-          onClick={() => void handleFocusedRoll()}
-          disabled={rolling || !focusedUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.focusedEquipmentP3}
-          title={focusedUnlocked ? `P3+ · ${HOSPITAL_CREDIT_PRICES.focusedEquipmentP3} ${HOSPITAL_CREDIT_LABEL}` : '醫學中心解鎖'}
-        >
-          P3+ 器材
-        </button>
-        <button
-          type="button"
-          className="ghost-btn equipment-draw-panel__button"
-          onClick={() => void handleBuyParts()}
-          disabled={!equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.partsBundle}
-          title={`${HOSPITAL_CREDIT_PRICES.partsBundle} ${HOSPITAL_CREDIT_LABEL} → ${HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT} 零件`}
-        >
-          買零件
-        </button>
+        <div className="equipment-draw-panel__actions" aria-label="院務點數用途">
+          <button
+            type="button"
+            className="primary-btn equipment-draw-panel__button"
+            onClick={() => void handleRoll()}
+            disabled={rolling || !equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.equipmentPull}
+            title={equipmentUnlocked ? `${HOSPITAL_CREDIT_PRICES.equipmentPull} ${HOSPITAL_CREDIT_LABEL}` : '區域醫院解鎖'}
+          >
+            <span className="equipment-draw-panel__button-title">
+              {rolling ? '補給中…' : '器材補給'}
+            </span>
+            <span className="equipment-draw-panel__button-detail">
+              一般器材 · {HOSPITAL_CREDIT_PRICES.equipmentPull} 點
+            </span>
+          </button>
+          <button
+            type="button"
+            className="secondary-btn equipment-draw-panel__button"
+            onClick={() => void handleFocusedRoll()}
+            disabled={rolling || !focusedUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.focusedEquipmentP3}
+            title={focusedUnlocked ? `P3+ · ${HOSPITAL_CREDIT_PRICES.focusedEquipmentP3} ${HOSPITAL_CREDIT_LABEL}` : '醫學中心解鎖'}
+          >
+            <span className="equipment-draw-panel__button-title">P3+ 器材</span>
+            <span className="equipment-draw-panel__button-detail">
+              保證稀有+ · {HOSPITAL_CREDIT_PRICES.focusedEquipmentP3} 點
+            </span>
+          </button>
+          <button
+            type="button"
+            className="ghost-btn equipment-draw-panel__button"
+            onClick={() => void handleBuyParts()}
+            disabled={!equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.partsBundle}
+            title={`${HOSPITAL_CREDIT_PRICES.partsBundle} ${HOSPITAL_CREDIT_LABEL} → ${HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT} 零件`}
+          >
+            <span className="equipment-draw-panel__button-title">
+              零件包 +{HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT}
+            </span>
+            <span className="equipment-draw-panel__button-detail">
+              升級材料 · {HOSPITAL_CREDIT_PRICES.partsBundle} 點
+            </span>
+          </button>
+        </div>
       </section>
 
       {toast && <p className="equipment-page__toast" role="status">{toast}</p>}
