@@ -3,12 +3,12 @@
  *
  * On every correct quiz answer, grant:
  *  1. revenue + reputation deltas → gameCounters.singleton
- *  2. per-25-fresh-correct +1 ticket → tickets.global + monotonicCounters counter
- *  3. one-time +1 ticket on first banner-unlock crossing → tickets.global +
+ *  2. per-25-fresh-correct +1 院務點數 → gameCounters + monotonicCounters counter
+ *  3. one-time +1 院務點數 on first banner-unlock crossing → gameCounters +
  *     bannerUnlockBonusLog
  *
  * All writes happen inside a single Dexie `rw` transaction spanning gameCounters,
- * monotonicCounters, tickets, bannerUnlockBonusLog, and affinity (read-only for
+ * monotonicCounters, bannerUnlockBonusLog, and affinity (read-only for
  * the threshold-cross check). Caller (QuizModal) handles toast surfacing from
  * the returned `toastTexts` list.
  *
@@ -23,10 +23,13 @@ import {
   QUIZ_TICKET_GRANT_PER_N_CORRECT,
   QUIZ_TIER_MULTIPLIER,
   RECRUITMENT_THRESHOLDS,
+  HOSPITAL_CREDIT_LABEL,
+  HOSPITAL_CREDIT_CAP,
   getSpecialtyMultiplier,
   type Rarity,
 } from '@study-rpg/content-medexam2-tw'
-import { getHospitalDB } from '../db/schema'
+import { getHospitalDB, grantTicketsForCorrect } from '../db/schema'
+import { readHospitalCredits } from './hospital-credits'
 
 export interface ApplyQuizRewardInput {
   subjectId: SubjectId
@@ -61,7 +64,7 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
 
   return db.transaction(
     'rw',
-    [db.gameCounters, db.monotonicCounters, db.tickets, db.bannerUnlockBonusLog, db.affinity],
+    [db.gameCounters, db.monotonicCounters, db.bannerUnlockBonusLog, db.affinity],
     async () => {
       const toastTexts: string[] = []
       let ticketDelta = 0
@@ -98,9 +101,9 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
         if (mono) {
           const nextCounter = (mono.freshCorrectSinceLastTicket ?? 0) + 1
           if (nextCounter >= QUIZ_TICKET_GRANT_PER_N_CORRECT) {
-            const t = await db.tickets.get('global')
-            const overCap = (t?.available ?? 0) >= 99
-            const granted = await _grantTickets(1)
+            const latestCounters = await db.gameCounters.get('singleton')
+            const overCap = readHospitalCredits(latestCounters) >= HOSPITAL_CREDIT_CAP
+            const granted = await grantTicketsForCorrect(1)
             ticketDelta += granted
             await db.monotonicCounters.put({
               ...mono,
@@ -108,10 +111,10 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
             })
             if (granted > 0) {
               toastTexts.push(
-                `+1 招募券（已累積 ${QUIZ_TICKET_GRANT_PER_N_CORRECT} 題答對）`,
+                `+1 ${HOSPITAL_CREDIT_LABEL}（已累積 ${QUIZ_TICKET_GRANT_PER_N_CORRECT} 題答對）`,
               )
             } else if (overCap) {
-              toastTexts.push('招募券已達上限，請先消耗')
+              toastTexts.push(`${HOSPITAL_CREDIT_LABEL}已達上限，請先消耗`)
             }
           } else {
             await db.monotonicCounters.put({
@@ -139,25 +142,15 @@ export async function applyQuizReward(input: ApplyQuizRewardInput): Promise<Appl
             subjectId: input.subjectId,
             grantedAt: Date.now(),
           })
-          const granted = await _grantTickets(1)
+          const granted = await grantTicketsForCorrect(1)
           ticketDelta += granted
           if (granted > 0) {
-            toastTexts.push(`+1 招募券（首次解鎖 ${input.subjectId}）`)
+            toastTexts.push(`+1 ${HOSPITAL_CREDIT_LABEL}（首次解鎖 ${input.subjectId}）`)
           }
         }
       }
 
       return { revenueDelta, reputationDelta, ticketDelta, toastTexts }
-
-      // Local helper — inline so we can share the open transaction.
-      async function _grantTickets(count: number): Promise<number> {
-        const t = await db.tickets.get('global')
-        if (!t) return 0
-        const next = Math.min(99, t.available + count)
-        const actually = next - t.available
-        if (actually > 0) await db.tickets.put({ ...t, available: next })
-        return actually
-      }
     },
   )
 }

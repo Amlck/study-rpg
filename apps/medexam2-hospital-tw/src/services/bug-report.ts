@@ -9,6 +9,7 @@ import { getSupabase } from '../lib/auth/client'
 import { getHospitalDB } from '../db/schema'
 import { getRecentConsoleErrors } from './console-error-buffer'
 import { getSyncMetadata } from './sync-metadata'
+import { readHospitalCredits } from './hospital-credits'
 
 const APP_NAME = 'medexam2-hospital-tw' as const
 
@@ -18,12 +19,12 @@ export async function buildAutoContext(): Promise<BugReportAutoContext> {
   const monotonic = await db.monotonicCounters.get('singleton')
   const doctorCount = await db.doctors.count()
   const roomCount = await db.rooms.count()
-  const tickets = await db.tickets.get('global')
 
   const gameState: Record<string, unknown> = {
     tier: counters?.tier ?? null,
     revenue: counters?.revenue ?? null,
     reputation: counters?.reputation ?? null,
+    hospitalCredits: readHospitalCredits(counters),
     hasUsedStarterPull: counters?.hasUsedStarterPull ?? null,
     currentSessionStartedAt: counters?.currentSessionStartedAt ?? null,
     pendingEventId: counters?.pendingEventId ?? null,
@@ -32,7 +33,6 @@ export async function buildAutoContext(): Promise<BugReportAutoContext> {
     totalStudyMinutes: monotonic?.totalStudyMinutes ?? null,
     doctorCount,
     roomCount,
-    ticketsAvailable: tickets?.available ?? null,
   }
 
   const sync_metadata = (await getSyncMetadata()) ?? undefined

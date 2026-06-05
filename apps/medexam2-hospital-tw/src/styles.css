@@ -235,6 +235,35 @@ body:has(.modal-backdrop) {
   box-shadow: 2px 2px 0 var(--frame-light);
 }
 
+.focused-recruitment-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0 18px;
+  padding: 12px 14px;
+  background: var(--bg-paper);
+  border: 2px solid var(--frame-dark);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--frame-light);
+}
+
+.focused-recruitment-panel h2,
+.focused-recruitment-panel p {
+  margin: 0;
+}
+
+.focused-recruitment-panel h2 {
+  font-size: 18px;
+  color: var(--frame-dark);
+}
+
+.focused-recruitment-panel p {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--frame-light);
+}
+
 .nav-link {
   color: var(--frame-dark);
   text-decoration: none;
@@ -3243,6 +3272,7 @@ body:has(.modal-backdrop) {
 .nav-link--primary:hover { opacity: 0.85; }
 
 .primary-btn,
+.secondary-btn,
 .ghost-btn {
   display: inline-block;
   padding: 10px 24px;
@@ -3258,6 +3288,12 @@ body:has(.modal-backdrop) {
   font-weight: bold;
 }
 .primary-btn:hover { opacity: 0.85; }
+.secondary-btn {
+  background: var(--accent-sky);
+  color: #1a1a1a;
+  font-weight: bold;
+}
+.secondary-btn:hover { opacity: 0.85; }
 .ghost-btn {
   background: transparent;
   color: var(--frame-dark);
@@ -5727,6 +5763,7 @@ body:has(.modal-backdrop) {
   .equipment-draw-panel__button {
     width: 100%;
   }
+}
 
 .help-menu__radio-group {
   display: flex;
@@ -6587,8 +6624,6 @@ body:has(.modal-backdrop) {
     font-size: 14px;
   }
 }
-}
-
 /* ── Leaderboard promo banner (add-leaderboard-promo-banner) ── */
 
 .leaderboard-promo-banner {

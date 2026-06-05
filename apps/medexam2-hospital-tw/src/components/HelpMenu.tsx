@@ -55,7 +55,8 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     icon: '🎫',
     title: '招募醫師（gacha + 親和值）',
     body: [
-      '每個科別有「親和值」門檻 — 答對該科考古題達門檻後，招募 banner 解鎖。每日台灣早上 08:00 自動發放 +1 張免費招募券（持有上限 99）；用券抽 P5/P4/P3/P2/P1 醫師（rarity 越高機率越低）。',
+      '每個科別有「親和值」門檻 — 答對該科考古題達門檻後，招募 banner 解鎖。每日台灣早上 08:00 自動發放 +1 院務點數（持有上限 999）；可拿來招募醫師、補給器材或購買零件。',
+      '醫學中心解鎖 P3+ 重點招募，消耗較多院務點數，但保證抽到 P3 以上醫師。',
       '保底（pity）：每 N 抽必出 P3+；每 100 抽必出 SSR (P1)。詳見 RECRUITMENT_PITY_RULES。',
     ],
   },
@@ -110,7 +111,7 @@ const SECTIONS: ReadonlyArray<AccordionSection> = Object.freeze([
     icon: '🎴',
     title: '命運卡',
     body: [
-      '消耗 reputation 抽 4 階卡包（普通 / 稀有 / 史詩 / 傳奇）— 內容池含招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
+      '消耗 reputation 抽 4 階卡包（普通 / 稀有 / 史詩 / 傳奇）— 內容池含院務點數、指定科招募券、進修保證券、設施加成、特殊事件券。任何 tier 都可抽，僅 reputation 不足會 disable 該階卡包。',
       '保底：每階獨立追蹤連續衰運次數，連 3 次衰運後第 4 次必中 reward。',
     ],
   },

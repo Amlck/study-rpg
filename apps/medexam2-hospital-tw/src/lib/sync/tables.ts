@@ -13,6 +13,7 @@
 // generic `Dexie` instance to `HospitalDB` for typed table access.
 
 import type Dexie from 'dexie'
+import { clampHospitalCredits } from '@study-rpg/content-medexam2-tw'
 import type { CloudRow, RowPayload } from './types'
 import type {
   AffinityRow,
@@ -129,16 +130,33 @@ async function writeHospitalStateBlob(
     [db.gameCounters, db.gachaStats, db.tickets, db.rooms, db.affinity],
     async () => {
       if (blob.gameCounters) {
+        const localCounters = await db.gameCounters.get(GAME_COUNTERS_ID)
+        const incomingCounters = blob.gameCounters as Partial<GameCountersRow> & GameCountersRow
+        const mergedCounters: GameCountersRow = {
+          ...incomingCounters,
+          hospitalCredits:
+            incomingCounters.hospitalCredits !== undefined
+              ? clampHospitalCredits(incomingCounters.hospitalCredits)
+              : clampHospitalCredits(localCounters?.hospitalCredits ?? blob.tickets?.available ?? 0),
+          hospitalCreditsMigratedAt:
+            incomingCounters.hospitalCreditsMigratedAt ??
+            localCounters?.hospitalCreditsMigratedAt ??
+            cloudUpdatedAtMs,
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await db.gameCounters.put(stamp(blob.gameCounters) as any)
+        await db.gameCounters.put(stamp(mergedCounters) as any)
       }
       if (blob.gachaStats) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await db.gachaStats.put(stamp(blob.gachaStats) as any)
       }
       if (blob.tickets) {
+        const legacyTickets = {
+          ...blob.tickets,
+          available: 0,
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await db.tickets.put(stamp(blob.tickets) as any)
+        await db.tickets.put(stamp(legacyTickets) as any)
       }
       if (blob.rooms && blob.rooms.length > 0) {
         // Defensive force-null per `fix-medexam2-doctor-room-pointer-drift`:

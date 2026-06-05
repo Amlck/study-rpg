@@ -1,13 +1,22 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { RARITY_LABELS, RARITY_ORDER, type Rarity } from '@study-rpg/content-medexam2-tw'
+import {
+  HOSPITAL_CREDIT_LABEL,
+  HOSPITAL_CREDIT_CAP,
+  HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT,
+  HOSPITAL_CREDIT_PRICES,
+  TIER_ORDER,
+  RARITY_LABELS,
+  RARITY_ORDER,
+  type HospitalTier,
+  type Rarity,
+} from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import {
   EQUIPMENT_CATEGORY_LABELS,
   EQUIPMENT_PARTS_BY_RARITY,
   EQUIPMENT_RARITY_LABELS,
-  EQUIPMENT_TICKET_CAP,
   EQUIPMENT_UPGRADE_COSTS,
   getNextEquipmentDefinition,
   getNextEquipmentRarity,
@@ -32,6 +41,7 @@ import {
   dismantleEquipment,
   describeEquipment,
   equipItem,
+  rollFocusedP3Equipment,
   rollEquipment,
   unequipItem,
   upgradeEquipment,
@@ -39,6 +49,10 @@ import {
   type EquipmentRollOutcome,
   type EquipmentUpgradeResult,
 } from '../services/equipment'
+import {
+  purchaseEquipmentPartsBundle,
+  readHospitalCredits,
+} from '../services/hospital-credits'
 
 type SortMode = 'newest' | 'rarity' | 'category' | 'equipped'
 type EquipFilter = 'all' | 'available' | 'equipped'
@@ -56,6 +70,11 @@ const RARITY_RANK = new Map<Rarity, number>(RARITY_ORDER.map((r, index) => [r, i
 const EQUIPMENT_DRAG_TYPE = 'application/x-study-rpg-equipment'
 const EQUIPMENT_SLOTS = [{ id: 'main', label: '主要器材' }] as const
 const SPRITE_TUNER_CATEGORIES: EquipmentCategory[] = ['stethoscope', 'scalpel', 'chart', 'coat']
+
+function isTierAtLeast(tier: HospitalTier | undefined, minTier: HospitalTier): boolean {
+  if (!tier) return false
+  return TIER_ORDER.indexOf(tier) >= TIER_ORDER.indexOf(minTier)
+}
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('zh-TW')
@@ -87,9 +106,11 @@ export function EquipmentPage() {
   const db = getHospitalDB()
   const equipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.orderBy('obtainedAt').reverse().toArray(), []) ?? []
-  const tickets = useLiveQuery(() => db.equipmentTickets.get('global'), [])
   const materials = useLiveQuery(() => db.equipmentMaterials.get('global'), [])
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
+  const creditsAvailable = readHospitalCredits(counters)
+  const equipmentUnlocked = isTierAtLeast(counters?.tier, '區域醫院')
+  const focusedUnlocked = isTierAtLeast(counters?.tier, '醫學中心')
   const rollInFlight = useRef(false)
   const [rolling, setRolling] = useState(false)
   const [rollOutcome, setRollOutcome] = useState<Extract<EquipmentRollOutcome, { ok: true }> | null>(null)
@@ -161,11 +182,48 @@ export function EquipmentPage() {
         setShowCeremony(true)
         return
       }
-      setToast(outcome.reason === 'no-tickets' ? '器材券不足' : '器材池目前沒有可抽項目')
+      setToast(formatRollError(outcome.reason))
     } finally {
       rollInFlight.current = false
       setRolling(false)
     }
+  }
+
+  async function handleFocusedRoll() {
+    if (rollInFlight.current) return
+    rollInFlight.current = true
+    setRolling(true)
+    setToast(null)
+    try {
+      const outcome = await rollFocusedP3Equipment()
+      if (outcome.ok) {
+        setRollOutcome(outcome)
+        setShowCeremony(true)
+        return
+      }
+      setToast(formatRollError(outcome.reason))
+    } finally {
+      rollInFlight.current = false
+      setRolling(false)
+    }
+  }
+
+  async function handleBuyParts() {
+    setToast(null)
+    const result = await purchaseEquipmentPartsBundle()
+    if (result.ok) {
+      setToast(
+        `+${fmt(result.partsGained)} 零件（-${result.creditsSpent} ${HOSPITAL_CREDIT_LABEL}）`,
+      )
+    } else {
+      setToast(result.reason === 'no-credits' ? `${HOSPITAL_CREDIT_LABEL}不足` : '器材狀態尚未初始化')
+    }
+  }
+
+  function formatRollError(reason: Exclude<EquipmentRollOutcome, { ok: true }>['reason']): string {
+    if (reason === 'locked-tier') return '區域醫院解鎖器材補給；醫學中心解鎖 P3+ 器材'
+    if (reason === 'no-credits') return `${HOSPITAL_CREDIT_LABEL}不足`
+    return '器材池目前沒有可抽項目'
   }
 
   function toggleDoctorRarityFilter(rarity: Rarity) {
@@ -261,9 +319,9 @@ export function EquipmentPage() {
 
       <section className="equipment-draw-panel" aria-label="器材補給">
         <div>
-          <p className="equipment-draw-panel__label">器材券</p>
+          <p className="equipment-draw-panel__label">{HOSPITAL_CREDIT_LABEL}</p>
           <p className="equipment-draw-panel__tickets">
-            🧰 {tickets?.available ?? 0} / {EQUIPMENT_TICKET_CAP}
+            🏥 {creditsAvailable} / {HOSPITAL_CREDIT_CAP}
           </p>
         </div>
         <div>
@@ -276,9 +334,28 @@ export function EquipmentPage() {
           type="button"
           className="primary-btn equipment-draw-panel__button"
           onClick={() => void handleRoll()}
-          disabled={rolling || (tickets?.available ?? 0) < 1}
+          disabled={rolling || !equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.equipmentPull}
+          title={equipmentUnlocked ? `${HOSPITAL_CREDIT_PRICES.equipmentPull} ${HOSPITAL_CREDIT_LABEL}` : '區域醫院解鎖'}
         >
           {rolling ? '補給中…' : '器材補給'}
+        </button>
+        <button
+          type="button"
+          className="secondary-btn equipment-draw-panel__button"
+          onClick={() => void handleFocusedRoll()}
+          disabled={rolling || !focusedUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.focusedEquipmentP3}
+          title={focusedUnlocked ? `P3+ · ${HOSPITAL_CREDIT_PRICES.focusedEquipmentP3} ${HOSPITAL_CREDIT_LABEL}` : '醫學中心解鎖'}
+        >
+          P3+ 器材
+        </button>
+        <button
+          type="button"
+          className="ghost-btn equipment-draw-panel__button"
+          onClick={() => void handleBuyParts()}
+          disabled={!equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.partsBundle}
+          title={`${HOSPITAL_CREDIT_PRICES.partsBundle} ${HOSPITAL_CREDIT_LABEL} → ${HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT} 零件`}
+        >
+          買零件
         </button>
       </section>
 

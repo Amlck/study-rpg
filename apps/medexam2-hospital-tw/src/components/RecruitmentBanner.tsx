@@ -1,4 +1,5 @@
 import type { Subject } from '@study-rpg/core'
+import { HOSPITAL_CREDIT_LABEL } from '@study-rpg/content-medexam2-tw'
 import type { MasteryRow } from '../db/schema'
 import { formatMasteryPercent } from '../lib/mastery'
 import { EmojiIcon } from './EmojiIcon'
@@ -7,7 +8,7 @@ interface Props {
   subject: Subject
   affinity: number
   threshold: number
-  ticketsAvailable: number
+  creditsAvailable: number
   mastery?: MasteryRow
   /** Number of due SRS cards available for this subject today (post-cap allocation). */
   dueCount?: number
@@ -25,7 +26,7 @@ export function RecruitmentBanner({
   subject,
   affinity,
   threshold,
-  ticketsAvailable,
+  creditsAvailable,
   mastery,
   dueCount = 0,
   completion,
@@ -36,7 +37,7 @@ export function RecruitmentBanner({
 }: Props) {
   const unlocked = affinity >= threshold
   const missing = Math.max(0, Math.ceil(threshold - affinity))
-  const canRoll = unlocked && ticketsAvailable > 0
+  const canRoll = unlocked && creditsAvailable > 0
   const progressPct = Math.min(100, Math.round((affinity / threshold) * 100))
   const affinityDisplay = Math.round(affinity * 10) / 10
 
@@ -92,13 +93,13 @@ export function RecruitmentBanner({
           onClick={onRoll}
           title={
             unlocked
-              ? ticketsAvailable > 0
-                ? '消耗 1 張券抽一位醫師'
-                : '招募券不足'
+              ? creditsAvailable > 0
+                ? `消耗 1 ${HOSPITAL_CREDIT_LABEL}抽一位醫師`
+                : `${HOSPITAL_CREDIT_LABEL}不足`
               : `再答對 ${missing} 題${subject.displayName}解鎖`
           }
         >
-          <EmojiIcon char="🎫" size={20} /> 招募
+          <EmojiIcon char="🏥" size={20} /> 招募
         </button>
       </div>
       {quizDisabled && quizDisabledReason && (
