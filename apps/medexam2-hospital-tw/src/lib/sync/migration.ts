@@ -284,6 +284,10 @@ export async function snapshotLocalToBackup(
     targetedTickets,
     targetedTicketHistory,
     monotonicCounters,
+    doctorEquipment,
+    doctorEquipmentTickets,
+    doctorEquipmentGachaStats,
+    doctorEquipmentMaterials,
   ] = await Promise.all([
     db.gameCounters.get('singleton').then((r) => r ?? null),
     db.gachaStats.get('global').then((r) => r ?? null),
@@ -296,6 +300,10 @@ export async function snapshotLocalToBackup(
     db.targetedTickets.toArray(),
     db.targetedTicketHistory.toArray(),
     db.monotonicCounters.get('singleton').then((r) => r ?? null),
+    db.doctorEquipment.toArray(),
+    db.doctorEquipmentTickets.get('global').then((r) => r ?? null),
+    db.doctorEquipmentGachaStats.get('global').then((r) => r ?? null),
+    db.doctorEquipmentMaterials.get('global').then((r) => r ?? null),
   ])
   const record: HospitalLocalBackupRecord = {
     key,
@@ -315,6 +323,10 @@ export async function snapshotLocalToBackup(
     targetedTickets,
     targetedTicketHistory,
     monotonicCounters,
+    doctorEquipment,
+    doctorEquipmentTickets,
+    doctorEquipmentGachaStats,
+    doctorEquipmentMaterials,
   }
   await db.localBackup.put(record)
   return key
@@ -340,6 +352,10 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       db.targetedTickets,
       db.targetedTicketHistory,
       db.monotonicCounters,
+      db.doctorEquipment,
+      db.doctorEquipmentTickets,
+      db.doctorEquipmentGachaStats,
+      db.doctorEquipmentMaterials,
       db.retirementLog,
     ],
     async () => {
@@ -354,6 +370,10 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       await db.targetedTickets.clear()
       await db.targetedTicketHistory.clear()
       await db.monotonicCounters.clear()
+      await db.doctorEquipment.clear()
+      await db.doctorEquipmentTickets.clear()
+      await db.doctorEquipmentGachaStats.clear()
+      await db.doctorEquipmentMaterials.clear()
       // fix-doctor-retire-cloud-resurrection-v2: retirementLog is now cloud-
       // synced; wiping it here mirrors clearLocalSyncTables (account-switch).
       // 「Use cloud overwrites local」 path triggers force-pull, which then

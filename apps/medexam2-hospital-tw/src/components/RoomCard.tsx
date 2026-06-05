@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import {
-  AFFINITY_MATCH_BONUS,
+  getAffinityBonus,
   ROOM_TYPE_LABELS,
   SUBJECT_TO_ROOM,
   computeThroughput,
@@ -7,19 +8,57 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { lookupSprite } from '../lib/sprite-lookup'
-import type { DoctorRow } from '../db/schema'
+import type { DoctorRow, DoctorEquipmentRow } from '../db/schema'
+import { describeDoctorEquipment, getDoctorEquipmentBonus } from '../services/doctor-equipment'
 import { EmojiIcon } from './EmojiIcon'
 
 interface RoomCardProps {
   room: Room
   doctor: DoctorRow | null
   onClick: () => void
+  /** Doctor equipment currently worn by the assigned doctor, if any. */
+  doctorEquipment?: DoctorEquipmentRow
 }
 
-export function RoomCard({ room, doctor, onClick }: RoomCardProps) {
-  const throughput = computeThroughput(room, doctor)
+function fmtMultiplier(value: number): string {
+  return value.toFixed(2).replace(/\.?0+$/, '')
+}
+
+function buildThroughputBreakdownParts(room: Room, doctor: DoctorRow | null, doctorEquipment: DoctorEquipmentRow | undefined): string[] {
+  if (!doctor) return ['尚未指派醫師。']
+
+  const doctorMultiplier = doctor.powerMultiplier
+  const facilityMultiplier = room.roomFacility
+  const affinityMultiplier = getAffinityBonus(doctor.rarity, doctor.subjectId, room.type)
+  const doctorEquipmentMultiplier = getDoctorEquipmentBonus(doctorEquipment, room.type)
+  const parts = [
+    `基礎 ${room.baseRate.toFixed(1)}`,
+    `醫師 ×${fmtMultiplier(doctorMultiplier)}（${doctor.rarity}）`,
+    `設施 ×${fmtMultiplier(facilityMultiplier)}（Lv.${room.facilityLevel ?? 1}）`,
+  ]
+
+  if (affinityMultiplier > 1) {
+    parts.push(`科別適性 ×${fmtMultiplier(affinityMultiplier)}（${doctor.subjectId} → ${ROOM_TYPE_LABELS[room.type]}）`)
+  }
+
+  if (doctorEquipmentMultiplier > 1 && doctorEquipment) {
+    parts.push(`醫師器材 ×${fmtMultiplier(doctorEquipmentMultiplier)}（${describeDoctorEquipment(doctorEquipment).name}）`)
+  }
+
+  return [
+    ...parts,
+    `= ${(room.baseRate * doctorMultiplier * facilityMultiplier * affinityMultiplier * doctorEquipmentMultiplier).toFixed(1)} 患者/分`,
+  ]
+}
+
+export function RoomCard({ room, doctor, onClick, doctorEquipment }: RoomCardProps) {
+  const [showBreakdown, setShowBreakdown] = useState(false)
+  const doctorEquipmentBonus = getDoctorEquipmentBonus(doctorEquipment, room.type)
+  const throughput = computeThroughput(room, doctor, doctorEquipmentBonus)
   const isAffinityMatch = doctor !== null && SUBJECT_TO_ROOM[doctor.subjectId] === room.type
-  const affinityBonus = isAffinityMatch && doctor ? AFFINITY_MATCH_BONUS[doctor.rarity] : null
+  const affinityBonus = isAffinityMatch && doctor ? getAffinityBonus(doctor.rarity, doctor.subjectId, room.type) : null
+  const throughputBreakdownParts = buildThroughputBreakdownParts(room, doctor, doctorEquipment)
+  const throughputBreakdown = throughputBreakdownParts.join(' × ')
   const spriteUrl = doctor
     ? lookupSprite(doctor.spriteKey, THEME_PIXEL_HOSPITAL.sprites, doctor.rarity)
     : undefined
@@ -55,14 +94,36 @@ export function RoomCard({ room, doctor, onClick }: RoomCardProps) {
         {doctor ? doctor.name : '指派醫師'}
       </div>
 
-      <div className="room-card__throughput">
-        {throughput.toFixed(1)} 患者/分
+      <button
+        type="button"
+        className="room-card__throughput"
+        title={throughputBreakdown}
+        aria-label={throughputBreakdown}
+        aria-expanded={showBreakdown}
+        onClick={(event) => {
+          event.stopPropagation()
+          setShowBreakdown((current) => !current)
+        }}
+      >
+        <span className="room-card__throughput-value">{throughput.toFixed(1)}</span> 患者/分
         {affinityBonus !== null && (
           <span className="room-card__affinity" aria-label={`適性加成 ${affinityBonus} 倍`}>
             <EmojiIcon char="✨" size={14} />{affinityBonus.toFixed(1)}×
           </span>
         )}
-      </div>
+        {doctorEquipmentBonus > 1 && doctorEquipment && (
+          <span className="room-card__equipment-bonus" aria-label={`醫師器材加成 ${doctorEquipmentBonus} 倍`}>
+            <span aria-hidden>🧰</span>{fmtMultiplier(doctorEquipmentBonus)}×
+          </span>
+        )}
+      </button>
+      {showBreakdown && (
+        <div className="room-card__breakdown" role="note">
+          {throughputBreakdownParts.map((part, index) => (
+            <span key={`${part}-${index}`}>{part}</span>
+          ))}
+        </div>
+      )}
     </button>
   )
 }

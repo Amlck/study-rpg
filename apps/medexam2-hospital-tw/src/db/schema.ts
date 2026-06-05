@@ -12,10 +12,22 @@ import {
   type Rarity,
   type Room,
 } from '@study-rpg/content-medexam2-tw'
+import {
+  DOCTOR_EQUIPMENT_PITY_RULES,
+  DOCTOR_EQUIPMENT_TICKET_CAP,
+  DOCTOR_EQUIPMENT_WEIGHTS,
+  INITIAL_DOCTOR_EQUIPMENT_TICKETS,
+  type DoctorEquipmentCategory,
+} from '../data/doctor-equipment'
 
 const RECRUITMENT_GACHA_CONFIG = {
   tiers: RECRUITMENT_WEIGHTS,
   pityRules: RECRUITMENT_PITY_RULES,
+}
+
+const DOCTOR_EQUIPMENT_GACHA_CONFIG = {
+  tiers: DOCTOR_EQUIPMENT_WEIGHTS,
+  pityRules: DOCTOR_EQUIPMENT_PITY_RULES,
 }
 
 export const ALL_SUBJECT_IDS = [
@@ -55,6 +67,26 @@ export interface TicketsRow {
   id: 'global'
   available: number
   lastRefreshDay: number
+}
+
+export interface DoctorEquipmentTicketsRow {
+  id: 'global'
+  available: number
+  lastRefreshDay?: number
+}
+
+export interface DoctorEquipmentRow {
+  id: string
+  definitionId: string
+  category: DoctorEquipmentCategory
+  rarity: Rarity
+  obtainedAt: number
+  equippedDoctorId: string | null
+}
+
+export interface DoctorEquipmentMaterialsRow {
+  id: 'global'
+  parts: number
 }
 
 export type RoomRow = Room
@@ -167,8 +199,13 @@ export interface MonotonicCountersRow {
    * Increments by 1 per fresh-correct quiz answer; on reaching
    * QUIZ_TICKET_GRANT_PER_N_CORRECT, +1 ticket granted (clamped at TICKET_CAP)
    * and counter resets to 0. Field added in v8.
-   */
+  */
   freshCorrectSinceLastTicket?: number
+  /**
+   * Snapshot of `totalStudyMinutes` at which the last hourly doctor-equipment
+   * ticket was granted. Added in v21 with doctor-equipment integration.
+   */
+  lastDoctorEquipmentTicketStudyMinutes?: number
   // ─── v15: add-achievement-system fields (all MAX-merge LWW) ─────────────
   /** Cumulative doctors ever recruited via gacha (monotonic, MAX-merge). */
   totalDoctorsRecruited?: number
@@ -422,6 +459,11 @@ export interface HospitalLocalBackupRecord {
   targetedTickets?: TargetedTicketRow[]
   /** Optional — present on backups taken post-v9. */
   targetedTicketHistory?: TargetedTicketHistoryRow[]
+  /** Optional local-only doctor-equipment state (added v21). */
+  doctorEquipment?: DoctorEquipmentRow[]
+  doctorEquipmentTickets?: DoctorEquipmentTicketsRow | null
+  doctorEquipmentGachaStats?: GachaStatsRow | null
+  doctorEquipmentMaterials?: DoctorEquipmentMaterialsRow | null
   /**
    * Optional — present on backups taken post add-monotonic-counters-to-sync
    * (2026-05-19). Older snapshots (taken before this field shipped) MAY omit
@@ -455,6 +497,10 @@ export class HospitalDB extends Dexie {
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
   achievements!: EntityTable<AchievementRow, 'id'>
   hospitalEquipment!: EntityTable<OwnedEquipmentRow, 'equipmentId'>
+  doctorEquipment!: EntityTable<DoctorEquipmentRow, 'id'>
+  doctorEquipmentTickets!: EntityTable<DoctorEquipmentTicketsRow, 'id'>
+  doctorEquipmentGachaStats!: EntityTable<GachaStatsRow, 'id'>
+  doctorEquipmentMaterials!: EntityTable<DoctorEquipmentMaterialsRow, 'id'>
   dailyStudyLog!: EntityTable<DailyStudyLogRow, 'date'>
 
 
@@ -1061,6 +1107,71 @@ export class HospitalDB extends Dexie {
         row.lastInteractionEventAt = seedFrom
         await countersTable.put(row)
       })
+
+    // v21: doctor-equipment integration — local-only doctor loadout inventory
+    // namespaced away from upstream hospitalEquipment/facility equipment.
+    this.version(21)
+      .stores({
+        affinity: '&subjectId',
+        doctors: '&id, subjectId, rarity, obtainedAt',
+        gachaStats: '&id',
+        tickets: '&id',
+        rooms: '&id, type, slot',
+        gameCounters: '&id',
+        mastery: '&subjectId',
+        questionHistory:
+          '&questionId, subjectId, lastAnsweredAt, nextDueAt, [lastResult+lastAnsweredAt], everWrong',
+        meta: '&key',
+        localBackup: '&key, takenAt',
+        monotonicCounters: '&id',
+        trainingHistory: '++id, doctorId, attemptedAt',
+        eventLog: '++id, triggeredAt',
+        fateCardHistory: '++id, drawnAt',
+        retirementLog: '++id, retiredAt, doctorId, _updatedAt',
+        bookmarks: '&questionId, addedAt',
+        bannerUnlockBonusLog: '&subjectId',
+        targetedTickets: '&id, status, subjectId, obtainedAt',
+        targetedTicketHistory: '++id, ticketId, at, event',
+        erConsultLog: '++id, triggeredAt, subjectId',
+        leaderboardProfile: '&user_id',
+        achievements: '&id, unlockedAt',
+        hospitalEquipment: '&equipmentId, updatedAt',
+        dailyStudyLog: '&date, updatedAt',
+        doctorEquipment: '&id, rarity, category, obtainedAt, equippedDoctorId',
+        doctorEquipmentTickets: '&id',
+        doctorEquipmentGachaStats: '&id',
+        doctorEquipmentMaterials: '&id',
+      })
+      .upgrade(async (tx) => {
+        const ticketsTable = tx.table<DoctorEquipmentTicketsRow, 'global'>('doctorEquipmentTickets')
+        if (!(await ticketsTable.get('global'))) {
+          await ticketsTable.put({
+            id: 'global',
+            available: INITIAL_DOCTOR_EQUIPMENT_TICKETS,
+            lastRefreshDay: currentEpochDay(),
+          })
+        }
+
+        const statsTable = tx.table<GachaStatsRow, 'global'>('doctorEquipmentGachaStats')
+        if (!(await statsTable.get('global'))) {
+          const init = initialGachaStats(DOCTOR_EQUIPMENT_GACHA_CONFIG)
+          await statsTable.put({ id: 'global', ...init })
+        }
+
+        const materialsTable = tx.table<DoctorEquipmentMaterialsRow, 'global'>('doctorEquipmentMaterials')
+        if (!(await materialsTable.get('global'))) {
+          await materialsTable.put({ id: 'global', parts: 0 })
+        }
+
+        const monoTable = tx.table<MonotonicCountersRow, 'singleton'>('monotonicCounters')
+        const mono = await monoTable.get('singleton')
+        if (mono && mono.lastDoctorEquipmentTicketStudyMinutes === undefined) {
+          await monoTable.put({
+            ...mono,
+            lastDoctorEquipmentTicketStudyMinutes: mono.totalStudyMinutes,
+          })
+        }
+      })
   }
 }
 
@@ -1096,7 +1207,18 @@ export async function ensureSeed(): Promise<void> {
   const db = getHospitalDB()
   await db.transaction(
     'rw',
-    [db.tickets, db.gachaStats, db.rooms, db.gameCounters, db.doctors, db.mastery, db.monotonicCounters],
+    [
+      db.tickets,
+      db.gachaStats,
+      db.doctorEquipmentTickets,
+      db.doctorEquipmentGachaStats,
+      db.doctorEquipmentMaterials,
+      db.rooms,
+      db.gameCounters,
+      db.doctors,
+      db.mastery,
+      db.monotonicCounters,
+    ],
     async () => {
       // Always ensure monotonicCounters singleton exists (covers both fresh save
       // and the rare case where v6 upgrade didn't run before ensureSeed)
@@ -1122,6 +1244,23 @@ export async function ensureSeed(): Promise<void> {
       if (!s) {
         const init = initialGachaStats(RECRUITMENT_GACHA_CONFIG)
         await db.gachaStats.put({ id: 'global', ...init })
+      }
+      const doctorEquipmentTickets = await db.doctorEquipmentTickets.get('global')
+      if (!doctorEquipmentTickets) {
+        await db.doctorEquipmentTickets.put({
+          id: 'global',
+          available: INITIAL_DOCTOR_EQUIPMENT_TICKETS,
+          lastRefreshDay: currentEpochDay(),
+        })
+      }
+      const doctorEquipmentStats = await db.doctorEquipmentGachaStats.get('global')
+      if (!doctorEquipmentStats) {
+        const init = initialGachaStats(DOCTOR_EQUIPMENT_GACHA_CONFIG)
+        await db.doctorEquipmentGachaStats.put({ id: 'global', ...init })
+      }
+      const doctorEquipmentMaterials = await db.doctorEquipmentMaterials.get('global')
+      if (!doctorEquipmentMaterials) {
+        await db.doctorEquipmentMaterials.put({ id: 'global', parts: 0 })
       }
       const roomCount = await db.rooms.count()
       if (roomCount === 0) {
@@ -1201,6 +1340,23 @@ export async function refreshDailyTickets(): Promise<void> {
     await db.tickets.put({
       ...t,
       available: Math.min(TICKET_CAP, t.available + Math.max(0, grant)),
+      lastRefreshDay: today,
+    })
+  })
+}
+
+export async function refreshDailyDoctorEquipmentTickets(): Promise<void> {
+  const db = getHospitalDB()
+  await db.transaction('rw', db.doctorEquipmentTickets, async () => {
+    const t = await db.doctorEquipmentTickets.get('global')
+    if (!t) return
+    const today = currentEpochDay()
+    const delta = today - (t.lastRefreshDay ?? 0)
+    if (delta <= 0) return
+    const grant = Math.min(delta, DOCTOR_EQUIPMENT_TICKET_CAP - t.available)
+    await db.doctorEquipmentTickets.put({
+      ...t,
+      available: Math.min(DOCTOR_EQUIPMENT_TICKET_CAP, t.available + Math.max(0, grant)),
       lastRefreshDay: today,
     })
   })

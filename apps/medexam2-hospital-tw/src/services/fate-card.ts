@@ -35,6 +35,7 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
 import { createPendingTargetedTicket } from './targeted-ticket'
+import { DOCTOR_EQUIPMENT_TICKET_CAP } from '../data/doctor-equipment'
 
 const TICKET_CAP = 99
 
@@ -72,6 +73,7 @@ export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardSe
       db.gameCounters,
       db.monotonicCounters,
       db.tickets,
+      db.doctorEquipmentTickets,
       db.rooms,
       db.fateCardHistory,
       db.targetedTickets,
@@ -235,6 +237,22 @@ async function applyRewardEffect(key: string, label: string): Promise<RewardEffe
         revenueDelta: 0,
       }
     }
+    case 'equipment-ticket-x1': {
+      await grantDoctorEquipmentTickets(1)
+      return { description: '+1 醫師裝備券', revenueDelta: 0 }
+    }
+    case 'equipment-ticket-x2': {
+      await grantDoctorEquipmentTickets(2)
+      return { description: '+2 醫師裝備券', revenueDelta: 0 }
+    }
+    case 'equipment-ticket-x5': {
+      await grantDoctorEquipmentTickets(5)
+      return { description: '+5 醫師裝備券', revenueDelta: 0 }
+    }
+    case 'equipment-ticket-x10': {
+      await grantDoctorEquipmentTickets(10)
+      return { description: '+10 醫師裝備券', revenueDelta: 0 }
+    }
     case 'training-guarantee-x1':
     case 'event-immunity-1':
     case 'event-positive-trigger':
@@ -252,6 +270,16 @@ async function grantTickets(amount: number): Promise<void> {
   await db.tickets.put({
     ...row,
     available: Math.min(TICKET_CAP, row.available + amount),
+  })
+}
+
+async function grantDoctorEquipmentTickets(amount: number): Promise<void> {
+  const db = getHospitalDB()
+  const row = await db.doctorEquipmentTickets.get('global')
+  if (!row) return
+  await db.doctorEquipmentTickets.put({
+    ...row,
+    available: Math.min(DOCTOR_EQUIPMENT_TICKET_CAP, row.available + amount),
   })
 }
 
