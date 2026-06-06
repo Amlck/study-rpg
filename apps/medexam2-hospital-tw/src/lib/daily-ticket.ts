@@ -1,5 +1,5 @@
 /**
- * Display label for the next daily ticket refresh.
+ * Display label for the next daily shared-credit refresh.
  *
  * The underlying mechanic in `refreshDailyTickets` (see `db/schema.ts`) uses
  * UTC epoch days (`Math.floor(Date.now() / 86400000)`), which for Taiwan
@@ -11,7 +11,7 @@
  * and showing local-local time elsewhere would be wrong (the mechanic still
  * fires at UTC midnight, not the user's local midnight).
  *
- * Pure function: returns the suffix string to append after `🎟️ N / 99 ·`.
+ * Pure function: returns the suffix string to append after the credit balance.
  * `now` is passed in so tests can supply any fixed time.
  */
 export function getNextDailyRefreshLabel(

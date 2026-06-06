@@ -5,7 +5,6 @@ import {
   ROOM_EXTENSION_COSTS,
   ROOM_EXTENSION_UNLOCKED_TIERS,
   ROOM_TYPE_LABELS,
-  computeThroughput,
   type Room,
   type RoomType,
 } from '@study-rpg/content-medexam2-tw'
@@ -16,7 +15,12 @@ import { AssignDoctorModal } from '../components/AssignDoctorModal'
 import { purchaseRoomExtension, type ExtensionResult } from '../services/room-extension'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
-import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
 
 const EXTRA_PREFIX = 'extra-'
 const ROOM_TYPES_ORDERED: ReadonlyArray<RoomType> = ['outpatient', 'surgery', 'ward']
@@ -31,26 +35,34 @@ export function Hospital() {
   const doctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
+  const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
   const [activeRoom, setActiveRoom] = useState<Room | null>(null)
   const [extOutcome, setExtOutcome] = useState<{ type: RoomType; result: ExtensionResult } | null>(null)
   const [extBusy, setExtBusy] = useState(false)
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+  const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor])), [doctors])
+  const supportByRoom = useMemo(() => buildSupportAssignmentByRoom(supportAssignments), [supportAssignments])
   const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let sum = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
+      const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-      sum += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
+      sum += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
     }
     return sum
-  }, [rooms, doctorByRoom, equippedItemMap])
+  }, [rooms, doctorByRoom, supportByRoom, doctorsById, equippedItemMap])
 
   const assignedCount = doctorByRoom.size
+  const supportCount = supportByRoom.size
 
   const activeDoctor = activeRoom ? getAssignedDoctor(activeRoom.id, doctorByRoom) : null
+  const activeSupportDoctor = activeRoom
+    ? getSupportDoctorForRoom(activeRoom.id, supportByRoom, doctorsById)
+    : null
 
   return (
     <main className="app-shell">
@@ -59,6 +71,7 @@ export function Hospital() {
         <div className="app-header__meta">
           <span className="hospital-throughput">
             {counters?.tier ?? '診所'} · 總產能 {totalThroughput.toFixed(1)} 患者/分 · 房間 {assignedCount}/{rooms.length}
+            {supportCount > 0 && <> · 支援 {supportCount}</>}
           </span>
           <Link to="/" className="nav-link">
             ← 回主畫面
@@ -77,6 +90,7 @@ export function Hospital() {
       <section className="hospital-grid">
         {rooms.map((room) => {
           const doctor = getAssignedDoctor(room.id, doctorByRoom)
+          const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
           const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
           return (
             <RoomCard
@@ -85,6 +99,7 @@ export function Hospital() {
               doctor={doctor}
               onClick={() => setActiveRoom(room)}
               equipment={equippedItem}
+              supportDoctor={supportDoctor}
             />
           )
         })}
@@ -192,6 +207,7 @@ export function Hospital() {
         <AssignDoctorModal
           room={activeRoom}
           currentDoctor={activeDoctor}
+          currentSupportDoctor={activeSupportDoctor}
           equippedItemMap={equippedItemMap}
           onClose={() => setActiveRoom(null)}
         />

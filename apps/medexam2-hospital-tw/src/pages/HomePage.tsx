@@ -3,14 +3,16 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Subject, SubjectId } from '@study-rpg/core'
 import {
+  HOSPITAL_CREDIT_CAP,
+  HOSPITAL_CREDIT_LABEL,
+  HOSPITAL_CREDIT_PRICES,
   RECRUITMENT_THRESHOLDS,
-  TICKET_CAP,
   READING_IDLE_RATE_REDUCTION,
   READING_SESSION_BUFF_MULTIPLIER,
+  TIER_ORDER,
   TIER_DIVERSIFICATION_REQUIREMENTS,
   TIER_UPGRADE_THRESHOLDS,
   computeSalaryDrain,
-  computeThroughput,
   countDistinctSubjectsAtRarity,
   getNextTier,
   rarityIsAtLeast,
@@ -21,7 +23,7 @@ import {
   incrementAffinity,
   type DoctorRow,
 } from '../db/schema'
-import { attemptRoll, type RollOutcome } from '../services/recruitment'
+import { attemptFocusedP3Roll, attemptRoll, type RollOutcome } from '../services/recruitment'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
 import { getNextDailyRefreshLabel } from '../lib/daily-ticket'
@@ -38,13 +40,18 @@ import { RecruitmentResultModal } from '../components/RecruitmentResultModal'
 import { DevAffinityControls } from '../components/DevAffinityControls'
 import { HospitalScene } from '../components/HospitalScene'
 import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
-import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
 import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
 import { TargetedTicketSection } from '../components/TargetedTicketSection'
-import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
 import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
+import { readHospitalCredits } from '../services/hospital-credits'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
 
@@ -64,15 +71,14 @@ export function HomePage() {
   }, [])
 
   const affinityRows = useLiveQuery(() => db.affinity.toArray(), []) ?? []
-  const ticketsRow = useLiveQuery(() => db.tickets.get('global'), [])
-  const ticketsAvailable = ticketsRow?.available ?? 0
-  const equipmentTicketsRow = useLiveQuery(() => db.equipmentTickets.get('global'), [])
-  const refreshLabel = getNextDailyRefreshLabel(new Date(), ticketsAvailable, TICKET_CAP)
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
+  const creditsAvailable = readHospitalCredits(counters)
+  const refreshLabel = getNextDailyRefreshLabel(new Date(), creditsAvailable, HOSPITAL_CREDIT_CAP)
   const mono = useLiveQuery(() => db.monotonicCounters.get('singleton'), [])
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const allDoctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
+  const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
@@ -114,6 +120,8 @@ export function HomePage() {
   }, [masteryRows])
 
   const showStarterCard = counters?.hasUsedStarterPull === false
+  const focusedDoctorUnlocked =
+    counters ? TIER_ORDER.indexOf(counters.tier) >= TIER_ORDER.indexOf('醫學中心') : false
 
   function pushToast(text: string, kind: Toast['kind'] = 'unlock') {
     const id = Date.now() + Math.random()
@@ -133,12 +141,29 @@ export function HomePage() {
     const outcome = await attemptRoll(subject)
     if (outcome.ok) {
       setModal({ outcome })
-    } else if (outcome.reason === 'no-tickets') {
-      pushToast('招募券不足，明天再來', 'error')
+    } else if (outcome.reason === 'no-credits') {
+      pushToast(`${HOSPITAL_CREDIT_LABEL}不足`, 'error')
     } else if (outcome.reason === 'banner-locked') {
       pushToast(`還需答對 ${outcome.missing} 題 ${subject.displayName}`, 'error')
     } else if (outcome.reason === 'unknown-subject') {
       pushToast(`未知科別：${subject.id}`, 'error')
+    }
+  }
+
+  async function handleFocusedP3Roll() {
+    const outcome = await attemptFocusedP3Roll(subjects)
+    if (outcome.ok) {
+      setModal({ outcome: { ok: true, doctor: outcome.doctor, wasPity: false } })
+      return
+    }
+    if (outcome.reason === 'locked-tier') {
+      pushToast('醫學中心解鎖 P3+ 重點招募', 'error')
+    } else if (outcome.reason === 'no-credits') {
+      pushToast(`${HOSPITAL_CREDIT_LABEL}不足`, 'error')
+    } else if (outcome.reason === 'no-unlocked-banners') {
+      pushToast('尚未解鎖任何科別招募', 'error')
+    } else {
+      pushToast('目前沒有可抽的 P3+ 醫師', 'error')
     }
   }
 
@@ -179,13 +204,10 @@ export function HomePage() {
       <div className="ticket-counter-row">
         <span
           className="ticket-counter"
-          title="每日台灣早上 08:00 自動發放 +1 張免費招募券，持有上限 99 張"
+          title={`每日台灣早上 08:00 自動發放 +1 ${HOSPITAL_CREDIT_LABEL}，持有上限 ${HOSPITAL_CREDIT_CAP}`}
         >
-          <EmojiIcon char="🎟" size={20} /> {ticketsAvailable} / {TICKET_CAP}
+          <EmojiIcon char="🏥" size={20} /> {creditsAvailable} / {HOSPITAL_CREDIT_CAP} {HOSPITAL_CREDIT_LABEL}
           <span className="ticket-counter__refill"> · {refreshLabel}</span>
-        </span>
-        <span className="ticket-counter" title="器材補給池使用的器材券">
-          🧰 {equipmentTicketsRow?.available ?? 0} / {EQUIPMENT_TICKET_CAP}
         </span>
       </div>
 
@@ -236,12 +258,15 @@ export function HomePage() {
 
       {(() => {
         const doctorByRoom = buildDoctorByRoom(allDoctors)
+        const doctorsById = new Map(allDoctors.map((doctor) => [doctor.id, doctor]))
+        const supportByRoom = buildSupportAssignmentByRoom(supportAssignments)
         const equippedItemMap = buildEquippedItemMap(allEquipment)
         let throughput = 0
         for (const room of rooms) {
           const d = getAssignedDoctor(room.id, doctorByRoom)
+          const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
           const equippedItem = d ? equippedItemMap.get(d.id) : undefined
-          throughput += computeThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
+          throughput += computeRoomTeamThroughput(room, d, supportDoctor, equippedItem)
         }
         const salary = counters ? computeSalaryDrain(allDoctors, counters.tier) : 0
         // Inactive branch shows a counterfactual baseline (tick paused, no actual
@@ -312,6 +337,24 @@ export function HomePage() {
         onError={(msg) => pushToast(msg, 'error')}
       />
 
+      <section className="focused-recruitment-panel" aria-label="重點招募">
+        <div>
+          <h2>重點招募</h2>
+          <p>
+            P3+ 隨機科別搜尋 · {HOSPITAL_CREDIT_PRICES.focusedDoctorP3} {HOSPITAL_CREDIT_LABEL}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="primary-btn"
+          disabled={!focusedDoctorUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.focusedDoctorP3}
+          onClick={() => void handleFocusedP3Roll()}
+          title={focusedDoctorUnlocked ? '保證 P3+，從已解鎖科別中隨機招募' : '醫學中心解鎖'}
+        >
+          P3+ 搜尋
+        </button>
+      </section>
+
       <YearFilterBar />
 
       <section className="banners">
@@ -324,7 +367,7 @@ export function HomePage() {
               subject={s}
               affinity={affinityMap[s.id] ?? 0}
               threshold={RECRUITMENT_THRESHOLDS[s.id] ?? 0}
-              ticketsAvailable={ticketsAvailable}
+              creditsAvailable={creditsAvailable}
               mastery={masteryMap[s.id]}
               dueCount={dueCountMap[s.id] ?? 0}
               completion={completionMap?.get(s.id as SubjectId)}

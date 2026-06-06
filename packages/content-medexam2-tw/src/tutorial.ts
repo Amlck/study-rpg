@@ -126,7 +126,7 @@ export const SURFACE_HINTS: ReadonlyArray<SurfaceHint> = Object.freeze([
   {
     id: 'fate-cards',
     title: '命運卡',
-    body: '消耗聲望抽 4 階卡包，內容含招募券、進修保證券、facility / throughput 加成。任何 tier 都可抽，reputation 不足會 disable 該階。pity 3 防連衰。',
+    body: '消耗聲望抽 4 階卡包，內容含院務點數、指定科招募券、進修保證券、facility / throughput 加成。任何 tier 都可抽，reputation 不足會 disable 該階。pity 3 防連衰。',
   },
   {
     id: 'event-first',

@@ -1,5 +1,12 @@
 import { initialGachaStats, randomId, rollGacha } from '@study-rpg/core'
-import type { Rarity, RoomType } from '@study-rpg/content-medexam2-tw'
+import {
+  HOSPITAL_CREDIT_PRICES,
+  TIER_ORDER,
+  rarityIsAtLeast,
+  type HospitalTier,
+  type Rarity,
+  type RoomType,
+} from '@study-rpg/content-medexam2-tw'
 import {
   EQUIPMENT_PARTS_BY_RARITY,
   EQUIPMENT_PITY_RULES,
@@ -15,6 +22,7 @@ import {
   type EquipmentUpgradeSourceRarity,
 } from '../data/equipment'
 import { getHospitalDB, type EquipmentRow } from '../db/schema'
+import { spendHospitalCredits } from './hospital-credits'
 
 const EQUIPMENT_GACHA_CONFIG = {
   tiers: EQUIPMENT_WEIGHTS,
@@ -23,7 +31,26 @@ const EQUIPMENT_GACHA_CONFIG = {
 
 export type EquipmentRollOutcome =
   | { ok: true; equipment: EquipmentRow; wasPity: boolean }
-  | { ok: false; reason: 'no-tickets' | 'empty-pool' }
+  | { ok: false; reason: 'locked-tier' | 'no-credits' | 'empty-pool' }
+
+function isTierAtLeast(tier: HospitalTier, minTier: HospitalTier): boolean {
+  return TIER_ORDER.indexOf(tier) >= TIER_ORDER.indexOf(minTier)
+}
+
+function weightedEquipmentRarity(minRarity: Rarity | null = null): Rarity | null {
+  const weights = minRarity === null
+    ? EQUIPMENT_WEIGHTS
+    : EQUIPMENT_WEIGHTS.filter((row) => rarityIsAtLeast(row.id as Rarity, minRarity))
+  const total = weights.reduce((sum, row) => sum + row.weight, 0)
+  if (total <= 0) return null
+  let roll = Math.random() * total
+  for (const row of weights) {
+    roll -= row.weight
+    if (roll < 0) return row.id as Rarity
+  }
+  const fallback = weights[weights.length - 1]?.id
+  return fallback ? fallback as Rarity : null
+}
 
 export type EquipmentUpgradeResult =
   | {
@@ -64,13 +91,17 @@ export async function rollEquipment(): Promise<EquipmentRollOutcome> {
   const db = getHospitalDB()
   return db.transaction(
     'rw',
-    db.equipmentTickets,
+    db.gameCounters,
     db.equipmentGachaStats,
     db.equipment,
     async () => {
-      const tickets = await db.equipmentTickets.get('global')
-      const availableTickets = Math.max(0, Math.floor(tickets?.available ?? 0))
-      if (!tickets || availableTickets < 1) return { ok: false, reason: 'no-tickets' } as const
+      const counters = await db.gameCounters.get('singleton')
+      if (!counters || !isTierAtLeast(counters.tier, '區域醫院')) {
+        return { ok: false, reason: 'locked-tier' } as const
+      }
+      if (!(await spendHospitalCredits(HOSPITAL_CREDIT_PRICES.equipmentPull))) {
+        return { ok: false, reason: 'no-credits' } as const
+      }
 
       const existingStats = await db.equipmentGachaStats.get('global')
       const stats = existingStats ?? initialGachaStats(EQUIPMENT_GACHA_CONFIG)
@@ -89,7 +120,6 @@ export async function rollEquipment(): Promise<EquipmentRollOutcome> {
         equippedDoctorId: null,
       }
 
-      await db.equipmentTickets.put({ ...tickets, available: availableTickets - 1 })
       await db.equipmentGachaStats.put({
         id: 'global',
         totalRolls: result.newStats.totalRolls,
@@ -99,6 +129,36 @@ export async function rollEquipment(): Promise<EquipmentRollOutcome> {
       return { ok: true, equipment, wasPity: result.wasPity } as const
     },
   )
+}
+
+export async function rollFocusedP3Equipment(): Promise<EquipmentRollOutcome> {
+  const db = getHospitalDB()
+  return db.transaction('rw', db.gameCounters, db.equipment, async () => {
+    const counters = await db.gameCounters.get('singleton')
+    if (!counters || !isTierAtLeast(counters.tier, '醫學中心')) {
+      return { ok: false, reason: 'locked-tier' } as const
+    }
+    if (!(await spendHospitalCredits(HOSPITAL_CREDIT_PRICES.focusedEquipmentP3))) {
+      return { ok: false, reason: 'no-credits' } as const
+    }
+
+    const rarity = weightedEquipmentRarity('P3')
+    if (!rarity) return { ok: false, reason: 'empty-pool' } as const
+    const candidates = getDefinitionsByRarity(rarity)
+    if (candidates.length === 0) return { ok: false, reason: 'empty-pool' } as const
+
+    const definition = candidates[Math.floor(Math.random() * candidates.length)]
+    const equipment: EquipmentRow = {
+      id: randomId(),
+      definitionId: definition.id,
+      category: definition.category,
+      rarity: definition.rarity,
+      obtainedAt: Date.now(),
+      equippedDoctorId: null,
+    }
+    await db.equipment.put(equipment)
+    return { ok: true, equipment, wasPity: false } as const
+  })
 }
 
 export async function equipItem(itemId: string, doctorId: string): Promise<void> {

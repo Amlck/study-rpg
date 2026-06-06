@@ -12,7 +12,7 @@
  *   4. Append fateCardHistory row
  *
  * Reward effects (MVP — full inventory deferred):
- *   - recruitment-ticket-x3 / x10        → tickets +N (clamp 99)
+ *   - recruitment-ticket-x3 / x10        → 院務點數 +N (clamp 999)
  *   - minor-revenue-5k                   → revenue +5,000
  *   - facility-plus-0.5                  → random non-maxed room +1 level
  *   - facility-all-plus-1                → every non-maxed room +1 level
@@ -26,15 +26,14 @@
 import {
   FACILITY_LEVEL_TO_FACILITY,
   FACILITY_MAX_LEVEL,
+  HOSPITAL_CREDIT_LABEL,
   drawFateCard,
   type FateCardDrawResult,
   type FateCardTier,
 } from '@study-rpg/content-medexam2-tw'
 import { getHospitalDB } from '../db/schema'
 import { createPendingTargetedTicket } from './targeted-ticket'
-import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
-
-const TICKET_CAP = 99
+import { grantHospitalCredits } from './hospital-credits'
 
 export type FateCardResolvedDraw = Exclude<FateCardDrawResult, { kind: 'aborted' }>
 
@@ -58,8 +57,6 @@ export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardSe
     [
       db.gameCounters,
       db.monotonicCounters,
-      db.tickets,
-      db.equipmentTickets,
       db.rooms,
       db.fateCardHistory,
       db.targetedTickets,
@@ -125,9 +122,14 @@ export async function drawFateCardAtTier(tier: FateCardTier): Promise<FateCardSe
         targetedTicketId = effect.targetedTicketId
       }
 
-      // Re-read counters defensively in case any reward effect mutated other
-      // fields we don't know about (currently only revenue is delta-tracked).
-      await db.gameCounters.put({ ...counters, revenue: newRevenue, reputation: newReputation })
+      // Re-read counters defensively because reward effects may grant credits
+      // or mutate room state before the final reputation/revenue write.
+      const latestCounters = await db.gameCounters.get('singleton')
+      await db.gameCounters.put({
+        ...(latestCounters ?? counters),
+        revenue: newRevenue,
+        reputation: newReputation,
+      })
 
       await db.fateCardHistory.add({
         drawnAt: Date.now(),
@@ -163,12 +165,12 @@ interface RewardEffectResult {
 async function applyRewardEffect(key: string, label: string): Promise<RewardEffectResult> {
   switch (key) {
     case 'recruitment-ticket-x3': {
-      await grantTickets(3)
-      return { description: '+3 招募券', revenueDelta: 0 }
+      await grantHospitalCredits(3)
+      return { description: `+3 ${HOSPITAL_CREDIT_LABEL}`, revenueDelta: 0 }
     }
     case 'recruitment-ticket-x10': {
-      await grantTickets(10)
-      return { description: '+10 招募券', revenueDelta: 0 }
+      await grantHospitalCredits(10)
+      return { description: `+10 ${HOSPITAL_CREDIT_LABEL}`, revenueDelta: 0 }
     }
     case 'minor-revenue-5k':
       return { description: '+5,000 💰', revenueDelta: 5_000 }
@@ -200,20 +202,20 @@ async function applyRewardEffect(key: string, label: string): Promise<RewardEffe
       }
     }
     case 'equipment-ticket-x1': {
-      await grantEquipmentTickets(1)
-      return { description: '+1 裝備券', revenueDelta: 0 }
+      await grantHospitalCredits(1)
+      return { description: `+1 ${HOSPITAL_CREDIT_LABEL}`, revenueDelta: 0 }
     }
     case 'equipment-ticket-x2': {
-      await grantEquipmentTickets(2)
-      return { description: '+2 裝備券', revenueDelta: 0 }
+      await grantHospitalCredits(2)
+      return { description: `+2 ${HOSPITAL_CREDIT_LABEL}`, revenueDelta: 0 }
     }
     case 'equipment-ticket-x5': {
-      await grantEquipmentTickets(5)
-      return { description: '+5 裝備券', revenueDelta: 0 }
+      await grantHospitalCredits(5)
+      return { description: `+5 ${HOSPITAL_CREDIT_LABEL}`, revenueDelta: 0 }
     }
     case 'equipment-ticket-x10': {
-      await grantEquipmentTickets(10)
-      return { description: '+10 裝備券', revenueDelta: 0 }
+      await grantHospitalCredits(10)
+      return { description: `+10 ${HOSPITAL_CREDIT_LABEL}`, revenueDelta: 0 }
     }
     case 'training-guarantee-x1':
     case 'event-immunity-1':
@@ -224,26 +226,6 @@ async function applyRewardEffect(key: string, label: string): Promise<RewardEffe
     default:
       return { description: label, revenueDelta: 0 }
   }
-}
-
-async function grantTickets(amount: number): Promise<void> {
-  const db = getHospitalDB()
-  const row = await db.tickets.get('global')
-  if (!row) return
-  await db.tickets.put({
-    ...row,
-    available: Math.min(TICKET_CAP, row.available + amount),
-  })
-}
-
-async function grantEquipmentTickets(amount: number): Promise<void> {
-  const db = getHospitalDB()
-  const row = await db.equipmentTickets.get('global')
-  if (!row) return
-  await db.equipmentTickets.put({
-    ...row,
-    available: Math.min(EQUIPMENT_TICKET_CAP, row.available + amount),
-  })
 }
 
 async function bumpRandomRoomFacility(): Promise<[string, number] | null> {

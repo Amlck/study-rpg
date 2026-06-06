@@ -235,6 +235,35 @@ body:has(.modal-backdrop) {
   box-shadow: 2px 2px 0 var(--frame-light);
 }
 
+.focused-recruitment-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0 18px;
+  padding: 12px 14px;
+  background: var(--bg-paper);
+  border: 2px solid var(--frame-dark);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--frame-light);
+}
+
+.focused-recruitment-panel h2,
+.focused-recruitment-panel p {
+  margin: 0;
+}
+
+.focused-recruitment-panel h2 {
+  font-size: 18px;
+  color: var(--frame-dark);
+}
+
+.focused-recruitment-panel p {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--frame-light);
+}
+
 .nav-link {
   color: var(--frame-dark);
   text-decoration: none;
@@ -1579,6 +1608,34 @@ body:has(.modal-backdrop) {
   color: var(--frame-light);
 }
 
+.room-card__support {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 2px dashed var(--frame-light);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg-cream) 75%, white);
+  color: var(--frame-light);
+  font-size: 12px;
+}
+
+.room-card__support--filled {
+  border-style: solid;
+  border-color: var(--accent-leaf);
+  color: var(--frame-dark);
+}
+
+.room-card__support strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
 .room-card__throughput {
   border: 0;
   background: transparent;
@@ -1594,7 +1651,8 @@ body:has(.modal-backdrop) {
 }
 
 .room-card__affinity,
-.room-card__equipment-bonus {
+.room-card__equipment-bonus,
+.room-card__team-bonus {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -1610,6 +1668,11 @@ body:has(.modal-backdrop) {
 .room-card__equipment-bonus {
   background: color-mix(in srgb, var(--rarity-color) 18%, transparent);
   color: var(--rarity-color);
+}
+
+.room-card__team-bonus {
+  background: rgba(84, 142, 126, 0.16);
+  color: var(--accent-leaf);
 }
 
 .room-card__breakdown {
@@ -1662,6 +1725,33 @@ body:has(.modal-backdrop) {
   font-size: 16px;
   text-align: center;
   color: var(--frame-light);
+}
+
+.assign-modal__section {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px dashed rgba(84, 65, 45, 0.22);
+}
+
+.assign-modal__section-title {
+  margin: 0 0 10px;
+  font-family: var(--font-pixel-cjk);
+  font-size: 13px;
+  color: var(--frame-dark);
+}
+
+.assign-modal__support {
+  padding: 12px;
+  border: 2px solid rgba(84, 142, 126, 0.35);
+  border-radius: 4px;
+  background: rgba(84, 142, 126, 0.08);
+}
+
+.assign-modal__support-hint {
+  margin: 0 0 10px;
+  color: var(--frame-light);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .assign-modal__list {
@@ -1779,6 +1869,10 @@ body:has(.modal-backdrop) {
 .assign-modal__unassign:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+.assign-modal__support-unassign {
+  margin-top: 4px;
 }
 
 /* ── Offline cap notice ────────────────────────────────── */
@@ -3243,6 +3337,7 @@ body:has(.modal-backdrop) {
 .nav-link--primary:hover { opacity: 0.85; }
 
 .primary-btn,
+.secondary-btn,
 .ghost-btn {
   display: inline-block;
   padding: 10px 24px;
@@ -3258,6 +3353,12 @@ body:has(.modal-backdrop) {
   font-weight: bold;
 }
 .primary-btn:hover { opacity: 0.85; }
+.secondary-btn {
+  background: var(--accent-sky);
+  color: #1a1a1a;
+  font-weight: bold;
+}
+.secondary-btn:hover { opacity: 0.85; }
 .ghost-btn {
   background: transparent;
   color: var(--frame-dark);
@@ -5070,8 +5171,35 @@ body:has(.modal-backdrop) {
   color: var(--frame-dark);
 }
 
+.equipment-draw-panel__actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+  flex: 1 1 560px;
+  min-width: 0;
+}
+
 .equipment-draw-panel__button {
-  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 72px;
+  padding: 10px 14px;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.equipment-draw-panel__button-title {
+  font-size: 15px;
+}
+
+.equipment-draw-panel__button-detail {
+  font-size: 11px;
+  color: rgba(26, 20, 16, 0.72);
+  white-space: nowrap;
 }
 
 .equipment-filter-bar {
@@ -5724,9 +5852,15 @@ body:has(.modal-backdrop) {
     flex-direction: column;
   }
 
+  .equipment-draw-panel__actions {
+    grid-template-columns: 1fr;
+    flex-basis: auto;
+  }
+
   .equipment-draw-panel__button {
     width: 100%;
   }
+}
 
 .help-menu__radio-group {
   display: flex;
@@ -6587,8 +6721,6 @@ body:has(.modal-backdrop) {
     font-size: 14px;
   }
 }
-}
-
 /* ── Leaderboard promo banner (add-leaderboard-promo-banner) ── */
 
 .leaderboard-promo-banner {
