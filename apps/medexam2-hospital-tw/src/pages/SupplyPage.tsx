@@ -125,6 +125,7 @@ function DepartmentRecruitWindow({
 
 interface SupplyStationProps {
   tone: 'doctor' | 'equipment' | 'parts'
+  artPose?: 'counter' | 'case' | 'case-focused' | 'parts'
   title: string
   detail: string
   price: string
@@ -136,6 +137,7 @@ interface SupplyStationProps {
 
 function SupplyStation({
   tone,
+  artPose = tone === 'doctor' ? 'counter' : tone === 'parts' ? 'parts' : 'case',
   title,
   detail,
   price,
@@ -145,7 +147,7 @@ function SupplyStation({
   onClick,
 }: SupplyStationProps) {
   return (
-    <article className={`supply-station supply-station--${tone}`}>
+    <article className={`supply-station supply-station--${tone} supply-station--${artPose}`}>
       <div className="supply-station__art" aria-hidden>
         {tone === 'doctor' ? (
           <img src={supplyCounterSprite} alt="" draggable={false} />
@@ -379,6 +381,7 @@ export function SupplyPage() {
         <div className="supply-station-grid">
           <SupplyStation
             tone="equipment"
+            artPose="case"
             title="一般器材補給"
             detail="抽取一件可裝備器材，沿用目前機率與保底。"
             price={`${HOSPITAL_CREDIT_PRICES.equipmentPull} 點`}
@@ -389,6 +392,7 @@ export function SupplyPage() {
           />
           <SupplyStation
             tone="equipment"
+            artPose="case-focused"
             title="P3+ 器材徵調"
             detail="保證 P3+，適合補強核心房型裝備。"
             price={`${HOSPITAL_CREDIT_PRICES.focusedEquipmentP3} 點`}
@@ -399,6 +403,7 @@ export function SupplyPage() {
           />
           <SupplyStation
             tone="parts"
+            artPose="parts"
             title={`零件包 +${HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT}`}
             detail="直接購買升級零件，整理庫存或推高主力器材。"
             price={`${HOSPITAL_CREDIT_PRICES.partsBundle} 點`}

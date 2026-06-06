@@ -5289,7 +5289,7 @@ body:has(.modal-backdrop) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 248px;
+  min-height: 236px;
   padding: 8px;
   background: var(--bg-cream);
   border: 3px solid var(--department-color);
@@ -5303,7 +5303,7 @@ body:has(.modal-backdrop) {
 .department-window__art {
   position: relative;
   overflow: hidden;
-  height: 112px;
+  height: 102px;
   margin: 0 0 8px;
   background: color-mix(in srgb, var(--department-color) 18%, var(--bg-paper));
   border: 2px solid var(--frame-dark);
@@ -5313,9 +5313,10 @@ body:has(.modal-backdrop) {
 .department-window__art img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center 58%;
+  object-fit: contain;
+  object-position: center center;
   display: block;
+  transform: scale(1.16);
 }
 
 .department-window__shutter {
@@ -5338,8 +5339,9 @@ body:has(.modal-backdrop) {
   border-color: var(--frame-light);
 }
 
-.department-window--locked .department-window__shutter {
-  display: flex;
+.department-window--locked .department-window__art img {
+  filter: saturate(0.42) brightness(0.92);
+  opacity: 0.82;
 }
 
 .department-window__head {
@@ -5380,6 +5382,11 @@ body:has(.modal-backdrop) {
   color: var(--ink);
   font-size: 12px;
   font-weight: bold;
+}
+
+.supply-station__body .supply-price-stamp {
+  align-self: flex-start;
+  min-width: 72px;
 }
 
 .department-window__progress {
@@ -5443,8 +5450,8 @@ body:has(.modal-backdrop) {
 
 .supply-station {
   display: grid;
-  grid-template-rows: 138px 1fr auto;
-  min-height: 318px;
+  grid-template-rows: 154px 1fr auto;
+  min-height: 324px;
   overflow: hidden;
   background: var(--bg-cream);
   border: 3px solid var(--frame-dark);
@@ -5475,17 +5482,28 @@ body:has(.modal-backdrop) {
 .supply-station__art > img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
 .supply-station--doctor .supply-station__art > img {
+  object-fit: cover;
   object-position: center 78%;
 }
 
-.supply-station--equipment .supply-station__art > img,
-.supply-station--parts .supply-station__art > img {
+.supply-station--case .supply-station__art > img {
+  transform: scale(1.05);
   object-position: center 54%;
+}
+
+.supply-station--case-focused .supply-station__art > img {
+  transform: scale(1.16);
+  object-position: center 42%;
+}
+
+.supply-station--parts .supply-station__art > img {
+  transform: scale(0.96);
+  object-position: center 68%;
 }
 
 .supply-station__body {
@@ -5600,11 +5618,11 @@ body:has(.modal-backdrop) {
   }
 
   .department-window {
-    min-height: 232px;
+    min-height: 228px;
   }
 
   .department-window__art {
-    height: 104px;
+    height: 98px;
   }
 }
 
