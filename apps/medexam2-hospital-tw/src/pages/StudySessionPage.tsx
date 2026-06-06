@@ -17,7 +17,6 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   computeSalaryDrain,
-  computeThroughput,
   ROOM_TYPE_LABELS,
 } from '@study-rpg/content-medexam2-tw'
 import { ROOM_SCENES } from '@study-rpg/theme-pixel-hospital'
@@ -26,7 +25,12 @@ import { getStudySessionController, useStudySessionTick } from '../lib/tick'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { SurfaceHint } from '../components/SurfaceHint'
 import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
-import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
 
 export function StudySessionPage() {
   const db = getHospitalDB()
@@ -35,22 +39,26 @@ export function StudySessionPage() {
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
+  const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
 
   const controller = getStudySessionController()
   const state = useStudySessionTick()
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+  const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor])), [doctors])
+  const supportByRoom = useMemo(() => buildSupportAssignmentByRoom(supportAssignments), [supportAssignments])
   const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let t = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
+      const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-      t += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
+      t += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
     }
     return t
-  }, [rooms, doctorByRoom, equippedItemMap])
+  }, [rooms, doctorByRoom, supportByRoom, doctorsById, equippedItemMap])
 
   const salaryDrain = useMemo(() => {
     if (!counters) return 0
@@ -195,12 +203,16 @@ export function StudySessionPage() {
           <ul className="study-session__room-list">
             {assignedRooms.map((room) => {
               const d = getAssignedDoctor(room.id, doctorByRoom)
+              const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
               const equippedItem = d ? equippedItemMap.get(d.id) : undefined
-              const throughput = computeThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
+              const throughput = computeRoomTeamThroughput(room, d, supportDoctor, equippedItem)
               return (
                 <li key={room.id} className="study-session__room-item">
                   <span className="room-type-label">{ROOM_TYPE_LABELS[room.type]} #{room.slot}</span>
-                  <span className="doctor-name">{d?.name ?? '（未指派）'}</span>
+                  <span className="doctor-name">
+                    {d?.name ?? '（未指派）'}
+                    {supportDoctor && <> + {supportDoctor.name}</>}
+                  </span>
                   <span className="throughput">{fmt(throughput, 1)} / 分</span>
                 </li>
               )

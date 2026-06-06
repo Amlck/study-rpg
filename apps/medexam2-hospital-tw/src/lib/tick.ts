@@ -27,7 +27,6 @@ import {
   VIP_BOOST_MULTIPLIER,
   applySalaryClamp,
   computeSalaryDrain,
-  computeThroughput,
   countDistinctSubjectsAtRarity,
   createStudySessionController,
   getNextTier,
@@ -53,7 +52,12 @@ import {
   rollNewERConsult,
 } from '../services/er-consultation'
 import { buildDoctorByRoom, getAssignedDoctor } from './room-doctor-map'
-import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
 
 /** Shared credits granted on tier upgrade (indexed by the tier you just reached). */
 const TIER_UPGRADE_HOSPITAL_CREDITS: Partial<Record<HospitalTier, number>> = {
@@ -123,6 +127,7 @@ export async function runTick(): Promise<TickResult> {
     [
       db.rooms,
       db.doctors,
+      db.roomSupportAssignments,
       db.gameCounters,
       db.monotonicCounters,
       db.retirementLog,
@@ -152,14 +157,18 @@ export async function runTick(): Promise<TickResult> {
       const rooms = await db.rooms.toArray()
       const doctors = await db.doctors.toArray()
       const doctorByRoom = buildDoctorByRoom(doctors)
+      const doctorsById = new Map(doctors.map((doctor) => [doctor.id, doctor]))
+      const supportAssignments = await db.roomSupportAssignments.toArray()
+      const supportByRoom = buildSupportAssignmentByRoom(supportAssignments)
       const allEquipment = await db.equipment.toArray()
       const equippedItemMap = buildEquippedItemMap(allEquipment)
 
       let totalThroughput = 0
       for (const room of rooms) {
         const doctor = getAssignedDoctor(room.id, doctorByRoom)
+        const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
         const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-        totalThroughput += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
+        totalThroughput += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
       }
 
       const elapsedMin = elapsedSec / 60

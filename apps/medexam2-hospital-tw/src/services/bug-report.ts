@@ -19,6 +19,7 @@ export async function buildAutoContext(): Promise<BugReportAutoContext> {
   const monotonic = await db.monotonicCounters.get('singleton')
   const doctorCount = await db.doctors.count()
   const roomCount = await db.rooms.count()
+  const roomSupportAssignmentCount = await db.roomSupportAssignments.count()
 
   const gameState: Record<string, unknown> = {
     tier: counters?.tier ?? null,
@@ -33,6 +34,7 @@ export async function buildAutoContext(): Promise<BugReportAutoContext> {
     totalStudyMinutes: monotonic?.totalStudyMinutes ?? null,
     doctorCount,
     roomCount,
+    roomSupportAssignmentCount,
   }
 
   const sync_metadata = (await getSyncMetadata()) ?? undefined

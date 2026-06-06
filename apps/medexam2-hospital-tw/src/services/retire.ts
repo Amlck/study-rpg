@@ -23,7 +23,7 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
   const db = getHospitalDB()
   return db.transaction(
     'rw',
-    [db.doctors, db.gameCounters, db.retirementLog],
+    [db.doctors, db.gameCounters, db.retirementLog, db.roomSupportAssignments],
     async () => {
       const doctor = await db.doctors.get(doctorId)
       if (!doctor) return { kind: 'not-found', doctorId } as RetireResult
@@ -35,6 +35,13 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
       // of truth, removing the row implicitly clears the room's occupancy —
       // no `rooms.put` needed.
       await db.doctors.delete(doctorId)
+      const supportAssignments = await db.roomSupportAssignments
+        .where('doctorId')
+        .equals(doctorId)
+        .toArray()
+      for (const assignment of supportAssignments) {
+        await db.roomSupportAssignments.delete([assignment.roomId, assignment.roleId])
+      }
 
       // Refund to revenue
       const counters = await db.gameCounters.get('singleton')

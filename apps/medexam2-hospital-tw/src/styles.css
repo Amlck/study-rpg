@@ -1608,6 +1608,34 @@ body:has(.modal-backdrop) {
   color: var(--frame-light);
 }
 
+.room-card__support {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 2px dashed var(--frame-light);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg-cream) 75%, white);
+  color: var(--frame-light);
+  font-size: 12px;
+}
+
+.room-card__support--filled {
+  border-style: solid;
+  border-color: var(--accent-leaf);
+  color: var(--frame-dark);
+}
+
+.room-card__support strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
 .room-card__throughput {
   border: 0;
   background: transparent;
@@ -1623,7 +1651,8 @@ body:has(.modal-backdrop) {
 }
 
 .room-card__affinity,
-.room-card__equipment-bonus {
+.room-card__equipment-bonus,
+.room-card__team-bonus {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -1639,6 +1668,11 @@ body:has(.modal-backdrop) {
 .room-card__equipment-bonus {
   background: color-mix(in srgb, var(--rarity-color) 18%, transparent);
   color: var(--rarity-color);
+}
+
+.room-card__team-bonus {
+  background: rgba(84, 142, 126, 0.16);
+  color: var(--accent-leaf);
 }
 
 .room-card__breakdown {
@@ -1691,6 +1725,33 @@ body:has(.modal-backdrop) {
   font-size: 16px;
   text-align: center;
   color: var(--frame-light);
+}
+
+.assign-modal__section {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px dashed rgba(84, 65, 45, 0.22);
+}
+
+.assign-modal__section-title {
+  margin: 0 0 10px;
+  font-family: var(--font-pixel-cjk);
+  font-size: 13px;
+  color: var(--frame-dark);
+}
+
+.assign-modal__support {
+  padding: 12px;
+  border: 2px solid rgba(84, 142, 126, 0.35);
+  border-radius: 4px;
+  background: rgba(84, 142, 126, 0.08);
+}
+
+.assign-modal__support-hint {
+  margin: 0 0 10px;
+  color: var(--frame-light);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .assign-modal__list {
@@ -1808,6 +1869,10 @@ body:has(.modal-backdrop) {
 .assign-modal__unassign:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+.assign-modal__support-unassign {
+  margin-top: 4px;
 }
 
 /* ── Offline cap notice ────────────────────────────────── */

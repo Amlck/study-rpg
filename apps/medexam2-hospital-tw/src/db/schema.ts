@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
 import { initialGachaStats, type GachaStats } from '@study-rpg/core'
 import {
   RECRUITMENT_PITY_RULES,
@@ -243,6 +243,16 @@ export interface RetirementLogRow {
 
 export type TargetedTicketStatus = 'pending' | 'assigned' | 'consumed'
 
+export type RoomSupportRoleId = 'anesthesia'
+
+export interface RoomSupportAssignmentRow {
+  roomId: string
+  roleId: RoomSupportRoleId
+  doctorId: string
+  assignedAt: number
+  _updatedAt?: number
+}
+
 export interface TargetedTicketRow {
   id: string
   subjectId: string | null
@@ -364,6 +374,8 @@ export interface HospitalLocalBackupRecord {
     tickets: TicketsRow | null
     rooms: RoomRow[]
     affinity: AffinityRow[]
+    /** Optional — present on backups taken post-v19 (surgery team slots). */
+    roomSupportAssignments?: RoomSupportAssignmentRow[]
   }
   doctors: DoctorRow[]
   mastery: MasteryRow[]
@@ -413,6 +425,7 @@ export class HospitalDB extends Dexie {
   equipmentGachaStats!: EntityTable<GachaStatsRow, 'id'>
   equipmentMaterials!: EntityTable<EquipmentMaterialsRow, 'id'>
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
+  roomSupportAssignments!: Table<RoomSupportAssignmentRow, [string, RoomSupportRoleId]>
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -873,6 +886,13 @@ export class HospitalDB extends Dexie {
           })
         }
       })
+
+    // v19: surgery team slots — one support assignment per room+role. The lead
+    // doctor remains `Doctor.assignedRoom`; this table only stores assistant
+    // roles such as surgery anesthesia support.
+    this.version(19).stores({
+      roomSupportAssignments: '[roomId+roleId], roomId, doctorId, roleId, assignedAt',
+    })
   }
 }
 
@@ -914,6 +934,7 @@ export async function ensureSeed(): Promise<void> {
       db.equipmentTickets,
       db.equipmentGachaStats,
       db.equipmentMaterials,
+      db.roomSupportAssignments,
       db.rooms,
       db.gameCounters,
       db.doctors,
