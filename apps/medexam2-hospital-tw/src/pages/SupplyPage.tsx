@@ -30,9 +30,11 @@ import {
   purchaseEquipmentPartsBundle,
   readHospitalCredits,
 } from '../services/hospital-credits'
-import lobbySprite from '../assets/recruitment/lobby.png'
-import medicalCaseBodySprite from '../assets/equipment/medical-case-body.png'
-import medicalCaseLidSprite from '../assets/equipment/medical-case-lid.png'
+import departmentWindowSprite from '../assets/supply/department-window-tile.webp'
+import supplyCounterSprite from '../assets/supply/counter.webp'
+import supplyCaseStationSprite from '../assets/supply/supply-case-station.webp'
+import supplyLobbySprite from '../assets/supply/counter-lobby.webp'
+import voucherTraySprite from '../assets/supply/voucher-tray.webp'
 
 type Toast = { id: number; text: string; kind: 'success' | 'error' }
 
@@ -83,6 +85,9 @@ function DepartmentRecruitWindow({
       className={`department-window ${unlocked ? 'department-window--open' : 'department-window--locked'}`}
       style={{ ['--department-color' as string]: subject.color }}
     >
+      <div className="department-window__art" aria-hidden>
+        <img src={departmentWindowSprite} alt="" draggable={false} />
+      </div>
       <div className="department-window__shutter" aria-hidden>
         <span />
         <span />
@@ -143,12 +148,9 @@ function SupplyStation({
     <article className={`supply-station supply-station--${tone}`}>
       <div className="supply-station__art" aria-hidden>
         {tone === 'doctor' ? (
-          <img src={lobbySprite} alt="" draggable={false} />
+          <img src={supplyCounterSprite} alt="" draggable={false} />
         ) : (
-          <span className="supply-station__case">
-            <img className="supply-station__case-body" src={medicalCaseBodySprite} alt="" draggable={false} />
-            <img className="supply-station__case-lid" src={medicalCaseLidSprite} alt="" draggable={false} />
-          </span>
+          <img src={supplyCaseStationSprite} alt="" draggable={false} />
         )}
       </div>
       <div className="supply-station__body">
@@ -317,7 +319,7 @@ export function SupplyPage() {
 
       <section className="supply-lobby" aria-label="補給櫃檯">
         <div className="supply-lobby__backdrop">
-          <img src={lobbySprite} alt="" draggable={false} />
+          <img src={supplyLobbySprite} alt="" draggable={false} />
         </div>
         <div className="supply-lobby__copy">
           <p className="supply-lobby__eyebrow">Hospital Procurement</p>
@@ -414,6 +416,9 @@ export function SupplyPage() {
             <div>
               <p className="supply-band__kicker">Voucher Tray</p>
               <h2>特殊券</h2>
+            </div>
+            <div className="voucher-tray-art" aria-hidden>
+              <img src={voucherTraySprite} alt="" draggable={false} />
             </div>
           </header>
           <TargetedTicketSection
