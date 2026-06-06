@@ -1,15 +1,9 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react'
+import { useMemo, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  HOSPITAL_CREDIT_LABEL,
-  HOSPITAL_CREDIT_CAP,
-  HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT,
-  HOSPITAL_CREDIT_PRICES,
-  TIER_ORDER,
   RARITY_LABELS,
   RARITY_ORDER,
-  type HospitalTier,
   type Rarity,
 } from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
@@ -33,7 +27,6 @@ import {
   writeEquipmentSpriteLayouts,
   type SpriteLayout,
 } from '../components/EquipmentIcon'
-import { EquipmentResultModal } from '../components/EquipmentResultModal'
 import { EquipmentArtwork, hasEquipmentHeroArt } from '../components/EquipmentArtwork'
 import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { lookupSprite } from '../lib/sprite-lookup'
@@ -41,18 +34,11 @@ import {
   dismantleEquipment,
   describeEquipment,
   equipItem,
-  rollFocusedP3Equipment,
-  rollEquipment,
   unequipItem,
   upgradeEquipment,
   type EquipmentDismantleResult,
-  type EquipmentRollOutcome,
   type EquipmentUpgradeResult,
 } from '../services/equipment'
-import {
-  purchaseEquipmentPartsBundle,
-  readHospitalCredits,
-} from '../services/hospital-credits'
 
 type SortMode = 'newest' | 'rarity' | 'category' | 'equipped'
 type EquipFilter = 'all' | 'available' | 'equipped'
@@ -70,11 +56,6 @@ const RARITY_RANK = new Map<Rarity, number>(RARITY_ORDER.map((r, index) => [r, i
 const EQUIPMENT_DRAG_TYPE = 'application/x-study-rpg-equipment'
 const EQUIPMENT_SLOTS = [{ id: 'main', label: '主要器材' }] as const
 const SPRITE_TUNER_CATEGORIES: EquipmentCategory[] = ['stethoscope', 'scalpel', 'chart', 'coat']
-
-function isTierAtLeast(tier: HospitalTier | undefined, minTier: HospitalTier): boolean {
-  if (!tier) return false
-  return TIER_ORDER.indexOf(tier) >= TIER_ORDER.indexOf(minTier)
-}
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('zh-TW')
@@ -108,13 +89,6 @@ export function EquipmentPage() {
   const doctors = useLiveQuery(() => db.doctors.orderBy('obtainedAt').reverse().toArray(), []) ?? []
   const materials = useLiveQuery(() => db.equipmentMaterials.get('global'), [])
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
-  const creditsAvailable = readHospitalCredits(counters)
-  const equipmentUnlocked = isTierAtLeast(counters?.tier, '區域醫院')
-  const focusedUnlocked = isTierAtLeast(counters?.tier, '醫學中心')
-  const rollInFlight = useRef(false)
-  const [rolling, setRolling] = useState(false)
-  const [rollOutcome, setRollOutcome] = useState<Extract<EquipmentRollOutcome, { ok: true }> | null>(null)
-  const [showCeremony, setShowCeremony] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedItem, setSelectedItem] = useState<EquipmentRow | null>(null)
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
@@ -169,62 +143,6 @@ export function EquipmentPage() {
     })
     return sortEquipment(rows, sortMode)
   }, [categoryFilter, equipFilter, equipment, rarityFilter, sortMode])
-
-  async function handleRoll() {
-    if (rollInFlight.current) return
-    rollInFlight.current = true
-    setRolling(true)
-    setToast(null)
-    try {
-      const outcome = await rollEquipment()
-      if (outcome.ok) {
-        setRollOutcome(outcome)
-        setShowCeremony(true)
-        return
-      }
-      setToast(formatRollError(outcome.reason))
-    } finally {
-      rollInFlight.current = false
-      setRolling(false)
-    }
-  }
-
-  async function handleFocusedRoll() {
-    if (rollInFlight.current) return
-    rollInFlight.current = true
-    setRolling(true)
-    setToast(null)
-    try {
-      const outcome = await rollFocusedP3Equipment()
-      if (outcome.ok) {
-        setRollOutcome(outcome)
-        setShowCeremony(true)
-        return
-      }
-      setToast(formatRollError(outcome.reason))
-    } finally {
-      rollInFlight.current = false
-      setRolling(false)
-    }
-  }
-
-  async function handleBuyParts() {
-    setToast(null)
-    const result = await purchaseEquipmentPartsBundle()
-    if (result.ok) {
-      setToast(
-        `+${fmt(result.partsGained)} 零件（-${result.creditsSpent} ${HOSPITAL_CREDIT_LABEL}）`,
-      )
-    } else {
-      setToast(result.reason === 'no-credits' ? `${HOSPITAL_CREDIT_LABEL}不足` : '器材狀態尚未初始化')
-    }
-  }
-
-  function formatRollError(reason: Exclude<EquipmentRollOutcome, { ok: true }>['reason']): string {
-    if (reason === 'locked-tier') return '區域醫院解鎖器材補給；醫學中心解鎖 P3+ 器材'
-    if (reason === 'no-credits') return `${HOSPITAL_CREDIT_LABEL}不足`
-    return '器材池目前沒有可抽項目'
-  }
 
   function toggleDoctorRarityFilter(rarity: Rarity) {
     setDoctorRarityFilters((current) =>
@@ -296,12 +214,7 @@ export function EquipmentPage() {
     currentSelectedItem?.equippedDoctorId
       ? doctorById.get(currentSelectedItem.equippedDoctorId) ?? null
       : null
-  const selectedWasPity =
-    rollOutcome !== null &&
-    currentSelectedItem !== null &&
-    rollOutcome.equipment.id === currentSelectedItem.id
-      ? rollOutcome.wasPity
-      : false
+  const selectedWasPity = false
 
   return (
     <main className="app-shell equipment-page">
@@ -314,65 +227,11 @@ export function EquipmentPage() {
           <Link to="/" className="nav-link">
             ← 回主畫面
           </Link>
+          <Link to="/supply" className="nav-link">
+            院務補給 →
+          </Link>
         </div>
       </header>
-
-      <section className="equipment-draw-panel" aria-label="器材補給">
-        <div>
-          <p className="equipment-draw-panel__label">{HOSPITAL_CREDIT_LABEL}</p>
-          <p className="equipment-draw-panel__tickets">
-            🏥 {creditsAvailable} / {HOSPITAL_CREDIT_CAP}
-          </p>
-        </div>
-        <div>
-          <p className="equipment-draw-panel__label">器材零件</p>
-          <p className="equipment-draw-panel__tickets">
-            ⚙ {fmt(materials?.parts ?? 0)}
-          </p>
-        </div>
-        <div className="equipment-draw-panel__actions" aria-label="院務點數用途">
-          <button
-            type="button"
-            className="primary-btn equipment-draw-panel__button"
-            onClick={() => void handleRoll()}
-            disabled={rolling || !equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.equipmentPull}
-            title={equipmentUnlocked ? `${HOSPITAL_CREDIT_PRICES.equipmentPull} ${HOSPITAL_CREDIT_LABEL}` : '區域醫院解鎖'}
-          >
-            <span className="equipment-draw-panel__button-title">
-              {rolling ? '補給中…' : '器材補給'}
-            </span>
-            <span className="equipment-draw-panel__button-detail">
-              一般器材 · {HOSPITAL_CREDIT_PRICES.equipmentPull} 點
-            </span>
-          </button>
-          <button
-            type="button"
-            className="secondary-btn equipment-draw-panel__button"
-            onClick={() => void handleFocusedRoll()}
-            disabled={rolling || !focusedUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.focusedEquipmentP3}
-            title={focusedUnlocked ? `P3+ · ${HOSPITAL_CREDIT_PRICES.focusedEquipmentP3} ${HOSPITAL_CREDIT_LABEL}` : '醫學中心解鎖'}
-          >
-            <span className="equipment-draw-panel__button-title">P3+ 器材</span>
-            <span className="equipment-draw-panel__button-detail">
-              保證稀有+ · {HOSPITAL_CREDIT_PRICES.focusedEquipmentP3} 點
-            </span>
-          </button>
-          <button
-            type="button"
-            className="ghost-btn equipment-draw-panel__button"
-            onClick={() => void handleBuyParts()}
-            disabled={!equipmentUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.partsBundle}
-            title={`${HOSPITAL_CREDIT_PRICES.partsBundle} ${HOSPITAL_CREDIT_LABEL} → ${HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT} 零件`}
-          >
-            <span className="equipment-draw-panel__button-title">
-              零件包 +{HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT}
-            </span>
-            <span className="equipment-draw-panel__button-detail">
-              升級材料 · {HOSPITAL_CREDIT_PRICES.partsBundle} 點
-            </span>
-          </button>
-        </div>
-      </section>
 
       {toast && <p className="equipment-page__toast" role="status">{toast}</p>}
       {showSpriteTuner && (
@@ -546,18 +405,7 @@ export function EquipmentPage() {
         </section>
       </section>
 
-      {/* Supply box ceremony — shown immediately after a roll */}
-      <EquipmentResultModal
-        item={showCeremony && rollOutcome ? rollOutcome.equipment : null}
-        wasPity={rollOutcome?.wasPity ?? false}
-        onClose={() => {
-          setShowCeremony(false)
-          // Hand off to detail modal after ceremony
-          if (rollOutcome) setSelectedItem(rollOutcome.equipment)
-        }}
-      />
-
-      {currentSelectedItem && !showCeremony && (
+      {currentSelectedItem && (
         <EquipmentDetailModal
           item={currentSelectedItem}
           doctors={doctors}
@@ -571,12 +419,10 @@ export function EquipmentPage() {
           }}
           onAfterDismantle={(message) => {
             setSelectedItem(null)
-            setRollOutcome(null)
             setToast(message)
           }}
           onClose={() => {
             setSelectedItem(null)
-            setRollOutcome(null)
           }}
         />
       )}

@@ -5,11 +5,9 @@ import type { Subject, SubjectId } from '@study-rpg/core'
 import {
   HOSPITAL_CREDIT_CAP,
   HOSPITAL_CREDIT_LABEL,
-  HOSPITAL_CREDIT_PRICES,
   RECRUITMENT_THRESHOLDS,
   READING_IDLE_RATE_REDUCTION,
   READING_SESSION_BUFF_MULTIPLIER,
-  TIER_ORDER,
   TIER_DIVERSIFICATION_REQUIREMENTS,
   TIER_UPGRADE_THRESHOLDS,
   computeSalaryDrain,
@@ -23,7 +21,6 @@ import {
   incrementAffinity,
   type DoctorRow,
 } from '../db/schema'
-import { attemptFocusedP3Roll, attemptRoll, type RollOutcome } from '../services/recruitment'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
 import { getNextDailyRefreshLabel } from '../lib/daily-ticket'
@@ -49,7 +46,6 @@ import {
 import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
-import { TargetedTicketSection } from '../components/TargetedTicketSection'
 import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
 import { readHospitalCredits } from '../services/hospital-credits'
 
@@ -59,7 +55,6 @@ export function HomePage() {
   const db = getHospitalDB()
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
-  const [modal, setModal] = useState<{ outcome: Extract<RollOutcome, { ok: true }> } | null>(null)
   const [starterResult, setStarterResult] = useState<{ doctor: DoctorRow } | null>(null)
   const [starterOpen, setStarterOpen] = useState(false)
   const [activeQuizSubject, setActiveQuizSubject] = useState<SubjectId | null>(null)
@@ -120,8 +115,6 @@ export function HomePage() {
   }, [masteryRows])
 
   const showStarterCard = counters?.hasUsedStarterPull === false
-  const focusedDoctorUnlocked =
-    counters ? TIER_ORDER.indexOf(counters.tier) >= TIER_ORDER.indexOf('醫學中心') : false
 
   function pushToast(text: string, kind: Toast['kind'] = 'unlock') {
     const id = Date.now() + Math.random()
@@ -134,36 +127,6 @@ export function HomePage() {
     const threshold = RECRUITMENT_THRESHOLDS[subjectId]
     if (threshold !== undefined && after === threshold) {
       pushToast(`${subjectId} 招募解鎖！`, 'unlock')
-    }
-  }
-
-  async function handleRoll(subject: Subject) {
-    const outcome = await attemptRoll(subject)
-    if (outcome.ok) {
-      setModal({ outcome })
-    } else if (outcome.reason === 'no-credits') {
-      pushToast(`${HOSPITAL_CREDIT_LABEL}不足`, 'error')
-    } else if (outcome.reason === 'banner-locked') {
-      pushToast(`還需答對 ${outcome.missing} 題 ${subject.displayName}`, 'error')
-    } else if (outcome.reason === 'unknown-subject') {
-      pushToast(`未知科別：${subject.id}`, 'error')
-    }
-  }
-
-  async function handleFocusedP3Roll() {
-    const outcome = await attemptFocusedP3Roll(subjects)
-    if (outcome.ok) {
-      setModal({ outcome: { ok: true, doctor: outcome.doctor, wasPity: false } })
-      return
-    }
-    if (outcome.reason === 'locked-tier') {
-      pushToast('醫學中心解鎖 P3+ 重點招募', 'error')
-    } else if (outcome.reason === 'no-credits') {
-      pushToast(`${HOSPITAL_CREDIT_LABEL}不足`, 'error')
-    } else if (outcome.reason === 'no-unlocked-banners') {
-      pushToast('尚未解鎖任何科別招募', 'error')
-    } else {
-      pushToast('目前沒有可抽的 P3+ 醫師', 'error')
     }
   }
 
@@ -183,6 +146,9 @@ export function HomePage() {
           </Link>
           <Link to="/fate-cards" className="nav-link">
             命運 →
+          </Link>
+          <Link to="/supply" className="nav-link">
+            補給 →
           </Link>
           <Link to="/equipment" className="nav-link">
             器材 →
@@ -329,32 +295,6 @@ export function HomePage() {
         <StarterPullCard onOpen={() => setStarterOpen(true)} />
       )}
 
-      <TargetedTicketSection
-        subjects={subjects}
-        onConsumed={(doctor) =>
-          setModal({ outcome: { ok: true, doctor, wasPity: false } })
-        }
-        onError={(msg) => pushToast(msg, 'error')}
-      />
-
-      <section className="focused-recruitment-panel" aria-label="重點招募">
-        <div>
-          <h2>重點招募</h2>
-          <p>
-            P3+ 隨機科別搜尋 · {HOSPITAL_CREDIT_PRICES.focusedDoctorP3} {HOSPITAL_CREDIT_LABEL}
-          </p>
-        </div>
-        <button
-          type="button"
-          className="primary-btn"
-          disabled={!focusedDoctorUnlocked || creditsAvailable < HOSPITAL_CREDIT_PRICES.focusedDoctorP3}
-          onClick={() => void handleFocusedP3Roll()}
-          title={focusedDoctorUnlocked ? '保證 P3+，從已解鎖科別中隨機招募' : '醫學中心解鎖'}
-        >
-          P3+ 搜尋
-        </button>
-      </section>
-
       <YearFilterBar />
 
       <section className="banners">
@@ -367,7 +307,6 @@ export function HomePage() {
               subject={s}
               affinity={affinityMap[s.id] ?? 0}
               threshold={RECRUITMENT_THRESHOLDS[s.id] ?? 0}
-              creditsAvailable={creditsAvailable}
               mastery={masteryMap[s.id]}
               dueCount={dueCountMap[s.id] ?? 0}
               completion={completionMap?.get(s.id as SubjectId)}
@@ -379,7 +318,6 @@ export function HomePage() {
                     : `此組合 0 題，請放寬年份篩選`
                   : undefined
               }
-              onRoll={() => void handleRoll(s)}
               onStartQuiz={() => setActiveQuizSubject(s.id as SubjectId)}
             />
           )
@@ -393,12 +331,6 @@ export function HomePage() {
           <div key={t.id} className={`toast toast--${t.kind}`}>{t.text}</div>
         ))}
       </div>
-
-      <RecruitmentResultModal
-        doctor={modal?.outcome.doctor ?? null}
-        wasPity={modal?.outcome.wasPity ?? false}
-        onClose={() => setModal(null)}
-      />
 
       <RecruitmentResultModal
         doctor={starterResult?.doctor ?? null}
