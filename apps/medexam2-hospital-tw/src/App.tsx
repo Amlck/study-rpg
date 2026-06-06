@@ -16,6 +16,7 @@ import { TrainingPage } from './pages/TrainingPage'
 import { FateCardPage } from './pages/FateCardPage'
 import { BookmarksPage } from './pages/BookmarksPage'
 import { EquipmentPage } from './pages/EquipmentPage'
+import { SupplyPage } from './pages/SupplyPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
 import { useStudySessionTick } from './lib/tick'
 import { checkAssignmentInvariants } from './lib/assignment'
@@ -289,6 +290,7 @@ function App() {
         <Route path="/study" element={<StudySessionPage />} />
         <Route path="/training" element={<TrainingPage />} />
         <Route path="/fate-cards" element={<FateCardPage />} />
+        <Route path="/supply" element={<SupplyPage />} />
         <Route path="/equipment" element={<EquipmentPage />} />
         <Route path="/bookmarks" element={<BookmarksPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
