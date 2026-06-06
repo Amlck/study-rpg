@@ -5176,14 +5176,11 @@ body:has(.modal-backdrop) {
 
 .supply-lobby {
   position: relative;
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  gap: 18px;
-  align-items: center;
   overflow: hidden;
   margin: 0 0 18px;
-  padding: 16px;
-  background: var(--bg-paper);
+  min-height: clamp(320px, 44vw, 520px);
+  padding: 0;
+  background: #d9c09a;
   border: 3px solid var(--frame-dark);
   box-shadow: var(--supply-counter-shadow);
 }
@@ -5194,33 +5191,32 @@ body:has(.modal-backdrop) {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 34px;
+  height: 12px;
   background: var(--frame-dark);
-  border-top: 3px solid var(--frame-light);
+  border-top: 2px solid var(--accent-gold);
 }
 
 .supply-lobby__backdrop {
-  position: relative;
-  z-index: 1;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: var(--bg-cream);
-  border: 3px solid var(--frame-dark);
-  box-shadow: 3px 3px 0 var(--frame-light);
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
 .supply-lobby__backdrop img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: center bottom;
+  display: block;
 }
 
 .supply-lobby__copy {
   position: relative;
   z-index: 1;
-  max-width: 620px;
-  padding-bottom: 28px;
+  width: min(620px, calc(100% - 320px));
+  min-width: 360px;
+  padding: clamp(18px, 3vw, 34px);
+  text-shadow: 1px 1px 0 rgba(255, 248, 224, 0.74);
 }
 
 .supply-lobby__eyebrow,
@@ -5233,13 +5229,13 @@ body:has(.modal-backdrop) {
 
 .supply-lobby h2 {
   margin: 0 0 8px;
-  font-size: 20px;
+  font-size: clamp(20px, 2vw, 28px);
   color: var(--frame-dark);
 }
 
 .supply-lobby p:last-child {
   margin: 0;
-  max-width: 520px;
+  max-width: 560px;
   color: var(--frame-light);
   font-size: 14px;
   line-height: 1.6;
@@ -5293,27 +5289,38 @@ body:has(.modal-backdrop) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 164px;
-  padding: 10px;
+  min-height: 248px;
+  padding: 8px;
   background: var(--bg-cream);
   border: 3px solid var(--department-color);
   box-shadow: 3px 3px 0 var(--frame-light);
 }
 
 .department-window::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 20px;
-  background: var(--department-color);
-  opacity: 0.22;
+  display: none;
+}
+
+.department-window__art {
+  position: relative;
+  overflow: hidden;
+  height: 112px;
+  margin: 0 0 8px;
+  background: color-mix(in srgb, var(--department-color) 18%, var(--bg-paper));
+  border: 2px solid var(--frame-dark);
+  box-shadow: inset 0 -3px 0 rgba(66, 50, 35, 0.24);
+}
+
+.department-window__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 58%;
+  display: block;
 }
 
 .department-window__shutter {
   position: absolute;
-  inset: 22px 10px auto 10px;
+  inset: 36px 18px auto 18px;
   display: none;
   flex-direction: column;
   gap: 4px;
@@ -5436,8 +5443,8 @@ body:has(.modal-backdrop) {
 
 .supply-station {
   display: grid;
-  grid-template-rows: 112px 1fr auto;
-  min-height: 292px;
+  grid-template-rows: 138px 1fr auto;
+  min-height: 318px;
   overflow: hidden;
   background: var(--bg-cream);
   border: 3px solid var(--frame-dark);
@@ -5469,27 +5476,16 @@ body:has(.modal-backdrop) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
-.supply-station__case {
-  position: relative;
-  width: 112px;
-  height: 86px;
+.supply-station--doctor .supply-station__art > img {
+  object-position: center 78%;
 }
 
-.supply-station__case img {
-  position: absolute;
-  left: 0;
-  width: 112px;
-  image-rendering: pixelated;
-}
-
-.supply-station__case-body {
-  bottom: 0;
-}
-
-.supply-station__case-lid {
-  top: 0;
+.supply-station--equipment .supply-station__art > img,
+.supply-station--parts .supply-station__art > img {
+  object-position: center 54%;
 }
 
 .supply-station__body {
@@ -5538,16 +5534,38 @@ body:has(.modal-backdrop) {
   display: none;
 }
 
+.voucher-tray-art {
+  overflow: hidden;
+  min-height: 132px;
+  background: color-mix(in srgb, var(--accent-gold) 16%, var(--bg-paper));
+  border: 3px solid var(--frame-dark);
+  box-shadow: 3px 3px 0 var(--frame-light);
+}
+
+.voucher-tray-art img {
+  width: 100%;
+  height: 100%;
+  min-height: 132px;
+  object-fit: cover;
+  object-position: center 54%;
+  display: block;
+}
+
 @media (max-width: 860px) {
   .supply-wallet,
-  .supply-lobby,
   .supply-band__head,
   .supply-station-grid {
     grid-template-columns: 1fr;
   }
 
-  .supply-lobby__backdrop {
-    max-height: 210px;
+  .supply-lobby {
+    min-height: 410px;
+  }
+
+  .supply-lobby__copy {
+    width: min(540px, calc(100% - 32px));
+    min-width: 0;
+    padding: 18px;
   }
 }
 
@@ -5562,6 +5580,31 @@ body:has(.modal-backdrop) {
 
   .supply-band {
     padding: 10px;
+  }
+
+  .supply-lobby {
+    min-height: 390px;
+  }
+
+  .supply-lobby__backdrop img {
+    object-position: 55% bottom;
+  }
+
+  .supply-lobby__copy {
+    padding: 14px;
+  }
+
+  .supply-lobby p:last-child {
+    max-width: 330px;
+    font-size: 12px;
+  }
+
+  .department-window {
+    min-height: 232px;
+  }
+
+  .department-window__art {
+    height: 104px;
   }
 }
 
