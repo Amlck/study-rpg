@@ -1,10 +1,11 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
 import { initialGachaStats, type GachaStats } from '@study-rpg/core'
 import {
   RECRUITMENT_PITY_RULES,
   RECRUITMENT_WEIGHTS,
-  INITIAL_TICKETS,
-  TICKET_CAP,
+  HOSPITAL_CREDIT_CAP,
+  INITIAL_HOSPITAL_CREDITS,
+  clampHospitalCredits,
   MS_PER_DAY,
   TIER_ROOMS,
   RARITY_POWER_MULTIPLIER,
@@ -14,9 +15,7 @@ import {
 } from '@study-rpg/content-medexam2-tw'
 import {
   EQUIPMENT_PITY_RULES,
-  EQUIPMENT_TICKET_CAP,
   EQUIPMENT_WEIGHTS,
-  INITIAL_EQUIPMENT_TICKETS,
   type EquipmentCategory,
 } from '../data/equipment'
 
@@ -114,6 +113,10 @@ export interface GameCountersRow {
   id: 'singleton'
   revenue: number
   reputation: number
+  /** Shared hospital currency replacing normal doctor/equipment tickets. */
+  hospitalCredits: number
+  /** ms timestamp when legacy ticket balances were converted; absent on old saves. */
+  hospitalCreditsMigratedAt?: number
   lastTickAt: number
   tier: HospitalTier
   hasUsedStarterPull: boolean
@@ -186,9 +189,9 @@ export interface MonotonicCountersRow {
     epic: number
   }
   /**
-   * Per-25-fresh-correct ticket-grant counter (add-quiz-economy-redesign).
+   * Per-25-fresh-correct credit-grant counter (add-quiz-economy-redesign).
    * Increments by 1 per fresh-correct quiz answer; on reaching
-   * QUIZ_TICKET_GRANT_PER_N_CORRECT, +1 ticket granted (clamped at TICKET_CAP)
+   * QUIZ_TICKET_GRANT_PER_N_CORRECT, +1 hospital credit granted
    * and counter resets to 0. Field added in v8.
    */
   freshCorrectSinceLastTicket?: number
@@ -252,6 +255,16 @@ export interface RetirementLogRow {
 }
 
 export type TargetedTicketStatus = 'pending' | 'assigned' | 'consumed'
+
+export type RoomSupportRoleId = 'anesthesia'
+
+export interface RoomSupportAssignmentRow {
+  roomId: string
+  roleId: RoomSupportRoleId
+  doctorId: string
+  assignedAt: number
+  _updatedAt?: number
+}
 
 export interface TargetedTicketRow {
   id: string
@@ -376,6 +389,8 @@ export interface HospitalLocalBackupRecord {
     /** Optional — present on backups taken post-v18. */
     roomSupportAssignments?: RoomSupportAssignmentRow[]
     affinity: AffinityRow[]
+    /** Optional — present on backups taken post-v19 (surgery team slots). */
+    roomSupportAssignments?: RoomSupportAssignmentRow[]
   }
   doctors: DoctorRow[]
   mastery: MasteryRow[]
@@ -426,6 +441,7 @@ export class HospitalDB extends Dexie {
   equipmentGachaStats!: EntityTable<GachaStatsRow, 'id'>
   equipmentMaterials!: EntityTable<EquipmentMaterialsRow, 'id'>
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
+  roomSupportAssignments!: Table<RoomSupportAssignmentRow, [string, RoomSupportRoleId]>
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -741,7 +757,7 @@ export class HospitalDB extends Dexie {
     })
 
     // v14: first-pass equipment inventory. Local-only for now: equipment,
-    // equipment tickets, and equipment-specific pity stats are not cloud-synced
+    // legacy equipment tickets, and equipment-specific pity stats are not cloud-synced
     // until a follow-up migration adds server tables.
     this.version(14)
       .stores({
@@ -773,7 +789,7 @@ export class HospitalDB extends Dexie {
       .upgrade(async (tx) => {
         const ticketsTable = tx.table<EquipmentTicketsRow, 'global'>('equipmentTickets')
         if (!(await ticketsTable.get('global'))) {
-          await ticketsTable.put({ id: 'global', available: INITIAL_EQUIPMENT_TICKETS })
+          await ticketsTable.put({ id: 'global', available: 0 })
         }
 
         const statsTable = tx.table<GachaStatsRow, 'global'>('equipmentGachaStats')
@@ -848,6 +864,10 @@ export class HospitalDB extends Dexie {
     this.version(17).stores({
       leaderboardProfile: '&user_id',
     })
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
     // v18: surgery rooms may carry one support doctor via an additive
     // assignment table. Primary doctor assignment remains Doctor.assignedRoom.
     this.version(18).stores({
@@ -881,6 +901,56 @@ export class HospitalDB extends Dexie {
           )
         }
       })
+<<<<<<< Updated upstream
+=======
+=======
+
+    // v18: shared-hospital-credits — normal doctor/equipment tickets are
+    // converted into gameCounters.hospitalCredits, then zeroed to avoid
+    // double-spend. Legacy ticket tables stay for backup/import compatibility.
+    this.version(18)
+      .stores({})
+      .upgrade(async (tx) => {
+        const countersTable = tx.table<GameCountersRow, 'singleton'>('gameCounters')
+        const ticketsTable = tx.table<TicketsRow, 'global'>('tickets')
+        const equipmentTicketsTable = tx.table<EquipmentTicketsRow, 'global'>('equipmentTickets')
+        const [counters, tickets, equipmentTickets] = await Promise.all([
+          countersTable.get('singleton'),
+          ticketsTable.get('global'),
+          equipmentTicketsTable.get('global'),
+        ])
+        const now = Date.now()
+
+        if (counters && counters.hospitalCredits === undefined) {
+          const legacyDoctor = Math.max(0, Math.floor(tickets?.available ?? 0))
+          const legacyEquipment = Math.max(0, Math.floor(equipmentTickets?.available ?? 0))
+          await countersTable.put({
+            ...counters,
+            hospitalCredits: clampHospitalCredits(legacyDoctor + legacyEquipment),
+            hospitalCreditsMigratedAt: now,
+          })
+        }
+
+        if (tickets && tickets.available !== 0) {
+          await ticketsTable.put({ ...tickets, available: 0, lastRefreshDay: currentEpochDay() })
+        }
+        if (equipmentTickets && equipmentTickets.available !== 0) {
+          await equipmentTicketsTable.put({
+            ...equipmentTickets,
+            available: 0,
+            lastRefreshDay: currentEpochDay(),
+          })
+        }
+      })
+
+    // v19: surgery team slots — one support assignment per room+role. The lead
+    // doctor remains `Doctor.assignedRoom`; this table only stores assistant
+    // roles such as surgery anesthesia support.
+    this.version(19).stores({
+      roomSupportAssignments: '[roomId+roleId], roomId, doctorId, roleId, assignedAt',
+    })
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
   }
 }
 
@@ -922,6 +992,7 @@ export async function ensureSeed(): Promise<void> {
       db.equipmentTickets,
       db.equipmentGachaStats,
       db.equipmentMaterials,
+      db.roomSupportAssignments,
       db.rooms,
       db.gameCounters,
       db.doctors,
@@ -945,7 +1016,7 @@ export async function ensureSeed(): Promise<void> {
       if (!t) {
         await db.tickets.put({
           id: 'global',
-          available: INITIAL_TICKETS,
+          available: 0,
           lastRefreshDay: currentEpochDay(),
         })
       }
@@ -958,7 +1029,7 @@ export async function ensureSeed(): Promise<void> {
       if (!equipmentTickets) {
         await db.equipmentTickets.put({
           id: 'global',
-          available: INITIAL_EQUIPMENT_TICKETS,
+          available: 0,
           lastRefreshDay: currentEpochDay(),
         })
       }
@@ -985,6 +1056,8 @@ export async function ensureSeed(): Promise<void> {
           id: 'singleton',
           revenue: 0,
           reputation: 0,
+          hospitalCredits: INITIAL_HOSPITAL_CREDITS,
+          hospitalCreditsMigratedAt: Date.now(),
           lastTickAt: Date.now(),
           tier: '診所',
           hasUsedStarterPull: false,
@@ -1005,6 +1078,24 @@ export async function ensureSeed(): Promise<void> {
       } else {
         const c = counters as Partial<GameCountersRow>
         const patches: Partial<GameCountersRow> = {}
+        if (c.hospitalCredits === undefined) {
+          const legacyTickets = await db.tickets.get('global')
+          const legacyEquipmentTickets = await db.equipmentTickets.get('global')
+          patches.hospitalCredits = clampHospitalCredits(
+            (legacyTickets?.available ?? 0) + (legacyEquipmentTickets?.available ?? 0),
+          )
+          patches.hospitalCreditsMigratedAt = Date.now()
+          if (legacyTickets && legacyTickets.available !== 0) {
+            await db.tickets.put({ ...legacyTickets, available: 0, lastRefreshDay: currentEpochDay() })
+          }
+          if (legacyEquipmentTickets && legacyEquipmentTickets.available !== 0) {
+            await db.equipmentTickets.put({
+              ...legacyEquipmentTickets,
+              available: 0,
+              lastRefreshDay: currentEpochDay(),
+            })
+          }
+        }
         if (c.tier === undefined) patches.tier = '診所'
         // Recovery branch — see `fix-v3-to-v4-starter-pull-migration` design.md D4 matrix.
         // The original v3→v4 patcher unconditionally force-set hasUsedStarterPull=true,
@@ -1040,27 +1131,35 @@ export async function ensureSeed(): Promise<void> {
 
 export async function refreshDailyTickets(): Promise<void> {
   const db = getHospitalDB()
-  await db.transaction('rw', db.tickets, async () => {
+  await db.transaction('rw', [db.tickets, db.gameCounters], async () => {
     const t = await db.tickets.get('global')
     if (!t) return
     const today = currentEpochDay()
     const delta = today - t.lastRefreshDay
     if (delta <= 0) return
-    const grant = Math.min(delta, TICKET_CAP - t.available)
+    const counters = await db.gameCounters.get('singleton')
+    if (counters) {
+      const current = clampHospitalCredits(counters.hospitalCredits ?? 0)
+      const grant = Math.min(delta, HOSPITAL_CREDIT_CAP - current)
+      if (grant > 0) {
+        await db.gameCounters.put({
+          ...counters,
+          hospitalCredits: clampHospitalCredits(current + grant),
+        })
+      }
+    }
     await db.tickets.put({
       ...t,
-      available: Math.min(TICKET_CAP, t.available + Math.max(0, grant)),
+      available: 0,
       lastRefreshDay: today,
     })
   })
 }
 
 /**
- * Daily-free equipment ticket grant — mirrors `refreshDailyTickets`.
- * Grants +1 equipment ticket per elapsed UTC epoch day, clamped at
- * EQUIPMENT_TICKET_CAP. Safe to call on every app boot; no-ops when already
- * refreshed today. Rows missing `lastRefreshDay` (pre-v15) are treated as
- * epoch day 0 (always in the past), triggering a one-time catch-up grant.
+ * Legacy equipment ticket refresh. Shared credits own the active daily grant;
+ * this only advances/zeros the deprecated equipment ticket row so old state
+ * cannot become spendable again.
  */
 export async function refreshDailyEquipmentTickets(): Promise<void> {
   const db = getHospitalDB()
@@ -1070,10 +1169,9 @@ export async function refreshDailyEquipmentTickets(): Promise<void> {
     const today = currentEpochDay()
     const delta = today - (t.lastRefreshDay ?? 0)
     if (delta <= 0) return
-    const grant = Math.min(delta, EQUIPMENT_TICKET_CAP - t.available)
     await db.equipmentTickets.put({
       ...t,
-      available: Math.min(EQUIPMENT_TICKET_CAP, t.available + Math.max(0, grant)),
+      available: 0,
       lastRefreshDay: today,
     })
   })
@@ -1082,40 +1180,37 @@ export async function refreshDailyEquipmentTickets(): Promise<void> {
 // ─── Quiz-reward ticket helpers (add-quiz-economy-redesign) ─────────────────
 
 /**
- * Grant N tickets to the global ticket inventory, clamped at TICKET_CAP.
+ * Grant N shared hospital credits, clamped at HOSPITAL_CREDIT_CAP.
  * Caller MUST run this inside an outer Dexie transaction that already holds
- * write-lock on `tickets`. Returns the actually-granted delta (may be < count
- * if cap is hit) so callers can decide whether to emit a `+1 招募券` toast vs
+ * write-lock on `gameCounters`. Returns the actually-granted delta (may be < count
+ * if cap is hit) so callers can decide whether to emit a `+1 院務點數` toast vs
  * a `已達上限` toast.
  */
 export async function grantTicketsForCorrect(count: number): Promise<number> {
   const db = getHospitalDB()
-  const t = await db.tickets.get('global')
-  if (!t) return 0
-  const next = Math.min(TICKET_CAP, t.available + count)
-  const actuallyGranted = next - t.available
+  const counters = await db.gameCounters.get('singleton')
+  if (!counters) return 0
+  const current = clampHospitalCredits(counters.hospitalCredits ?? 0)
+  const next = clampHospitalCredits(current + count)
+  const actuallyGranted = next - current
   if (actuallyGranted > 0) {
-    await db.tickets.put({ ...t, available: next })
+    await db.gameCounters.put({ ...counters, hospitalCredits: next })
   }
   return actuallyGranted
 }
 
 /**
- * Grant the one-time banner-first-unlock ticket bonus for `subjectId`, idempotent
+ * Grant the one-time banner-first-unlock credit bonus for `subjectId`, idempotent
  * via `bannerUnlockBonusLog`. Returns true if a bonus was newly granted (caller
  * should toast), false if already granted previously. Caller MUST run inside a
- * Dexie transaction holding write-lock on both `tickets` and `bannerUnlockBonusLog`.
+ * Dexie transaction holding write-lock on `gameCounters` and `bannerUnlockBonusLog`.
  */
 export async function grantBannerUnlockBonus(subjectId: string): Promise<boolean> {
   const db = getHospitalDB()
   const existing = await db.bannerUnlockBonusLog.get(subjectId)
   if (existing) return false
   await db.bannerUnlockBonusLog.put({ subjectId, grantedAt: Date.now() })
-  // Always log even when ticket cap is hit (one-shot semantics preserved).
-  const t = await db.tickets.get('global')
-  if (t && t.available < TICKET_CAP) {
-    await db.tickets.put({ ...t, available: Math.min(TICKET_CAP, t.available + 1) })
-  }
+  await grantTicketsForCorrect(1)
   return true
 }
 

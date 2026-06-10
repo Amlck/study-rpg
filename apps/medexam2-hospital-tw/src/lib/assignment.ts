@@ -12,6 +12,7 @@
  * restore invariants. Invoked on app boot + after every successful cloud pull.
  */
 
+<<<<<<< HEAD
 import { getHospitalDB, type DoctorRow } from '../db/schema'
 import {
   getRoomSupportCapacity,
@@ -19,6 +20,17 @@ import {
   normalizeSupportAssignment,
   roomSupportsTeams,
 } from './room-team'
+<<<<<<< Updated upstream
+=======
+=======
+import { getHospitalDB, type DoctorRow, type RoomSupportRoleId } from '../db/schema'
+import {
+  ROOM_SUPPORT_ROLE_ANESTHESIA,
+  isEligibleSupportDoctor,
+  isSupportRoleAvailableForRoom,
+} from '../services/room-team'
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
 /**
  * Assign a doctor to a room. If a different doctor was already in that room,
@@ -50,6 +62,14 @@ export async function assignDoctor(roomId: string, doctorId: string): Promise<vo
     if (doctor.assignedRoom !== roomId) {
       await db.doctors.put({ ...doctor, assignedRoom: roomId })
     }
+
+    const supportAssignments = await db.roomSupportAssignments
+      .where('doctorId')
+      .equals(doctorId)
+      .toArray()
+    for (const assignment of supportAssignments) {
+      await db.roomSupportAssignments.delete([assignment.roomId, assignment.roleId])
+    }
   })
 }
 
@@ -70,6 +90,10 @@ export async function getUnassignedDoctors(): Promise<DoctorRow[]> {
     db.doctors.orderBy('obtainedAt').reverse().toArray(),
     db.roomSupportAssignments.toArray(),
   ])
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
   const supportDoctorIds = new Set(supportAssignments.map((row) => row.doctorId))
   return all.filter((d) => d.assignedRoom === null && !supportDoctorIds.has(d.id))
 }
@@ -141,6 +165,100 @@ export async function unassignSupportDoctor(roomId: string): Promise<void> {
 export async function unassignSupportDoctorFromSlot(roomId: string, slot: number): Promise<void> {
   const db = getHospitalDB()
   await db.roomSupportAssignments.delete(makeRoomSupportAssignmentId(roomId, slot))
+<<<<<<< Updated upstream
+=======
+=======
+  const supportDoctorIds = new Set(supportAssignments.map((assignment) => assignment.doctorId))
+  return all.filter((d) => d.assignedRoom === null && !supportDoctorIds.has(d.id))
+}
+
+export type AssignSupportResult =
+  | { kind: 'success' }
+  | {
+      kind: 'aborted'
+      reason:
+        | 'room-not-found'
+        | 'role-not-available'
+        | 'doctor-not-found'
+        | 'doctor-ineligible'
+        | 'doctor-leading'
+    }
+
+export async function assignSupportDoctor(
+  roomId: string,
+  roleId: RoomSupportRoleId,
+  doctorId: string,
+): Promise<AssignSupportResult> {
+  const db = getHospitalDB()
+  return db.transaction(
+    'rw',
+    [db.rooms, db.doctors, db.roomSupportAssignments],
+    async () => {
+      const [room, doctor] = await Promise.all([db.rooms.get(roomId), db.doctors.get(doctorId)])
+      if (!room) return { kind: 'aborted', reason: 'room-not-found' } as const
+      if (!isSupportRoleAvailableForRoom(room, roleId)) {
+        return { kind: 'aborted', reason: 'role-not-available' } as const
+      }
+      if (!doctor) return { kind: 'aborted', reason: 'doctor-not-found' } as const
+      if (!isEligibleSupportDoctor(doctor, roleId)) {
+        return { kind: 'aborted', reason: 'doctor-ineligible' } as const
+      }
+      if (doctor.assignedRoom !== null) {
+        return { kind: 'aborted', reason: 'doctor-leading' } as const
+      }
+
+      const existingForDoctor = await db.roomSupportAssignments
+        .where('doctorId')
+        .equals(doctorId)
+        .toArray()
+      for (const assignment of existingForDoctor) {
+        await db.roomSupportAssignments.delete([assignment.roomId, assignment.roleId])
+      }
+
+      await db.roomSupportAssignments.put({
+        roomId,
+        roleId,
+        doctorId,
+        assignedAt: Date.now(),
+      })
+
+      return { kind: 'success' } as const
+    },
+  )
+}
+
+export async function unassignSupportDoctor(
+  roomId: string,
+  roleId: RoomSupportRoleId,
+): Promise<void> {
+  const db = getHospitalDB()
+  await db.roomSupportAssignments.delete([roomId, roleId])
+}
+
+export async function getAvailableSupportDoctors(
+  roomId: string,
+  roleId: RoomSupportRoleId = ROOM_SUPPORT_ROLE_ANESTHESIA,
+): Promise<DoctorRow[]> {
+  const db = getHospitalDB()
+  const [room, allDoctors, supportAssignments] = await Promise.all([
+    db.rooms.get(roomId),
+    db.doctors.orderBy('obtainedAt').reverse().toArray(),
+    db.roomSupportAssignments.toArray(),
+  ])
+  if (!room || !isSupportRoleAvailableForRoom(room, roleId)) return []
+  const supportDoctorIds = new Set(
+    supportAssignments
+      .filter((assignment) => assignment.roomId !== roomId || assignment.roleId !== roleId)
+      .map((assignment) => assignment.doctorId),
+  )
+  return allDoctors.filter(
+    (doctor) =>
+      doctor.assignedRoom === null &&
+      !supportDoctorIds.has(doctor.id) &&
+      isEligibleSupportDoctor(doctor, roleId),
+  )
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 }
 
 export interface AssignmentRepairReport {
@@ -153,7 +271,15 @@ export interface AssignmentRepairReport {
     doctorsDuplicates: number
     /** Doctors whose `assignedRoom` pointed to a non-existent room id. */
     doctorsOrphans: number
+<<<<<<< Updated upstream
     /** Support rows removed because they referenced invalid rooms/doctors or broke exclusivity. */
+=======
+<<<<<<< HEAD
+    /** Support rows removed because they referenced invalid rooms/doctors or broke exclusivity. */
+=======
+    /** Support assignments removed because they were stale, duplicate, or invalid. */
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
     supportAssignments: number
   }
 }
@@ -231,6 +357,10 @@ export async function checkAssignmentInvariants(): Promise<AssignmentRepairRepor
       report.repaired.doctorsOrphans += 1
     }
 
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
     const roomsById = new Map(rooms.map((r) => [r.id, r]))
     const doctorsById = new Map(doctors.map((d) => [d.id, d]))
     const supportDoctorIds = new Set<string>()
@@ -258,14 +388,67 @@ export async function checkAssignmentInvariants(): Promise<AssignmentRepairRepor
         supportDoctorIds.add(normalized.doctorId)
       }
     }
+<<<<<<< Updated upstream
+=======
+=======
+    const doctorsById = new Map(doctors.map((d) => [d.id, d]))
+    const roomsById = new Map(rooms.map((r) => [r.id, r]))
+    const supportDoctorWinner = new Map<string, { roomId: string; roleId: RoomSupportRoleId; assignedAt: number }>()
+    const supportKeysToDelete = new Set<string>()
+    const keyOf = (roomId: string, roleId: RoomSupportRoleId) => `${roomId}\u0000${roleId}`
+
+    for (const assignment of supportAssignments) {
+      const room = roomsById.get(assignment.roomId)
+      const doctor = doctorsById.get(assignment.doctorId)
+      let invalid = false
+      if (!room || !doctor) invalid = true
+      if (room && !isSupportRoleAvailableForRoom(room, assignment.roleId)) invalid = true
+      if (doctor && doctor.assignedRoom !== null) invalid = true
+      if (doctor && !isEligibleSupportDoctor(doctor, assignment.roleId)) invalid = true
+
+      if (invalid) {
+        supportKeysToDelete.add(keyOf(assignment.roomId, assignment.roleId))
+        continue
+      }
+
+      const existing = supportDoctorWinner.get(assignment.doctorId)
+      if (!existing || assignment.assignedAt > existing.assignedAt) {
+        if (existing) supportKeysToDelete.add(keyOf(existing.roomId, existing.roleId))
+        supportDoctorWinner.set(assignment.doctorId, {
+          roomId: assignment.roomId,
+          roleId: assignment.roleId,
+          assignedAt: assignment.assignedAt,
+        })
+      } else {
+        supportKeysToDelete.add(keyOf(assignment.roomId, assignment.roleId))
+      }
+    }
+
+    for (const key of supportKeysToDelete) {
+      const [roomId, roleId] = key.split('\u0000') as [string, RoomSupportRoleId]
+      await db.roomSupportAssignments.delete([roomId, roleId])
+      report.repaired.supportAssignments += 1
+    }
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
   })
 
   const { roomsReset, doctorsDuplicates, doctorsOrphans, supportAssignments } = report.repaired
   if (roomsReset + doctorsDuplicates + doctorsOrphans + supportAssignments > 0) {
     console.info(
       `[assignment] repaired ${roomsReset + doctorsDuplicates + doctorsOrphans + supportAssignments} drift(s): ` +
+<<<<<<< Updated upstream
         `roomsReset=${roomsReset}, doctorsDuplicates=${doctorsDuplicates}, doctorsOrphans=${doctorsOrphans}, ` +
         `supportAssignments=${supportAssignments}`,
+=======
+<<<<<<< HEAD
+        `roomsReset=${roomsReset}, doctorsDuplicates=${doctorsDuplicates}, doctorsOrphans=${doctorsOrphans}, ` +
+        `supportAssignments=${supportAssignments}`,
+=======
+        `roomsReset=${roomsReset}, doctorsDuplicates=${doctorsDuplicates}, ` +
+        `doctorsOrphans=${doctorsOrphans}, supportAssignments=${supportAssignments}`,
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
     )
   }
 

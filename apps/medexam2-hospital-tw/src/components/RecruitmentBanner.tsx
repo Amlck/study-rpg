@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { Subject } from '@study-rpg/core'
 import type { MasteryRow } from '../db/schema'
 import { formatMasteryPercent } from '../lib/mastery'
@@ -7,7 +8,6 @@ interface Props {
   subject: Subject
   affinity: number
   threshold: number
-  ticketsAvailable: number
   mastery?: MasteryRow
   /** Number of due SRS cards available for this subject today (post-cap allocation). */
   dueCount?: number
@@ -17,7 +17,6 @@ interface Props {
   quizDisabled?: boolean
   /** Caption text rendered below the actions row when `quizDisabled === true`. */
   quizDisabledReason?: string
-  onRoll: () => void
   onStartQuiz: () => void
 }
 
@@ -25,18 +24,15 @@ export function RecruitmentBanner({
   subject,
   affinity,
   threshold,
-  ticketsAvailable,
   mastery,
   dueCount = 0,
   completion,
   quizDisabled = false,
   quizDisabledReason,
-  onRoll,
   onStartQuiz,
 }: Props) {
   const unlocked = affinity >= threshold
   const missing = Math.max(0, Math.ceil(threshold - affinity))
-  const canRoll = unlocked && ticketsAvailable > 0
   const progressPct = Math.min(100, Math.round((affinity / threshold) * 100))
   const affinityDisplay = Math.round(affinity * 10) / 10
 
@@ -85,21 +81,24 @@ export function RecruitmentBanner({
         >
           <EmojiIcon char="📚" size={20} /> 學習
         </button>
-        <button
-          type="button"
-          className="banner__roll"
-          disabled={!canRoll}
-          onClick={onRoll}
-          title={
-            unlocked
-              ? ticketsAvailable > 0
-                ? '消耗 1 張券抽一位醫師'
-                : '招募券不足'
-              : `再答對 ${missing} 題${subject.displayName}解鎖`
-          }
-        >
-          <EmojiIcon char="🎫" size={20} /> 招募
-        </button>
+        {unlocked ? (
+          <Link
+            to="/supply"
+            className="banner__roll banner__supply-link"
+            title="前往院務補給招募醫師"
+          >
+            <EmojiIcon char="🏥" size={20} /> 補給
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className="banner__roll"
+            disabled
+            title={`再答對 ${missing} 題${subject.displayName}解鎖`}
+          >
+            <EmojiIcon char="🏥" size={20} /> 補給
+          </button>
+        )}
       </div>
       {quizDisabled && quizDisabledReason && (
         <p className="banner-quiz-disabled-note"><EmojiIcon char="📷" size={16} /> {quizDisabledReason}</p>

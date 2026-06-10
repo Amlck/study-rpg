@@ -14,9 +14,25 @@ import { RoomCard } from '../components/RoomCard'
 import { AssignDoctorModal } from '../components/AssignDoctorModal'
 import { purchaseRoomExtension, type ExtensionResult } from '../services/room-extension'
 import { SurfaceHint } from '../components/SurfaceHint'
+<<<<<<< Updated upstream
 import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
 import { computeRoomThroughputWithSupport } from '../lib/room-team'
+=======
+<<<<<<< HEAD
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
+import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { computeRoomThroughputWithSupport } from '../lib/room-team'
+=======
+import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
 const EXTRA_PREFIX = 'extra-'
 const ROOM_TYPES_ORDERED: ReadonlyArray<RoomType> = ['outpatient', 'emergency', 'surgery', 'ward', 'icu']
@@ -32,21 +48,37 @@ export function Hospital() {
   const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
+  const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
   const [activeRoom, setActiveRoom] = useState<Room | null>(null)
   const [extOutcome, setExtOutcome] = useState<{ type: RoomType; result: ExtensionResult } | null>(null)
   const [extBusy, setExtBusy] = useState(false)
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
   const supportDoctorByRoom = useMemo(
     () => buildSupportDoctorByRoom(doctors, supportAssignments),
     [doctors, supportAssignments],
   )
+<<<<<<< Updated upstream
+=======
+=======
+  const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor])), [doctors])
+  const supportByRoom = useMemo(() => buildSupportAssignmentByRoom(supportAssignments), [supportAssignments])
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
   const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let sum = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
       const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
       sum += computeRoomThroughputWithSupport(
@@ -61,11 +93,33 @@ export function Hospital() {
     }
     return sum
   }, [rooms, doctorByRoom, supportDoctorByRoom, equippedItemMap])
+<<<<<<< Updated upstream
+=======
+=======
+      const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+      const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
+      sum += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
+    }
+    return sum
+  }, [rooms, doctorByRoom, supportByRoom, doctorsById, equippedItemMap])
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
   const assignedCount = doctorByRoom.size
+  const supportCount = supportByRoom.size
 
   const activeDoctor = activeRoom ? getAssignedDoctor(activeRoom.id, doctorByRoom) : null
+<<<<<<< Updated upstream
   const activeSupportDoctors = activeRoom ? getSupportDoctors(activeRoom.id, supportDoctorByRoom) : []
+=======
+<<<<<<< HEAD
+  const activeSupportDoctors = activeRoom ? getSupportDoctors(activeRoom.id, supportDoctorByRoom) : []
+=======
+  const activeSupportDoctor = activeRoom
+    ? getSupportDoctorForRoom(activeRoom.id, supportByRoom, doctorsById)
+    : null
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
   return (
     <main className="app-shell">
@@ -74,6 +128,7 @@ export function Hospital() {
         <div className="app-header__meta">
           <span className="hospital-throughput">
             {counters?.tier ?? '診所'} · 總產能 {totalThroughput.toFixed(1)} 患者/分 · 房間 {assignedCount}/{rooms.length}
+            {supportCount > 0 && <> · 支援 {supportCount}</>}
           </span>
           <Link to="/" className="nav-link">
             ← 回主畫面
@@ -92,7 +147,15 @@ export function Hospital() {
       <section className="hospital-grid">
         {rooms.map((room) => {
           const doctor = getAssignedDoctor(room.id, doctorByRoom)
+<<<<<<< Updated upstream
           const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
+=======
+<<<<<<< HEAD
+          const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
+=======
+          const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
           const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
           return (
             <RoomCard
@@ -102,7 +165,15 @@ export function Hospital() {
               supportDoctors={supportDoctors}
               onClick={() => setActiveRoom(room)}
               equipment={equippedItem}
+<<<<<<< Updated upstream
               supportEquipmentMap={equippedItemMap}
+=======
+<<<<<<< HEAD
+              supportEquipmentMap={equippedItemMap}
+=======
+              supportDoctor={supportDoctor}
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
             />
           )
         })}
@@ -210,7 +281,15 @@ export function Hospital() {
         <AssignDoctorModal
           room={activeRoom}
           currentDoctor={activeDoctor}
+<<<<<<< Updated upstream
           currentSupportDoctors={activeSupportDoctors}
+=======
+<<<<<<< HEAD
+          currentSupportDoctors={activeSupportDoctors}
+=======
+          currentSupportDoctor={activeSupportDoctor}
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
           equippedItemMap={equippedItemMap}
           onClose={() => setActiveRoom(null)}
         />

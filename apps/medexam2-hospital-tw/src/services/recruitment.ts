@@ -3,8 +3,12 @@ import {
   RECRUITMENT_THRESHOLDS,
   RECRUITMENT_WEIGHTS,
   RECRUITMENT_PITY_RULES,
+  HOSPITAL_CREDIT_PRICES,
   RARITY_POWER_MULTIPLIER,
   DEFAULT_DOCTOR_TITLE_BY_RARITY,
+  TIER_ORDER,
+  rarityIsAtLeast,
+  type HospitalTier,
   type Rarity,
 } from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
@@ -14,6 +18,7 @@ import {
   getHospitalDB,
   type DoctorRow,
 } from '../db/schema'
+import { spendHospitalCredits } from './hospital-credits'
 
 /**
  * Resolve the spriteKey for a newly rolled doctor with 50/50 male/female pick
@@ -42,8 +47,47 @@ export function resolveSpriteKey(
 export type RollOutcome =
   | { ok: true; doctor: DoctorRow; wasPity: boolean }
   | { ok: false; reason: 'banner-locked'; missing: number }
-  | { ok: false; reason: 'no-tickets' }
+  | { ok: false; reason: 'no-credits' }
   | { ok: false; reason: 'unknown-subject' }
+
+export type FocusedDoctorRollOutcome =
+  | { ok: true; doctor: DoctorRow; wasPity: false }
+  | { ok: false; reason: 'locked-tier' | 'no-credits' | 'no-unlocked-banners' | 'empty-pool' }
+
+function isTierAtLeast(tier: HospitalTier, minTier: HospitalTier): boolean {
+  return TIER_ORDER.indexOf(tier) >= TIER_ORDER.indexOf(minTier)
+}
+
+function weightedRarity(
+  weights: typeof RECRUITMENT_WEIGHTS,
+  rng: () => number = Math.random,
+): Rarity | null {
+  const total = weights.reduce((sum, row) => sum + row.weight, 0)
+  if (total <= 0) return null
+  let roll = rng() * total
+  for (const row of weights) {
+    roll -= row.weight
+    if (roll < 0) return row.id as Rarity
+  }
+  const fallback = weights[weights.length - 1]?.id
+  return fallback ? fallback as Rarity : null
+}
+
+async function createDoctor(subject: Subject, rarity: Rarity): Promise<DoctorRow> {
+  const db = getHospitalDB()
+  const seq = (await db.doctors.where('subjectId').equals(subject.id).count()) + 1
+  return {
+    id: randomId(),
+    subjectId: subject.id,
+    rarity,
+    powerMultiplier: RARITY_POWER_MULTIPLIER[rarity],
+    name: `${subject.displayName} ${DEFAULT_DOCTOR_TITLE_BY_RARITY[rarity]} #${seq}`,
+    spriteKey: resolveSpriteKey(subject.id, rarity, THEME_PIXEL_HOSPITAL.sprites),
+    obtainedAt: Date.now(),
+    assignedRoom: null,
+    pityCounter: 0,
+  }
+}
 
 export async function attemptRoll(subject: Subject): Promise<RollOutcome> {
   const threshold = RECRUITMENT_THRESHOLDS[subject.id]
@@ -55,10 +99,9 @@ export async function attemptRoll(subject: Subject): Promise<RollOutcome> {
   }
 
   const db = getHospitalDB()
-  return db.transaction('rw', db.tickets, db.gachaStats, db.doctors, async () => {
-    const ticketsRow = await db.tickets.get('global')
-    if (!ticketsRow || ticketsRow.available < 1) {
-      return { ok: false, reason: 'no-tickets' } as const
+  return db.transaction('rw', db.gameCounters, db.gachaStats, db.doctors, async () => {
+    if (!(await spendHospitalCredits(HOSPITAL_CREDIT_PRICES.doctorPull))) {
+      return { ok: false, reason: 'no-credits' } as const
     }
 
     const stats = await getGachaStats()
@@ -67,20 +110,8 @@ export async function attemptRoll(subject: Subject): Promise<RollOutcome> {
       stats,
     )
     const rarity = result.tier as Rarity
-    const seq = (await db.doctors.where('subjectId').equals(subject.id).count()) + 1
-    const doctor: DoctorRow = {
-      id: randomId(),
-      subjectId: subject.id,
-      rarity,
-      powerMultiplier: RARITY_POWER_MULTIPLIER[rarity],
-      name: `${subject.displayName} ${DEFAULT_DOCTOR_TITLE_BY_RARITY[rarity]} #${seq}`,
-      spriteKey: resolveSpriteKey(subject.id, rarity, THEME_PIXEL_HOSPITAL.sprites),
-      obtainedAt: Date.now(),
-      assignedRoom: null,
-      pityCounter: 0,
-    }
+    const doctor = await createDoctor(subject, rarity)
 
-    await db.tickets.put({ ...ticketsRow, available: ticketsRow.available - 1 })
     await db.gachaStats.put({
       id: 'global',
       totalRolls: result.newStats.totalRolls,
@@ -88,5 +119,38 @@ export async function attemptRoll(subject: Subject): Promise<RollOutcome> {
     })
     await db.doctors.put(doctor)
     return { ok: true, doctor, wasPity: result.wasPity } as const
+  })
+}
+
+export async function attemptFocusedP3Roll(subjects: Subject[]): Promise<FocusedDoctorRollOutcome> {
+  const db = getHospitalDB()
+  const counters = await db.gameCounters.get('singleton')
+  if (!counters || !isTierAtLeast(counters.tier, '醫學中心')) {
+    return { ok: false, reason: 'locked-tier' }
+  }
+
+  const unlocked: Subject[] = []
+  for (const subject of subjects) {
+    const threshold = RECRUITMENT_THRESHOLDS[subject.id]
+    if (threshold === undefined) continue
+    const affinity = await getAffinity(subject.id)
+    if (affinity >= threshold) unlocked.push(subject)
+  }
+  if (unlocked.length === 0) return { ok: false, reason: 'no-unlocked-banners' }
+
+  const focusedWeights = RECRUITMENT_WEIGHTS.filter((row) =>
+    rarityIsAtLeast(row.id as Rarity, 'P3'),
+  )
+  const rarity = weightedRarity(focusedWeights)
+  if (!rarity) return { ok: false, reason: 'empty-pool' }
+  const subject = unlocked[Math.floor(Math.random() * unlocked.length)]
+
+  return db.transaction('rw', db.gameCounters, db.doctors, async () => {
+    if (!(await spendHospitalCredits(HOSPITAL_CREDIT_PRICES.focusedDoctorP3))) {
+      return { ok: false, reason: 'no-credits' } as const
+    }
+    const doctor = await createDoctor(subject, rarity)
+    await db.doctors.put(doctor)
+    return { ok: true, doctor, wasPity: false } as const
   })
 }

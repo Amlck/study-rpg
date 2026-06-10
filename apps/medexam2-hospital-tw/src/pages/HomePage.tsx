@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Subject, SubjectId } from '@study-rpg/core'
 import {
+  HOSPITAL_CREDIT_CAP,
+  HOSPITAL_CREDIT_LABEL,
   RECRUITMENT_THRESHOLDS,
-  TICKET_CAP,
   READING_IDLE_RATE_REDUCTION,
   READING_SESSION_BUFF_MULTIPLIER,
   TIER_DIVERSIFICATION_REQUIREMENTS,
@@ -20,7 +21,6 @@ import {
   incrementAffinity,
   type DoctorRow,
 } from '../db/schema'
-import { attemptRoll, type RollOutcome } from '../services/recruitment'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
 import { getNextDailyRefreshLabel } from '../lib/daily-ticket'
@@ -36,15 +36,30 @@ import { RecruitmentBanner } from '../components/RecruitmentBanner'
 import { RecruitmentResultModal } from '../components/RecruitmentResultModal'
 import { DevAffinityControls } from '../components/DevAffinityControls'
 import { HospitalScene } from '../components/HospitalScene'
+<<<<<<< Updated upstream
 import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
 import { computeRoomThroughputWithSupport } from '../lib/room-team'
+=======
+<<<<<<< HEAD
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
+import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { computeRoomThroughputWithSupport } from '../lib/room-team'
+=======
+import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
-import { TargetedTicketSection } from '../components/TargetedTicketSection'
-import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
 import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
+import { readHospitalCredits } from '../services/hospital-credits'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
 
@@ -52,7 +67,6 @@ export function HomePage() {
   const db = getHospitalDB()
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
-  const [modal, setModal] = useState<{ outcome: Extract<RollOutcome, { ok: true }> } | null>(null)
   const [starterResult, setStarterResult] = useState<{ doctor: DoctorRow } | null>(null)
   const [starterOpen, setStarterOpen] = useState(false)
   const [activeQuizSubject, setActiveQuizSubject] = useState<SubjectId | null>(null)
@@ -64,11 +78,9 @@ export function HomePage() {
   }, [])
 
   const affinityRows = useLiveQuery(() => db.affinity.toArray(), []) ?? []
-  const ticketsRow = useLiveQuery(() => db.tickets.get('global'), [])
-  const ticketsAvailable = ticketsRow?.available ?? 0
-  const equipmentTicketsRow = useLiveQuery(() => db.equipmentTickets.get('global'), [])
-  const refreshLabel = getNextDailyRefreshLabel(new Date(), ticketsAvailable, TICKET_CAP)
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
+  const creditsAvailable = readHospitalCredits(counters)
+  const refreshLabel = getNextDailyRefreshLabel(new Date(), creditsAvailable, HOSPITAL_CREDIT_CAP)
   const mono = useLiveQuery(() => db.monotonicCounters.get('singleton'), [])
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const allDoctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
@@ -130,19 +142,6 @@ export function HomePage() {
     }
   }
 
-  async function handleRoll(subject: Subject) {
-    const outcome = await attemptRoll(subject)
-    if (outcome.ok) {
-      setModal({ outcome })
-    } else if (outcome.reason === 'no-tickets') {
-      pushToast('招募券不足，明天再來', 'error')
-    } else if (outcome.reason === 'banner-locked') {
-      pushToast(`還需答對 ${outcome.missing} 題 ${subject.displayName}`, 'error')
-    } else if (outcome.reason === 'unknown-subject') {
-      pushToast(`未知科別：${subject.id}`, 'error')
-    }
-  }
-
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -159,6 +158,9 @@ export function HomePage() {
           </Link>
           <Link to="/fate-cards" className="nav-link">
             命運 →
+          </Link>
+          <Link to="/supply" className="nav-link">
+            補給 →
           </Link>
           <Link to="/equipment" className="nav-link">
             器材 →
@@ -180,13 +182,10 @@ export function HomePage() {
       <div className="ticket-counter-row">
         <span
           className="ticket-counter"
-          title="每日台灣早上 08:00 自動發放 +1 張免費招募券，持有上限 99 張"
+          title={`每日台灣早上 08:00 自動發放 +1 ${HOSPITAL_CREDIT_LABEL}，持有上限 ${HOSPITAL_CREDIT_CAP}`}
         >
-          <EmojiIcon char="🎟" size={20} /> {ticketsAvailable} / {TICKET_CAP}
+          <EmojiIcon char="🏥" size={20} /> {creditsAvailable} / {HOSPITAL_CREDIT_CAP} {HOSPITAL_CREDIT_LABEL}
           <span className="ticket-counter__refill"> · {refreshLabel}</span>
-        </span>
-        <span className="ticket-counter" title="器材補給池使用的器材券">
-          🧰 {equipmentTicketsRow?.available ?? 0} / {EQUIPMENT_TICKET_CAP}
         </span>
       </div>
 
@@ -237,11 +236,24 @@ export function HomePage() {
 
       {(() => {
         const doctorByRoom = buildDoctorByRoom(allDoctors)
+<<<<<<< Updated upstream
         const supportDoctorByRoom = buildSupportDoctorByRoom(allDoctors, supportAssignments)
+=======
+<<<<<<< HEAD
+        const supportDoctorByRoom = buildSupportDoctorByRoom(allDoctors, supportAssignments)
+=======
+        const doctorsById = new Map(allDoctors.map((doctor) => [doctor.id, doctor]))
+        const supportByRoom = buildSupportAssignmentByRoom(supportAssignments)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
         const equippedItemMap = buildEquippedItemMap(allEquipment)
         let throughput = 0
         for (const room of rooms) {
           const d = getAssignedDoctor(room.id, doctorByRoom)
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
           const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
           const equippedItem = d ? equippedItemMap.get(d.id) : undefined
           throughput += computeRoomThroughputWithSupport(
@@ -253,6 +265,14 @@ export function HomePage() {
               equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
             })),
           )
+<<<<<<< Updated upstream
+=======
+=======
+          const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+          const equippedItem = d ? equippedItemMap.get(d.id) : undefined
+          throughput += computeRoomTeamThroughput(room, d, supportDoctor, equippedItem)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
         }
         const salary = counters ? computeSalaryDrain(allDoctors, counters.tier) : 0
         // Inactive branch shows a counterfactual baseline (tick paused, no actual
@@ -315,14 +335,6 @@ export function HomePage() {
         <StarterPullCard onOpen={() => setStarterOpen(true)} />
       )}
 
-      <TargetedTicketSection
-        subjects={subjects}
-        onConsumed={(doctor) =>
-          setModal({ outcome: { ok: true, doctor, wasPity: false } })
-        }
-        onError={(msg) => pushToast(msg, 'error')}
-      />
-
       <YearFilterBar />
 
       <section className="banners">
@@ -335,7 +347,6 @@ export function HomePage() {
               subject={s}
               affinity={affinityMap[s.id] ?? 0}
               threshold={RECRUITMENT_THRESHOLDS[s.id] ?? 0}
-              ticketsAvailable={ticketsAvailable}
               mastery={masteryMap[s.id]}
               dueCount={dueCountMap[s.id] ?? 0}
               completion={completionMap?.get(s.id as SubjectId)}
@@ -347,7 +358,6 @@ export function HomePage() {
                     : `此組合 0 題，請放寬年份篩選`
                   : undefined
               }
-              onRoll={() => void handleRoll(s)}
               onStartQuiz={() => setActiveQuizSubject(s.id as SubjectId)}
             />
           )
@@ -361,12 +371,6 @@ export function HomePage() {
           <div key={t.id} className={`toast toast--${t.kind}`}>{t.text}</div>
         ))}
       </div>
-
-      <RecruitmentResultModal
-        doctor={modal?.outcome.doctor ?? null}
-        wasPity={modal?.outcome.wasPity ?? false}
-        onClose={() => setModal(null)}
-      />
 
       <RecruitmentResultModal
         doctor={starterResult?.doctor ?? null}

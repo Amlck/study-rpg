@@ -6,7 +6,6 @@ import {
   FACILITY_UPGRADE_COSTS,
   RARITY_LABELS,
   ROOM_TYPE_LABELS,
-  computeThroughput,
   type Room,
 } from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
@@ -15,6 +14,10 @@ import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { EmojiIcon } from './EmojiIcon'
 import {
   assignDoctor,
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
   assignSupportDoctorToSlot,
   getAvailableSupportDoctors,
   getUnassignedDoctors,
@@ -24,11 +27,39 @@ import {
 import { upgradeFacility } from '../services/facility'
 import { getEquipmentBonus } from '../services/equipment'
 import { computeSupportThroughput, getRoomSupportCapacity, SUPPORT_THROUGHPUT_SHARE } from '../lib/room-team'
+<<<<<<< Updated upstream
+=======
+=======
+  assignSupportDoctor,
+  getAvailableSupportDoctors,
+  getUnassignedDoctors,
+  unassignDoctor,
+  unassignSupportDoctor,
+} from '../lib/assignment'
+import { upgradeFacility } from '../services/facility'
+import {
+  ROOM_SUPPORT_ROLE_ANESTHESIA,
+  ROOM_SUPPORT_ROLE_DESCRIPTIONS,
+  ROOM_SUPPORT_ROLE_LABELS,
+  computeRoomTeamThroughput,
+  getRoomSupportMultiplier,
+  isSupportRoleAvailableForRoom,
+} from '../services/room-team'
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
 interface AssignDoctorModalProps {
   room: Room
   currentDoctor: DoctorRow | null
+<<<<<<< Updated upstream
   currentSupportDoctors?: DoctorRow[]
+=======
+<<<<<<< HEAD
+  currentSupportDoctors?: DoctorRow[]
+=======
+  currentSupportDoctor?: DoctorRow | null
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
   /** Equipment currently equipped by each doctor, keyed by doctorId. */
   equippedItemMap?: Map<string, EquipmentRow>
   onClose: () => void
@@ -37,7 +68,15 @@ interface AssignDoctorModalProps {
 export function AssignDoctorModal({
   room: initialRoom,
   currentDoctor,
+<<<<<<< Updated upstream
   currentSupportDoctors = [],
+=======
+<<<<<<< HEAD
+  currentSupportDoctors = [],
+=======
+  currentSupportDoctor = null,
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
   equippedItemMap,
   onClose,
 }: AssignDoctorModalProps) {
@@ -47,10 +86,23 @@ export function AssignDoctorModal({
   const room = liveRoom ?? initialRoom
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const [candidates, setCandidates] = useState<DoctorRow[]>([])
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
   const [supportCandidatesBySlot, setSupportCandidatesBySlot] = useState<Record<number, DoctorRow[]>>({})
   const [busy, setBusy] = useState(false)
   const [facilityError, setFacilityError] = useState<string | null>(null)
   const supportCapacity = getRoomSupportCapacity(room.type)
+<<<<<<< Updated upstream
+=======
+=======
+  const [supportCandidates, setSupportCandidates] = useState<DoctorRow[]>([])
+  const [busy, setBusy] = useState(false)
+  const [facilityError, setFacilityError] = useState<string | null>(null)
+  const [supportError, setSupportError] = useState<string | null>(null)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
   useEffect(() => {
     let cancelled = false
@@ -68,6 +120,10 @@ export function AssignDoctorModal({
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
       if (supportCapacity <= 0) {
         if (!cancelled) setSupportCandidatesBySlot({})
         return
@@ -84,11 +140,34 @@ export function AssignDoctorModal({
           : withoutDuplicateCurrent
       }
       if (!cancelled) setSupportCandidatesBySlot(next)
+<<<<<<< Updated upstream
+=======
+=======
+      if (!isSupportRoleAvailableForRoom(room, ROOM_SUPPORT_ROLE_ANESTHESIA)) {
+        if (!cancelled) setSupportCandidates([])
+        return
+      }
+      const available = await getAvailableSupportDoctors(room.id, ROOM_SUPPORT_ROLE_ANESTHESIA)
+      const ordered =
+        currentSupportDoctor && !available.some((d) => d.id === currentSupportDoctor.id)
+          ? [currentSupportDoctor, ...available]
+          : available
+      if (!cancelled) setSupportCandidates(ordered)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
     })()
     return () => {
       cancelled = true
     }
+<<<<<<< Updated upstream
   }, [currentDoctor, currentSupportDoctors, room.id, supportCapacity])
+=======
+<<<<<<< HEAD
+  }, [currentDoctor, currentSupportDoctors, room.id, supportCapacity])
+=======
+  }, [room, currentSupportDoctor])
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
   async function handlePick(doctor: DoctorRow) {
     if (busy) return
@@ -116,6 +195,10 @@ export function AssignDoctorModal({
     }
   }
 
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
   async function handlePickSupport(slot: number, doctor: DoctorRow) {
     if (busy) return
     setBusy(true)
@@ -123,6 +206,29 @@ export function AssignDoctorModal({
       const currentSupportDoctor = currentSupportDoctors[slot - 1] ?? null
       if (doctor.id !== currentSupportDoctor?.id) {
         await assignSupportDoctorToSlot(room.id, slot, doctor.id)
+<<<<<<< Updated upstream
+=======
+=======
+  async function handlePickSupport(doctor: DoctorRow) {
+    if (busy) return
+    setBusy(true)
+    setSupportError(null)
+    try {
+      if (doctor.id !== currentSupportDoctor?.id) {
+        const result = await assignSupportDoctor(room.id, ROOM_SUPPORT_ROLE_ANESTHESIA, doctor.id)
+        if (result.kind === 'aborted') {
+          const reasonLabel: Record<typeof result.reason, string> = {
+            'room-not-found': '找不到房間',
+            'role-not-available': '這個房間沒有支援槽',
+            'doctor-not-found': '找不到醫師',
+            'doctor-ineligible': '麻醉支援需要麻醉科醫師',
+            'doctor-leading': '這位醫師已經是主治，不能同時支援',
+          }
+          setSupportError(reasonLabel[result.reason])
+          return
+        }
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
       }
       onClose()
     } finally {
@@ -130,11 +236,26 @@ export function AssignDoctorModal({
     }
   }
 
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
   async function handleUnassignSupport(slot: number) {
     if (busy) return
     setBusy(true)
     try {
       await unassignSupportDoctorFromSlot(room.id, slot)
+<<<<<<< Updated upstream
+=======
+=======
+  async function handleUnassignSupport() {
+    if (busy) return
+    setBusy(true)
+    setSupportError(null)
+    try {
+      await unassignSupportDoctor(room.id, ROOM_SUPPORT_ROLE_ANESTHESIA)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
       onClose()
     } finally {
       setBusy(false)
@@ -179,6 +300,8 @@ export function AssignDoctorModal({
           </p>
         </header>
 
+        <section className="assign-modal__section">
+          <h3 className="assign-modal__section-title">主治醫師</h3>
         {candidates.length === 0 ? (
           <p className="assign-modal__empty">
             目前沒有可指派的醫師。回主畫面累積親和值招募吧！
@@ -188,7 +311,6 @@ export function AssignDoctorModal({
             {candidates.map((d) => {
               const isCurrent = d.id === currentDoctor?.id
               const equippedItem = equippedItemMap?.get(d.id)
-              const throughput = computeThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
               const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
               return (
                 <li key={d.id}>
@@ -209,7 +331,7 @@ export function AssignDoctorModal({
                       </span>
                     </span>
                     <span className="assign-modal__throughput">
-                      {throughput.toFixed(1)}/分
+                      {computeRoomTeamThroughput(room, d, currentSupportDoctor, equippedItem).toFixed(1)}/分
                       {isCurrent && <small>（目前）</small>}
                     </span>
                   </button>
@@ -217,6 +339,138 @@ export function AssignDoctorModal({
               )
             })}
           </ul>
+        )}
+        </section>
+
+        {isSupportRoleAvailableForRoom(room, ROOM_SUPPORT_ROLE_ANESTHESIA) && (
+          <section className="assign-modal__section assign-modal__support" aria-label={ROOM_SUPPORT_ROLE_LABELS.anesthesia}>
+            <h3 className="assign-modal__section-title">{ROOM_SUPPORT_ROLE_LABELS.anesthesia}</h3>
+            <p className="assign-modal__support-hint">
+              {ROOM_SUPPORT_ROLE_DESCRIPTIONS.anesthesia}
+            </p>
+
+            {supportCandidates.length === 0 ? (
+              <p className="assign-modal__empty">
+                目前沒有可支援的麻醉科醫師。已擔任主治或其他支援的醫師不會出現在這裡。
+              </p>
+            ) : (
+              <ul className="assign-modal__list">
+                {supportCandidates.map((d) => {
+                  const isCurrent = d.id === currentSupportDoctor?.id
+                  const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
+                  const teamMultiplier = getRoomSupportMultiplier(room, currentDoctor, d, ROOM_SUPPORT_ROLE_ANESTHESIA)
+                  const equippedItem = currentDoctor ? equippedItemMap?.get(currentDoctor.id) : undefined
+                  const teamThroughput = computeRoomTeamThroughput(room, currentDoctor, d, equippedItem)
+                  return (
+                    <li key={d.id}>
+                      <button
+                        type="button"
+                        className={`assign-modal__row ${isCurrent ? 'assign-modal__row--current' : ''}`}
+                        onClick={() => void handlePickSupport(d)}
+                        disabled={busy}
+                        style={{ ['--rarity-color' as string]: `var(--rarity-${d.rarity.toLowerCase()})` } as React.CSSProperties}
+                      >
+                        <span className="assign-modal__sprite">
+                          {spriteUrl ? <img src={spriteUrl} alt="" /> : <EmojiIcon char="⚕" size={32} />}
+                        </span>
+                        <span className="assign-modal__info">
+                          <span className="assign-modal__name">{d.name}</span>
+                          <span className="assign-modal__meta">
+                            {d.rarity} {RARITY_LABELS[d.rarity]} · {d.subjectId}
+                          </span>
+                        </span>
+                        <span className="assign-modal__throughput">
+                          團隊 ×{teamMultiplier.toFixed(2).replace(/\.?0+$/, '')}
+                          {currentDoctor && <small>{teamThroughput.toFixed(1)}/分</small>}
+                          {isCurrent && <small>（目前）</small>}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {supportError && <p className="assign-modal__facility-error">{supportError}</p>}
+            {currentSupportDoctor && (
+              <button
+                type="button"
+                className="assign-modal__unassign assign-modal__support-unassign"
+                onClick={() => void handleUnassignSupport()}
+                disabled={busy}
+              >
+                取消{ROOM_SUPPORT_ROLE_LABELS.anesthesia}
+              </button>
+            )}
+          </section>
+        )}
+
+        {supportCapacity > 0 && (
+          <section className="assign-modal__support" aria-label="支援醫師">
+            <header className="assign-modal__section-head">
+              <h3>支援醫師</h3>
+              <span>{ROOM_TYPE_LABELS[room.type]} · {supportCapacity} 格 · {Math.round(SUPPORT_THROUGHPUT_SHARE * 100)}% 產能</span>
+            </header>
+            {Array.from({ length: supportCapacity }, (_, i) => i + 1).map((slot) => {
+              const supportCandidates = supportCandidatesBySlot[slot] ?? []
+              const currentSupportDoctor = currentSupportDoctors[slot - 1] ?? null
+              return (
+                <div key={slot} className="assign-modal__support-slot">
+                  <div className="assign-modal__support-slot-head">
+                    <strong>支援 #{slot}</strong>
+                    {currentSupportDoctor && (
+                      <button
+                        type="button"
+                        className="assign-modal__unassign assign-modal__unassign--support"
+                        onClick={() => void handleUnassignSupport(slot)}
+                        disabled={busy}
+                      >
+                        取消支援
+                      </button>
+                    )}
+                  </div>
+                  {supportCandidates.length === 0 ? (
+                    <p className="assign-modal__empty assign-modal__empty--compact">
+                      目前沒有可支援的空閒醫師。
+                    </p>
+                  ) : (
+                    <ul className="assign-modal__list assign-modal__list--support">
+                      {supportCandidates.map((d) => {
+                        const isCurrent = d.id === currentSupportDoctor?.id
+                        const equippedItem = equippedItemMap?.get(d.id)
+                        const throughput = computeSupportThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
+                        const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
+                        return (
+                          <li key={d.id}>
+                            <button
+                              type="button"
+                              className={`assign-modal__row ${isCurrent ? 'assign-modal__row--current' : ''}`}
+                              onClick={() => void handlePickSupport(slot, d)}
+                              disabled={busy}
+                              style={{ ['--rarity-color' as string]: `var(--rarity-${d.rarity.toLowerCase()})` } as React.CSSProperties}
+                            >
+                              <span className="assign-modal__sprite">
+                                {spriteUrl ? <img src={spriteUrl} alt="" /> : <EmojiIcon char="🩺" size={32} />}
+                              </span>
+                              <span className="assign-modal__info">
+                                <span className="assign-modal__name">{d.name}</span>
+                                <span className="assign-modal__meta">
+                                  {d.rarity} {RARITY_LABELS[d.rarity]} · ×{d.powerMultiplier.toFixed(1)}
+                                </span>
+                              </span>
+                              <span className="assign-modal__throughput">
+                                +{throughput.toFixed(1)}/分
+                                {isCurrent && <small>（目前支援）</small>}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
+          </section>
         )}
 
         {supportCapacity > 0 && (

@@ -25,9 +25,25 @@ import { getHospitalDB } from '../db/schema'
 import { getStudySessionController, useStudySessionTick } from '../lib/tick'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { SurfaceHint } from '../components/SurfaceHint'
+<<<<<<< Updated upstream
 import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
 import { computeRoomThroughputWithSupport } from '../lib/room-team'
+=======
+<<<<<<< HEAD
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
+import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { computeRoomThroughputWithSupport } from '../lib/room-team'
+=======
+import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
 export function StudySessionPage() {
   const db = getHospitalDB()
@@ -42,16 +58,31 @@ export function StudySessionPage() {
   const state = useStudySessionTick()
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
   const supportDoctorByRoom = useMemo(
     () => buildSupportDoctorByRoom(doctors, supportAssignments),
     [doctors, supportAssignments],
   )
+<<<<<<< Updated upstream
+=======
+=======
+  const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor])), [doctors])
+  const supportByRoom = useMemo(() => buildSupportAssignmentByRoom(supportAssignments), [supportAssignments])
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
   const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let t = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
       const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
       t += computeRoomThroughputWithSupport(
@@ -66,6 +97,17 @@ export function StudySessionPage() {
     }
     return t
   }, [rooms, doctorByRoom, supportDoctorByRoom, equippedItemMap])
+<<<<<<< Updated upstream
+=======
+=======
+      const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+      const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
+      t += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
+    }
+    return t
+  }, [rooms, doctorByRoom, supportByRoom, doctorsById, equippedItemMap])
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
   const salaryDrain = useMemo(() => {
     if (!counters) return 0
@@ -209,6 +251,10 @@ export function StudySessionPage() {
           <ul className="study-session__room-list">
             {assignedRooms.map((room) => {
               const d = getAssignedDoctor(room.id, doctorByRoom)
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
               const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
               const equippedItem = d ? equippedItemMap.get(d.id) : undefined
               const throughput = computeRoomThroughputWithSupport(
@@ -220,12 +266,28 @@ export function StudySessionPage() {
                   equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
                 })),
               )
+<<<<<<< Updated upstream
+=======
+=======
+              const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+              const equippedItem = d ? equippedItemMap.get(d.id) : undefined
+              const throughput = computeRoomTeamThroughput(room, d, supportDoctor, equippedItem)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
               return (
                 <li key={room.id} className="study-session__room-item">
                   <span className="room-type-label">{ROOM_TYPE_LABELS[room.type]} #{room.slot}</span>
                   <span className="doctor-name">
                     {d?.name ?? '（未指派）'}
+<<<<<<< Updated upstream
                     {supportDoctors.length > 0 ? ` + ${supportDoctors.map((supportDoctor) => supportDoctor.name).join(' + ')}` : ''}
+=======
+<<<<<<< HEAD
+                    {supportDoctors.length > 0 ? ` + ${supportDoctors.map((supportDoctor) => supportDoctor.name).join(' + ')}` : ''}
+=======
+                    {supportDoctor && <> + {supportDoctor.name}</>}
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
                   </span>
                   <span className="throughput">{fmt(throughput, 1)} / 分</span>
                 </li>

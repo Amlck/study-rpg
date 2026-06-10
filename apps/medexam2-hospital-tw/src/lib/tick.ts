@@ -15,9 +15,11 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   EVENT_TICK_INTERVAL,
+  HOSPITAL_CREDIT_CAP,
   MALPRACTICE_AUTO_RESOLVE_MS,
   MALPRACTICE_PENALTY_REP,
   MAX_OFFLINE_TICK_SEC,
+  REGIONAL_HOSPITAL_CREDIT_BONUS,
   TIER_DIVERSIFICATION_REQUIREMENTS,
   READING_SESSION_BUFF_MULTIPLIER,
   TIER_ROOMS,
@@ -36,6 +38,7 @@ import {
   type StudySessionController,
   type StudySessionState,
   type ToastEventOutcome,
+  clampHospitalCredits,
 } from '@study-rpg/content-medexam2-tw'
 import {
   jitterTicksUntilNextERConsult,
@@ -48,20 +51,36 @@ import {
   isERConsultExpired,
   rollNewERConsult,
 } from '../services/er-consultation'
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
 import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from './room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
 import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
 import { computeRoomThroughputWithSupport } from './room-team'
+<<<<<<< Updated upstream
+=======
+=======
+import { buildDoctorByRoom, getAssignedDoctor } from './room-doctor-map'
+import { buildEquippedItemMap } from '../services/equipment'
+import {
+  buildSupportAssignmentByRoom,
+  computeRoomTeamThroughput,
+  getSupportDoctorForRoom,
+} from '../services/room-team'
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 
-/** Equipment tickets granted on tier upgrade (indexed by the tier you just reached). */
-const TIER_UPGRADE_EQUIPMENT_TICKETS: Partial<Record<HospitalTier, number>> = {
-  '區域醫院': 3,
+/** Shared credits granted on tier upgrade (indexed by the tier you just reached). */
+const TIER_UPGRADE_HOSPITAL_CREDITS: Partial<Record<HospitalTier, number>> = {
+  '區域醫院': REGIONAL_HOSPITAL_CREDIT_BONUS,
   '醫學中心': 4,
   '國家級教學醫院': 5,
 }
 
-/** Study time (in minutes) between hourly equipment ticket grants. */
-const EQUIPMENT_TICKET_STUDY_INTERVAL_MIN = 60
+/** Study time (in minutes) between hourly shared-credit grants. */
+const HOSPITAL_CREDIT_STUDY_INTERVAL_MIN = 60
 
 export interface TickEventToastInfo {
   event: EventDefinition
@@ -121,13 +140,13 @@ export async function runTick(): Promise<TickResult> {
     [
       db.rooms,
       db.doctors,
+      db.roomSupportAssignments,
       db.gameCounters,
       db.monotonicCounters,
       db.retirementLog,
       db.eventLog,
       db.erConsultLog,
       db.equipment,
-      db.equipmentTickets,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -152,13 +171,27 @@ export async function runTick(): Promise<TickResult> {
       const doctors = await db.doctors.toArray()
       const supportAssignments = await db.roomSupportAssignments.toArray()
       const doctorByRoom = buildDoctorByRoom(doctors)
+<<<<<<< Updated upstream
       const supportDoctorByRoom = buildSupportDoctorByRoom(doctors, supportAssignments)
+=======
+<<<<<<< HEAD
+      const supportDoctorByRoom = buildSupportDoctorByRoom(doctors, supportAssignments)
+=======
+      const doctorsById = new Map(doctors.map((doctor) => [doctor.id, doctor]))
+      const supportAssignments = await db.roomSupportAssignments.toArray()
+      const supportByRoom = buildSupportAssignmentByRoom(supportAssignments)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
       const allEquipment = await db.equipment.toArray()
       const equippedItemMap = buildEquippedItemMap(allEquipment)
 
       let totalThroughput = 0
       for (const room of rooms) {
         const doctor = getAssignedDoctor(room.id, doctorByRoom)
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
         const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
         const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
         totalThroughput += computeRoomThroughputWithSupport(
@@ -170,6 +203,14 @@ export async function runTick(): Promise<TickResult> {
             equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
           })),
         )
+<<<<<<< Updated upstream
+=======
+=======
+        const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+        const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
+        totalThroughput += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
       }
 
       const elapsedMin = elapsedSec / 60
@@ -367,11 +408,11 @@ export async function runTick(): Promise<TickResult> {
         const newTotalStudyMinutes = mono.totalStudyMinutes + deltaStudyMinutes
         const lastMilestone = mono.lastEquipmentTicketStudyMinutes ?? mono.totalStudyMinutes
         studyTicketsEarned = Math.floor(
-          (newTotalStudyMinutes - lastMilestone) / EQUIPMENT_TICKET_STUDY_INTERVAL_MIN,
+          (newTotalStudyMinutes - lastMilestone) / HOSPITAL_CREDIT_STUDY_INTERVAL_MIN,
         )
         const newLastMilestone =
           studyTicketsEarned > 0
-            ? lastMilestone + studyTicketsEarned * EQUIPMENT_TICKET_STUDY_INTERVAL_MIN
+            ? lastMilestone + studyTicketsEarned * HOSPITAL_CREDIT_STUDY_INTERVAL_MIN
             : lastMilestone
 
         await db.monotonicCounters.put({
@@ -381,15 +422,16 @@ export async function runTick(): Promise<TickResult> {
         })
       }
 
-      // Grant equipment tickets (study milestone + tier upgrade) in a single write
-      const tierBundle = upgradedTo ? (TIER_UPGRADE_EQUIPMENT_TICKETS[upgradedTo] ?? 0) : 0
-      const totalEquipmentGrant = studyTicketsEarned + tierBundle
-      if (totalEquipmentGrant > 0) {
-        const eqTickets = await db.equipmentTickets.get('global')
-        if (eqTickets) {
-          await db.equipmentTickets.put({
-            ...eqTickets,
-            available: Math.min(EQUIPMENT_TICKET_CAP, eqTickets.available + totalEquipmentGrant),
+      // Grant shared credits (study milestone + tier upgrade) in a single write.
+      const tierBundle = upgradedTo ? (TIER_UPGRADE_HOSPITAL_CREDITS[upgradedTo] ?? 0) : 0
+      const totalCreditGrant = studyTicketsEarned + tierBundle
+      if (totalCreditGrant > 0) {
+        const latestCounters = await db.gameCounters.get('singleton')
+        if (latestCounters) {
+          const currentCredits = clampHospitalCredits(latestCounters.hospitalCredits ?? 0)
+          await db.gameCounters.put({
+            ...latestCounters,
+            hospitalCredits: Math.min(HOSPITAL_CREDIT_CAP, currentCredits + totalCreditGrant),
           })
         }
       }

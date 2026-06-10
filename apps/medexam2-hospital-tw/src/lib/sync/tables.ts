@@ -13,6 +13,7 @@
 // generic `Dexie` instance to `HospitalDB` for typed table access.
 
 import type Dexie from 'dexie'
+import { clampHospitalCredits } from '@study-rpg/content-medexam2-tw'
 import type { CloudRow, RowPayload } from './types'
 import type {
   AffinityRow,
@@ -96,6 +97,7 @@ interface HospitalStateBlob {
   rooms: RoomRow[]
   roomSupportAssignments?: RoomSupportAssignmentRow[]
   affinity: AffinityRow[]
+  roomSupportAssignments?: RoomSupportAssignmentRow[]
 }
 
 function cloudIsNewer(cloudUpdatedAt: string, localMs: number | undefined): boolean {
@@ -106,15 +108,32 @@ function cloudIsNewer(cloudUpdatedAt: string, localMs: number | undefined): bool
 }
 
 async function readHospitalStateBlob(db: HospitalDB): Promise<HospitalStateBlob> {
+<<<<<<< Updated upstream
   const [gameCounters, gachaStats, tickets, rooms, roomSupportAssignments, affinity] = await Promise.all([
+=======
+<<<<<<< HEAD
+  const [gameCounters, gachaStats, tickets, rooms, roomSupportAssignments, affinity] = await Promise.all([
+=======
+  const [gameCounters, gachaStats, tickets, rooms, affinity, roomSupportAssignments] = await Promise.all([
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
     db.gameCounters.get(GAME_COUNTERS_ID).then((r) => r ?? null),
     db.gachaStats.get(GACHA_STATS_ID).then((r) => r ?? null),
     db.tickets.get(TICKETS_ID).then((r) => r ?? null),
     db.rooms.toArray(),
     db.roomSupportAssignments.toArray(),
     db.affinity.toArray(),
+    db.roomSupportAssignments.toArray(),
   ])
+<<<<<<< Updated upstream
   return { gameCounters, gachaStats, tickets, rooms, roomSupportAssignments, affinity }
+=======
+<<<<<<< HEAD
+  return { gameCounters, gachaStats, tickets, rooms, roomSupportAssignments, affinity }
+=======
+  return { gameCounters, gachaStats, tickets, rooms, affinity, roomSupportAssignments }
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
 }
 
 async function writeHospitalStateBlob(
@@ -130,19 +149,44 @@ async function writeHospitalStateBlob(
   } as T)
   await db.transaction(
     'rw',
+<<<<<<< Updated upstream
     [db.gameCounters, db.gachaStats, db.tickets, db.rooms, db.roomSupportAssignments, db.affinity],
+=======
+<<<<<<< HEAD
+    [db.gameCounters, db.gachaStats, db.tickets, db.rooms, db.roomSupportAssignments, db.affinity],
+=======
+    [db.gameCounters, db.gachaStats, db.tickets, db.rooms, db.affinity, db.roomSupportAssignments],
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
     async () => {
       if (blob.gameCounters) {
+        const localCounters = await db.gameCounters.get(GAME_COUNTERS_ID)
+        const incomingCounters = blob.gameCounters as Partial<GameCountersRow> & GameCountersRow
+        const mergedCounters: GameCountersRow = {
+          ...incomingCounters,
+          hospitalCredits:
+            incomingCounters.hospitalCredits !== undefined
+              ? clampHospitalCredits(incomingCounters.hospitalCredits)
+              : clampHospitalCredits(localCounters?.hospitalCredits ?? blob.tickets?.available ?? 0),
+          hospitalCreditsMigratedAt:
+            incomingCounters.hospitalCreditsMigratedAt ??
+            localCounters?.hospitalCreditsMigratedAt ??
+            cloudUpdatedAtMs,
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await db.gameCounters.put(stamp(blob.gameCounters) as any)
+        await db.gameCounters.put(stamp(mergedCounters) as any)
       }
       if (blob.gachaStats) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await db.gachaStats.put(stamp(blob.gachaStats) as any)
       }
       if (blob.tickets) {
+        const legacyTickets = {
+          ...blob.tickets,
+          available: 0,
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await db.tickets.put(stamp(blob.tickets) as any)
+        await db.tickets.put(stamp(legacyTickets) as any)
       }
       if (blob.rooms && blob.rooms.length > 0) {
         // Defensive force-null per `fix-medexam2-doctor-room-pointer-drift`:
@@ -168,6 +212,13 @@ async function writeHospitalStateBlob(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await db.affinity.bulkPut(blob.affinity.map(stamp) as any[])
       }
+      if (blob.roomSupportAssignments) {
+        await db.roomSupportAssignments.clear()
+        if (blob.roomSupportAssignments.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await db.roomSupportAssignments.bulkPut(blob.roomSupportAssignments.map(stamp) as any[])
+        }
+      }
     },
   )
 }
@@ -184,7 +235,15 @@ const HOSPITAL_STATE: TableAdapter = {
   // increment) marks the blob dirty within the normal debounce window
   // instead of waiting for the next gameCounters tick. All hooks still
   // mark dirty under the canonical 'gameCounters' key.
+<<<<<<< Updated upstream
   extraDexieTables: ['rooms', 'roomSupportAssignments', 'tickets', 'gachaStats', 'affinity'],
+=======
+<<<<<<< HEAD
+  extraDexieTables: ['rooms', 'roomSupportAssignments', 'tickets', 'gachaStats', 'affinity'],
+=======
+  extraDexieTables: ['rooms', 'tickets', 'gachaStats', 'affinity', 'roomSupportAssignments'],
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
   async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
     if (!dirtyPks.size) return []
     const blob = await readHospitalStateBlob(db as HospitalDB)

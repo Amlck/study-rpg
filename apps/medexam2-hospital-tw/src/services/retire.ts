@@ -24,7 +24,15 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
   const db = getHospitalDB()
   return db.transaction(
     'rw',
+<<<<<<< Updated upstream
     [db.doctors, db.roomSupportAssignments, db.gameCounters, db.retirementLog],
+=======
+<<<<<<< HEAD
+    [db.doctors, db.roomSupportAssignments, db.gameCounters, db.retirementLog],
+=======
+    [db.doctors, db.gameCounters, db.retirementLog, db.roomSupportAssignments],
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
     async () => {
       const doctor = await db.doctors.get(doctorId)
       if (!doctor) return { kind: 'not-found', doctorId } as RetireResult
@@ -36,9 +44,24 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
       // of truth, removing the row implicitly clears the room's occupancy —
       // no `rooms.put` needed.
       await db.doctors.delete(doctorId)
+<<<<<<< Updated upstream
       const supportRows = await db.roomSupportAssignments.where('doctorId').equals(doctorId).toArray()
       for (const row of supportRows) {
         await db.roomSupportAssignments.delete(row.id)
+=======
+<<<<<<< HEAD
+      const supportRows = await db.roomSupportAssignments.where('doctorId').equals(doctorId).toArray()
+      for (const row of supportRows) {
+        await db.roomSupportAssignments.delete(row.id)
+=======
+      const supportAssignments = await db.roomSupportAssignments
+        .where('doctorId')
+        .equals(doctorId)
+        .toArray()
+      for (const assignment of supportAssignments) {
+        await db.roomSupportAssignments.delete([assignment.roomId, assignment.roleId])
+>>>>>>> 082a356aabc9653a22663510ebb18fca31c68dec
+>>>>>>> Stashed changes
       }
 
       // Refund to revenue

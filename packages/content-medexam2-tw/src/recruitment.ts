@@ -96,6 +96,35 @@ export const INITIAL_TICKETS = 10
 /** Hard cap on ticket inventory. Daily-refresh grants are clamped to this. */
 export const TICKET_CAP = 99
 
+/** Shared hospital economy currency replacing normal doctor/equipment tickets. */
+export const HOSPITAL_CREDIT_LABEL = '院務點數'
+
+/** Initial shared-credit balance when a save is first created. */
+export const INITIAL_HOSPITAL_CREDITS = 10
+
+/** Hard cap on shared-credit inventory. */
+export const HOSPITAL_CREDIT_CAP = 999
+
+/** Cost table for shared-credit economy sinks. */
+export const HOSPITAL_CREDIT_PRICES = Object.freeze({
+  doctorPull: 1,
+  equipmentPull: 1,
+  focusedDoctorP3: 10,
+  focusedEquipmentP3: 6,
+  partsBundle: 4,
+})
+
+/** Equipment parts granted by the shared-credit parts bundle. */
+export const HOSPITAL_CREDIT_PARTS_BUNDLE_AMOUNT = 100
+
+/** One-time credit grant when the hospital first reaches 區域醫院. */
+export const REGIONAL_HOSPITAL_CREDIT_BONUS = 10
+
+export function clampHospitalCredits(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(HOSPITAL_CREDIT_CAP, Math.floor(value)))
+}
+
 /** Milliseconds per UTC-equivalent day, used for `lastRefreshDay` arithmetic. */
 export const MS_PER_DAY = 86_400_000
 

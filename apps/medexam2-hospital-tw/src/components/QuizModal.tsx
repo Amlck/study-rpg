@@ -227,7 +227,6 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
         db.affinity,
         db.gameCounters,
         db.monotonicCounters,
-        db.tickets,
         db.bannerUnlockBonusLog,
       ],
       async () => {

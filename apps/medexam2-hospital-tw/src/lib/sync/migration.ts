@@ -23,6 +23,7 @@ import {
   type GameCountersRow,
   type MasteryRow,
   type QuestionHistoryRow,
+  type RoomSupportAssignmentRow,
   type RoomRow,
   type RoomSupportAssignmentRow,
   type TicketsRow,
@@ -119,6 +120,7 @@ export async function hasNonDefaultHospitalState(db: HospitalDB): Promise<boolea
   if (gachaStats && (gachaStats.totalRolls ?? 0) > 0) return true
   // 2 starter doctors seeded via ensureSeed; > 2 means user has rolled at least once
   if ((await db.doctors.count()) > 2) return true
+  if ((await db.roomSupportAssignments.count()) > 0) return true
   if ((await db.questionHistory.count()) > 0) return true
   // Any mastery row with correct/total > 0 means quiz activity
   let masteryActive = false
@@ -282,6 +284,7 @@ export async function snapshotLocalToBackup(
     rooms,
     roomSupportAssignments,
     affinity,
+    roomSupportAssignments,
     doctors,
     mastery,
     questionHistory,
@@ -299,6 +302,7 @@ export async function snapshotLocalToBackup(
     db.rooms.toArray(),
     db.roomSupportAssignments.toArray(),
     db.affinity.toArray(),
+    db.roomSupportAssignments.toArray(),
     db.doctors.toArray(),
     db.mastery.toArray(),
     db.questionHistory.toArray(),
@@ -322,6 +326,7 @@ export async function snapshotLocalToBackup(
       rooms,
       roomSupportAssignments,
       affinity,
+      roomSupportAssignments,
     },
     doctors,
     mastery,

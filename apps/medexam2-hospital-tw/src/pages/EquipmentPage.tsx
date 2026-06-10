@@ -1,13 +1,16 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react'
+import { useMemo, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { RARITY_LABELS, RARITY_ORDER, type Rarity } from '@study-rpg/content-medexam2-tw'
+import {
+  RARITY_LABELS,
+  RARITY_ORDER,
+  type Rarity,
+} from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import {
   EQUIPMENT_CATEGORY_LABELS,
   EQUIPMENT_PARTS_BY_RARITY,
   EQUIPMENT_RARITY_LABELS,
-  EQUIPMENT_TICKET_CAP,
   EQUIPMENT_UPGRADE_COSTS,
   getNextEquipmentDefinition,
   getNextEquipmentRarity,
@@ -24,7 +27,6 @@ import {
   writeEquipmentSpriteLayouts,
   type SpriteLayout,
 } from '../components/EquipmentIcon'
-import { EquipmentResultModal } from '../components/EquipmentResultModal'
 import { EquipmentArtwork, hasEquipmentHeroArt } from '../components/EquipmentArtwork'
 import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { lookupSprite } from '../lib/sprite-lookup'
@@ -32,11 +34,9 @@ import {
   dismantleEquipment,
   describeEquipment,
   equipItem,
-  rollEquipment,
   unequipItem,
   upgradeEquipment,
   type EquipmentDismantleResult,
-  type EquipmentRollOutcome,
   type EquipmentUpgradeResult,
 } from '../services/equipment'
 
@@ -87,13 +87,8 @@ export function EquipmentPage() {
   const db = getHospitalDB()
   const equipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.orderBy('obtainedAt').reverse().toArray(), []) ?? []
-  const tickets = useLiveQuery(() => db.equipmentTickets.get('global'), [])
   const materials = useLiveQuery(() => db.equipmentMaterials.get('global'), [])
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
-  const rollInFlight = useRef(false)
-  const [rolling, setRolling] = useState(false)
-  const [rollOutcome, setRollOutcome] = useState<Extract<EquipmentRollOutcome, { ok: true }> | null>(null)
-  const [showCeremony, setShowCeremony] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedItem, setSelectedItem] = useState<EquipmentRow | null>(null)
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
@@ -148,25 +143,6 @@ export function EquipmentPage() {
     })
     return sortEquipment(rows, sortMode)
   }, [categoryFilter, equipFilter, equipment, rarityFilter, sortMode])
-
-  async function handleRoll() {
-    if (rollInFlight.current) return
-    rollInFlight.current = true
-    setRolling(true)
-    setToast(null)
-    try {
-      const outcome = await rollEquipment()
-      if (outcome.ok) {
-        setRollOutcome(outcome)
-        setShowCeremony(true)
-        return
-      }
-      setToast(outcome.reason === 'no-tickets' ? '器材券不足' : '器材池目前沒有可抽項目')
-    } finally {
-      rollInFlight.current = false
-      setRolling(false)
-    }
-  }
 
   function toggleDoctorRarityFilter(rarity: Rarity) {
     setDoctorRarityFilters((current) =>
@@ -238,12 +214,7 @@ export function EquipmentPage() {
     currentSelectedItem?.equippedDoctorId
       ? doctorById.get(currentSelectedItem.equippedDoctorId) ?? null
       : null
-  const selectedWasPity =
-    rollOutcome !== null &&
-    currentSelectedItem !== null &&
-    rollOutcome.equipment.id === currentSelectedItem.id
-      ? rollOutcome.wasPity
-      : false
+  const selectedWasPity = false
 
   return (
     <main className="app-shell equipment-page">
@@ -256,31 +227,11 @@ export function EquipmentPage() {
           <Link to="/" className="nav-link">
             ← 回主畫面
           </Link>
+          <Link to="/supply" className="nav-link">
+            院務補給 →
+          </Link>
         </div>
       </header>
-
-      <section className="equipment-draw-panel" aria-label="器材補給">
-        <div>
-          <p className="equipment-draw-panel__label">器材券</p>
-          <p className="equipment-draw-panel__tickets">
-            🧰 {tickets?.available ?? 0} / {EQUIPMENT_TICKET_CAP}
-          </p>
-        </div>
-        <div>
-          <p className="equipment-draw-panel__label">器材零件</p>
-          <p className="equipment-draw-panel__tickets">
-            ⚙ {fmt(materials?.parts ?? 0)}
-          </p>
-        </div>
-        <button
-          type="button"
-          className="primary-btn equipment-draw-panel__button"
-          onClick={() => void handleRoll()}
-          disabled={rolling || (tickets?.available ?? 0) < 1}
-        >
-          {rolling ? '補給中…' : '器材補給'}
-        </button>
-      </section>
 
       {toast && <p className="equipment-page__toast" role="status">{toast}</p>}
       {showSpriteTuner && (
@@ -454,18 +405,7 @@ export function EquipmentPage() {
         </section>
       </section>
 
-      {/* Supply box ceremony — shown immediately after a roll */}
-      <EquipmentResultModal
-        item={showCeremony && rollOutcome ? rollOutcome.equipment : null}
-        wasPity={rollOutcome?.wasPity ?? false}
-        onClose={() => {
-          setShowCeremony(false)
-          // Hand off to detail modal after ceremony
-          if (rollOutcome) setSelectedItem(rollOutcome.equipment)
-        }}
-      />
-
-      {currentSelectedItem && !showCeremony && (
+      {currentSelectedItem && (
         <EquipmentDetailModal
           item={currentSelectedItem}
           doctors={doctors}
@@ -479,12 +419,10 @@ export function EquipmentPage() {
           }}
           onAfterDismantle={(message) => {
             setSelectedItem(null)
-            setRollOutcome(null)
             setToast(message)
           }}
           onClose={() => {
             setSelectedItem(null)
-            setRollOutcome(null)
           }}
         />
       )}
