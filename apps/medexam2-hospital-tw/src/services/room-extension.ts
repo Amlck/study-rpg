@@ -15,6 +15,7 @@
  */
 
 import {
+  ROOM_BASE_RATE,
   ROOM_EXTENSION_COSTS,
   ROOM_EXTENSION_UNLOCKED_TIERS,
   type HospitalTier,
@@ -111,7 +112,7 @@ export async function purchaseRoomExtension(type: RoomType): Promise<ExtensionRe
     const newRoom: RoomRow = {
       id: nextExtraId(allRooms, type),
       type,
-      baseRate: 10,
+      baseRate: ROOM_BASE_RATE[type],
       roomFacility: 1.0,
       facilityLevel: 1,
       assignedDoctorId: null,

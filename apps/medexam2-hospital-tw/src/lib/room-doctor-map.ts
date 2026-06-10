@@ -11,7 +11,7 @@
  * by the time React renders.
  */
 
-import type { DoctorRow } from '../db/schema'
+import type { DoctorRow, RoomSupportAssignmentRow } from '../db/schema'
 
 export function buildDoctorByRoom(
   doctors: ReadonlyArray<DoctorRow>,
@@ -32,4 +32,28 @@ export function getAssignedDoctor(
   doctorByRoom: Map<string, DoctorRow>,
 ): DoctorRow | null {
   return doctorByRoom.get(roomId) ?? null
+}
+
+export function buildSupportDoctorByRoom(
+  doctors: ReadonlyArray<DoctorRow>,
+  supportAssignments: ReadonlyArray<RoomSupportAssignmentRow>,
+): Map<string, DoctorRow[]> {
+  const doctorsById = new Map(doctors.map((doctor) => [doctor.id, doctor]))
+  const byRoom = new Map<string, DoctorRow[]>()
+  const ordered = [...supportAssignments].sort((a, b) => a.roleId.localeCompare(b.roleId))
+  for (const assignment of ordered) {
+    const doctor = doctorsById.get(assignment.doctorId)
+    if (!doctor || doctor.assignedRoom !== null) continue
+    const list = byRoom.get(assignment.roomId) ?? []
+    list.push(doctor)
+    byRoom.set(assignment.roomId, list)
+  }
+  return byRoom
+}
+
+export function getSupportDoctors(
+  roomId: string,
+  supportDoctorByRoom: Map<string, DoctorRow[]>,
+): DoctorRow[] {
+  return supportDoctorByRoom.get(roomId) ?? []
 }

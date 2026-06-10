@@ -150,6 +150,30 @@ describe('room support assignments', () => {
     expect(await mockState.db.roomSupportAssignments.count()).toBe(0)
   })
 
+  it('allows ER and ICU support from their configured specialty pools', async () => {
+    await mockState.db.rooms.put(makeRoom({ id: 'emergency-1', type: 'emergency' }))
+    await mockState.db.rooms.put(makeRoom({ id: 'icu-1', type: 'icu' }))
+    await mockState.db.doctors.put(makeDoctor({ id: 'er-med', subjectId: '內科' }))
+    await mockState.db.doctors.put(makeDoctor({ id: 'er-surg', subjectId: '外科' }))
+    await mockState.db.doctors.put(makeDoctor({ id: 'icu-neuro', subjectId: '神經內科' }))
+    await mockState.db.doctors.put(makeDoctor({ id: 'derm', subjectId: '皮膚科' }))
+
+    expect((await getAvailableSupportDoctors('emergency-1', 'emergency-1')).map((d) => d.id)).toEqual([
+      'er-med',
+      'er-surg',
+    ])
+    await expect(assignSupportDoctor('emergency-1', 'emergency-2', 'derm')).resolves.toMatchObject({
+      kind: 'aborted',
+      reason: 'doctor-ineligible',
+    })
+    await expect(assignSupportDoctor('emergency-1', 'emergency-2', 'er-surg')).resolves.toMatchObject({
+      kind: 'success',
+    })
+    await expect(assignSupportDoctor('icu-1', 'icu-1', 'icu-neuro')).resolves.toMatchObject({
+      kind: 'success',
+    })
+  })
+
   it('repairs orphan, duplicate, and lead-conflicting support assignments', async () => {
     await mockState.db.rooms.put(makeRoom({ id: 'surgery-1' }))
     await mockState.db.rooms.put(makeRoom({ id: 'surgery-2' }))
@@ -182,5 +206,47 @@ describe('room support assignments', () => {
       doctorId: 'anes-1',
     })
     expect(await mockState.db.roomSupportAssignments.get(['missing-room', 'anesthesia'])).toBeUndefined()
+  })
+
+  it('repairs unsupported support roles and duplicate support doctors', async () => {
+    await mockState.db.rooms.put(makeRoom({ id: 'ward-1', type: 'ward' }))
+    await mockState.db.rooms.put(makeRoom({ id: 'emergency-1', type: 'emergency' }))
+    await mockState.db.rooms.put(makeRoom({ id: 'icu-1', type: 'icu' }))
+    await mockState.db.doctors.put(makeDoctor({ id: 'support-1', subjectId: '內科' }))
+    await mockState.db.doctors.put(makeDoctor({ id: 'support-2', subjectId: '皮膚科' }))
+    await mockState.db.roomSupportAssignments.put({
+      roomId: 'ward-1',
+      roleId: 'anesthesia',
+      doctorId: 'support-1',
+      assignedAt: 1,
+    })
+    await mockState.db.roomSupportAssignments.put({
+      roomId: 'emergency-1',
+      roleId: 'emergency-1',
+      doctorId: 'support-1',
+      assignedAt: 2,
+    })
+    await mockState.db.roomSupportAssignments.put({
+      roomId: 'icu-1',
+      roleId: 'icu-1',
+      doctorId: 'support-1',
+      assignedAt: 3,
+    })
+    await mockState.db.roomSupportAssignments.put({
+      roomId: 'emergency-1',
+      roleId: 'emergency-2',
+      doctorId: 'support-2',
+      assignedAt: 4,
+    })
+
+    const report = await checkAssignmentInvariants()
+
+    expect(report.repaired.supportAssignments).toBe(3)
+    expect(await mockState.db.roomSupportAssignments.get(['ward-1', 'anesthesia'])).toBeUndefined()
+    expect(await mockState.db.roomSupportAssignments.get(['emergency-1', 'emergency-1'])).toBeUndefined()
+    expect(await mockState.db.roomSupportAssignments.get(['emergency-1', 'emergency-2'])).toBeUndefined()
+    expect(await mockState.db.roomSupportAssignments.get(['icu-1', 'icu-1'])).toMatchObject({
+      doctorId: 'support-1',
+    })
   })
 })

@@ -77,6 +77,8 @@ export const ROOM_EXTENSION_COSTS: Readonly<Record<RoomType, { cost: number; max
   outpatient: { cost: 20_000, maxExtras: 3 },
   surgery: { cost: 100_000, maxExtras: 2 },
   ward: { cost: 300_000, maxExtras: 2 },
+  emergency: { cost: 150_000, maxExtras: 2 },
+  icu: { cost: 450_000, maxExtras: 1 },
 })
 
 /**

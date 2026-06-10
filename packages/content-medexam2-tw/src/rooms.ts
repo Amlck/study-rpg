@@ -10,7 +10,7 @@ import type { SubjectId } from '@study-rpg/core'
 import { getAffinityBonus } from './affinity'
 import type { Rarity } from './recruitment'
 
-export type RoomType = 'outpatient' | 'surgery' | 'ward'
+export type RoomType = 'outpatient' | 'surgery' | 'ward' | 'emergency' | 'icu'
 
 export interface Room {
   id: string
@@ -62,4 +62,6 @@ export const ROOM_TYPE_LABELS: Record<RoomType, string> = {
   outpatient: '門診',
   surgery: '手術房',
   ward: '病房',
+  emergency: '急診',
+  icu: '加護病房',
 }

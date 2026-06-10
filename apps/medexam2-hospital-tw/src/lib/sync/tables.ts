@@ -26,6 +26,7 @@ import type {
   MonotonicCountersRow,
   QuestionHistoryRow,
   RoomSupportAssignmentRow,
+  RoomSupportRoleId,
   RoomRow,
   TargetedTicketHistoryRow,
   TargetedTicketRow,
@@ -105,6 +106,19 @@ function cloudIsNewer(cloudUpdatedAt: string, localMs: number | undefined): bool
   return cloudMs > localMs
 }
 
+function normalizeSupportAssignment(
+  row: Partial<RoomSupportAssignmentRow> & { roomId?: string; doctorId?: string; roleId?: string; assignedAt?: number },
+): RoomSupportAssignmentRow | null {
+  if (!row.roomId || !row.doctorId) return null
+  const roleId = (row.roleId ?? 'anesthesia') as RoomSupportRoleId
+  return {
+    roomId: row.roomId,
+    roleId,
+    doctorId: row.doctorId,
+    assignedAt: typeof row.assignedAt === 'number' ? row.assignedAt : Date.now(),
+  }
+}
+
 async function readHospitalStateBlob(db: HospitalDB): Promise<HospitalStateBlob> {
   const [gameCounters, gachaStats, tickets, rooms, affinity, roomSupportAssignments] = await Promise.all([
     db.gameCounters.get(GAME_COUNTERS_ID).then((r) => r ?? null),
@@ -176,9 +190,12 @@ async function writeHospitalStateBlob(
       }
       if (blob.roomSupportAssignments) {
         await db.roomSupportAssignments.clear()
-        if (blob.roomSupportAssignments.length > 0) {
+        const normalized = blob.roomSupportAssignments
+          .map((row) => normalizeSupportAssignment(row))
+          .filter((row): row is RoomSupportAssignmentRow => row !== null)
+        if (normalized.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await db.roomSupportAssignments.bulkPut(blob.roomSupportAssignments.map(stamp) as any[])
+          await db.roomSupportAssignments.bulkPut(normalized.map(stamp) as any[])
         }
       }
     },

@@ -56,7 +56,7 @@ import { buildEquippedItemMap } from '../services/equipment'
 import {
   buildSupportAssignmentByRoom,
   computeRoomTeamThroughput,
-  getSupportDoctorForRoom,
+  getSupportDoctorsForRoom,
 } from '../services/room-team'
 
 /** Shared credits granted on tier upgrade (indexed by the tier you just reached). */
@@ -166,9 +166,9 @@ export async function runTick(): Promise<TickResult> {
       let totalThroughput = 0
       for (const room of rooms) {
         const doctor = getAssignedDoctor(room.id, doctorByRoom)
-        const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+        const supportDoctors = getSupportDoctorsForRoom(room.id, supportByRoom, doctorsById)
         const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-        totalThroughput += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
+        totalThroughput += computeRoomTeamThroughput(room, doctor, supportDoctors, equippedItem, equippedItemMap)
       }
 
       const elapsedMin = elapsedSec / 60

@@ -18,6 +18,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   computeSalaryDrain,
   ROOM_TYPE_LABELS,
+  type RoomType,
 } from '@study-rpg/content-medexam2-tw'
 import { ROOM_SCENES } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB } from '../db/schema'
@@ -29,7 +30,7 @@ import { buildEquippedItemMap } from '../services/equipment'
 import {
   buildSupportAssignmentByRoom,
   computeRoomTeamThroughput,
-  getSupportDoctorForRoom,
+  getSupportDoctorsForRoom,
 } from '../services/room-team'
 
 export function StudySessionPage() {
@@ -53,9 +54,9 @@ export function StudySessionPage() {
     let t = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
-      const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+      const supportDoctors = getSupportDoctorsForRoom(room.id, supportByRoom, doctorsById)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-      t += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
+      t += computeRoomTeamThroughput(room, doctor, supportDoctors, equippedItem, equippedItemMap)
     }
     return t
   }, [rooms, doctorByRoom, supportByRoom, doctorsById, equippedItemMap])
@@ -72,24 +73,23 @@ export function StudySessionPage() {
     [rooms, doctorByRoom],
   )
 
-  // §10 follow-up: pick a room-scene backdrop based on the most-represented
-  // assigned room type. Falls back to outpatient (the default first-tier room)
-  // when nothing is assigned. ROOM_SCENES is undefined until codex sprites
-  // ship — hero panel hides gracefully in that case.
+  // Pick a room-scene backdrop based on the most-represented assigned room type.
+  // Falls back to outpatient when nothing is assigned.
   const heroScene = useMemo(() => {
     if (!ROOM_SCENES) return null
     if (assignedRooms.length === 0) return ROOM_SCENES.outpatient
-    const counts: Record<string, number> = { outpatient: 0, surgery: 0, ward: 0 }
+    const sceneTypes: RoomType[] = ['outpatient', 'emergency', 'surgery', 'ward', 'icu']
+    const counts: Record<RoomType, number> = { outpatient: 0, emergency: 0, surgery: 0, ward: 0, icu: 0 }
     for (const r of assignedRooms) counts[r.type] = (counts[r.type] ?? 0) + 1
-    let topType: 'outpatient' | 'surgery' | 'ward' = 'outpatient'
+    let topType: RoomType = 'outpatient'
     let topCount = -1
-    for (const t of ['outpatient', 'surgery', 'ward'] as const) {
+    for (const t of sceneTypes) {
       if (counts[t] > topCount) {
         topType = t
         topCount = counts[t]
       }
     }
-    return ROOM_SCENES[topType]
+    return ROOM_SCENES[topType] ?? ROOM_SCENES.ward
   }, [assignedRooms])
 
   function fmt(n: number, digits = 0): string {
@@ -203,15 +203,15 @@ export function StudySessionPage() {
           <ul className="study-session__room-list">
             {assignedRooms.map((room) => {
               const d = getAssignedDoctor(room.id, doctorByRoom)
-              const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+              const supportDoctors = getSupportDoctorsForRoom(room.id, supportByRoom, doctorsById)
               const equippedItem = d ? equippedItemMap.get(d.id) : undefined
-              const throughput = computeRoomTeamThroughput(room, d, supportDoctor, equippedItem)
+              const throughput = computeRoomTeamThroughput(room, d, supportDoctors, equippedItem, equippedItemMap)
               return (
                 <li key={room.id} className="study-session__room-item">
                   <span className="room-type-label">{ROOM_TYPE_LABELS[room.type]} #{room.slot}</span>
                   <span className="doctor-name">
                     {d?.name ?? '（未指派）'}
-                    {supportDoctor && <> + {supportDoctor.name}</>}
+                    {supportDoctors.length > 0 && <> + {supportDoctors.map((doctor) => doctor.name).join('、')}</>}
                   </span>
                   <span className="throughput">{fmt(throughput, 1)} / 分</span>
                 </li>

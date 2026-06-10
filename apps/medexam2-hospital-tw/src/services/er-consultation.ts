@@ -24,15 +24,24 @@ import {
   QUIZ_REPUTATION_PER_CORRECT_BASE,
   QUIZ_REVENUE_PER_CORRECT_BASE,
   QUIZ_TIER_MULTIPLIER,
+  type Room,
 } from '@study-rpg/content-medexam2-tw'
 import {
   ALL_SUBJECT_IDS,
   getHospitalDB,
+  type DoctorRow,
   type ERConsultActiveState,
+  type RoomSupportAssignmentRow,
 } from '../db/schema'
 import { loadSubjectQuestionIds } from '../lib/quiz'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
 import { ER_DOCTOR_SPRITE_KEYS } from '../lib/sprite-lookup'
+import { buildDoctorByRoom } from '../lib/room-doctor-map'
+import {
+  buildSupportAssignmentByRoom,
+  getERConsultStaffingMultiplier,
+  getSupportDoctorsForRoom,
+} from './room-team'
 
 const SETTINGS_META_KEY = 'er-consult-settings'
 
@@ -43,6 +52,28 @@ export interface ERConsultSettings {
 }
 
 const DEFAULT_SETTINGS: ERConsultSettings = { enabled: true, onboarded: false }
+
+export function computeERConsultStaffingMultiplierFromRows(
+  rooms: ReadonlyArray<Room>,
+  doctors: ReadonlyArray<DoctorRow>,
+  supportAssignments: ReadonlyArray<RoomSupportAssignmentRow>,
+): number {
+  const emergencyRooms = rooms.filter((room) => room.type === 'emergency')
+  if (emergencyRooms.length === 0) {
+    return getERConsultStaffingMultiplier({ emergencyLeadCount: 0, emergencySupportCount: 0 })
+  }
+
+  const doctorByRoom = buildDoctorByRoom(doctors)
+  const doctorsById = new Map(doctors.map((doctor) => [doctor.id, doctor]))
+  const supportByRoom = buildSupportAssignmentByRoom(supportAssignments)
+  const emergencyLeadCount = emergencyRooms.filter((room) => doctorByRoom.has(room.id)).length
+  const emergencySupportCount = emergencyRooms.reduce(
+    (sum, room) => sum + getSupportDoctorsForRoom(room.id, supportByRoom, doctorsById).length,
+    0,
+  )
+
+  return getERConsultStaffingMultiplier({ emergencyLeadCount, emergencySupportCount })
+}
 
 /** 5 consult-request-tone greeting variants, subject-parameterized. */
 export const ER_CONSULT_GREETINGS = Object.freeze([
@@ -262,6 +293,9 @@ export async function answerERConsult(opts: {
       db.affinity,
       db.gameCounters,
       db.erConsultLog,
+      db.rooms,
+      db.doctors,
+      db.roomSupportAssignments,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -286,11 +320,17 @@ export async function answerERConsult(opts: {
       let reputationDelta = 0
       if (opts.wasCorrect) {
         const tierMult = QUIZ_TIER_MULTIPLIER[counters.tier] ?? 1.0
-        revenueDelta = computeERConsultReward(
-          Math.round(QUIZ_REVENUE_PER_CORRECT_BASE * tierMult),
+        const [rooms, doctors, supportAssignments] = await Promise.all([
+          db.rooms.toArray(),
+          db.doctors.toArray(),
+          db.roomSupportAssignments.toArray(),
+        ])
+        const staffingMultiplier = computeERConsultStaffingMultiplierFromRows(rooms, doctors, supportAssignments)
+        revenueDelta = Math.round(
+          computeERConsultReward(Math.round(QUIZ_REVENUE_PER_CORRECT_BASE * tierMult)) * staffingMultiplier,
         )
-        reputationDelta = computeERConsultReward(
-          Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult),
+        reputationDelta = Math.round(
+          computeERConsultReward(Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult)) * staffingMultiplier,
         )
       }
 

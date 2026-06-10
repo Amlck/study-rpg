@@ -48,20 +48,23 @@ import type { TickEventToastInfo } from './lib/tick'
 
 const TIER_DELTA_LABEL: Record<Room['type'], string> = {
   outpatient: '門診',
+  emergency: '急診',
   surgery: '手術房',
   ward: '病房',
+  icu: '加護病房',
 }
+const TIER_DELTA_ROOM_TYPES: ReadonlyArray<Room['type']> = ['outpatient', 'emergency', 'surgery', 'ward', 'icu']
 
 function describeTierJump(prevTier: HospitalTier, newTier: HospitalTier): string {
   const prev = TIER_ROOMS[prevTier]
   const next = TIER_ROOMS[newTier]
-  const delta: Record<Room['type'], number> = { outpatient: 0, surgery: 0, ward: 0 }
+  const delta: Record<Room['type'], number> = { outpatient: 0, emergency: 0, surgery: 0, ward: 0, icu: 0 }
   const prevIds = new Set(prev.map((r) => r.id))
   for (const r of next) {
     if (!prevIds.has(r.id)) delta[r.type] += 1
   }
   const parts: string[] = []
-  for (const type of ['outpatient', 'surgery', 'ward'] as const) {
+  for (const type of TIER_DELTA_ROOM_TYPES) {
     if (delta[type] > 0) parts.push(`+${delta[type]} ${TIER_DELTA_LABEL[type]}`)
   }
   return `🎉 升級為 ${newTier}！${parts.join(' ')}`

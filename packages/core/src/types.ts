@@ -335,7 +335,7 @@ export interface ThemePackMeta {
 }
 
 export interface SlotPosition {
-  room: 'ward' | 'outpatient' | 'surgery'
+  room: 'ward' | 'outpatient' | 'surgery' | 'emergency' | 'icu'
   x: number  // 0–768 (scene PNG width)
   y: number  // 0–384 (scene PNG height)
 }

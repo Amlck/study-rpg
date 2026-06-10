@@ -41,7 +41,7 @@ import { buildEquippedItemMap } from '../services/equipment'
 import {
   buildSupportAssignmentByRoom,
   computeRoomTeamThroughput,
-  getSupportDoctorForRoom,
+  getSupportDoctorsForRoom,
 } from '../services/room-team'
 import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
@@ -230,9 +230,9 @@ export function HomePage() {
         let throughput = 0
         for (const room of rooms) {
           const d = getAssignedDoctor(room.id, doctorByRoom)
-          const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+          const supportDoctors = getSupportDoctorsForRoom(room.id, supportByRoom, doctorsById)
           const equippedItem = d ? equippedItemMap.get(d.id) : undefined
-          throughput += computeRoomTeamThroughput(room, d, supportDoctor, equippedItem)
+          throughput += computeRoomTeamThroughput(room, d, supportDoctors, equippedItem, equippedItemMap)
         }
         const salary = counters ? computeSalaryDrain(allDoctors, counters.tier) : 0
         // Inactive branch shows a counterfactual baseline (tick paused, no actual

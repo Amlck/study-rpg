@@ -25,6 +25,11 @@ export const SUBJECT_TO_ROOM: Readonly<Record<SubjectId, RoomType>> = Object.fre
   麻醉科: 'outpatient',
 })
 
+export const SECONDARY_ROOM_AFFINITY: Readonly<Partial<Record<RoomType, ReadonlyArray<SubjectId>>>> = Object.freeze({
+  emergency: Object.freeze(['內科', '外科', '小兒科', '麻醉科'] as const),
+  icu: Object.freeze(['內科', '神經內科', '小兒科', '麻醉科'] as const),
+})
+
 /** Match bonus per rarity tier. Mismatch is always 1.0× (no penalty). */
 export const AFFINITY_MATCH_BONUS: Readonly<Record<Rarity, number>> = Object.freeze({
   P1: 1.5,
@@ -41,7 +46,8 @@ export function getAffinityBonus(
   roomType: RoomType,
 ): number {
   const mapped = SUBJECT_TO_ROOM[subjectId]
-  if (mapped !== roomType) return 1.0
+  const secondary = SECONDARY_ROOM_AFFINITY[roomType]
+  if (mapped !== roomType && !secondary?.includes(subjectId)) return 1.0
   return AFFINITY_MATCH_BONUS[rarity]
 }
 

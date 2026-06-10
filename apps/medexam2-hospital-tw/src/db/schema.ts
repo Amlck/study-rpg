@@ -243,7 +243,7 @@ export interface RetirementLogRow {
 
 export type TargetedTicketStatus = 'pending' | 'assigned' | 'consumed'
 
-export type RoomSupportRoleId = 'anesthesia'
+export type RoomSupportRoleId = 'anesthesia' | 'emergency-1' | 'emergency-2' | 'icu-1'
 
 export interface RoomSupportAssignmentRow {
   roomId: string
@@ -893,6 +893,26 @@ export class HospitalDB extends Dexie {
     this.version(19).stores({
       roomSupportAssignments: '[roomId+roleId], roomId, doctorId, roleId, assignedAt',
     })
+
+    // v20: ER/ICU team support keeps the v19 compound role-key schema. Repair
+    // pre-role legacy surgery rows, if any, into the anesthesia support role.
+    this.version(20)
+      .stores({})
+      .upgrade(async (tx) => {
+        const supportTable = tx.table<RoomSupportAssignmentRow, [string, RoomSupportRoleId]>('roomSupportAssignments')
+        const rows = await supportTable.toArray()
+        for (const row of rows as Array<Partial<RoomSupportAssignmentRow> & { roomId?: string; id?: string }>) {
+          if (row.roleId || !row.roomId || !row.doctorId) continue
+          const migrated: RoomSupportAssignmentRow = {
+            roomId: row.roomId,
+            roleId: 'anesthesia',
+            doctorId: row.doctorId,
+            assignedAt: row.assignedAt ?? Date.now(),
+          }
+          await supportTable.delete([row.roomId, row.roleId as unknown as RoomSupportRoleId])
+          await supportTable.put(migrated)
+        }
+      })
   }
 }
 

@@ -19,11 +19,11 @@ import { buildEquippedItemMap } from '../services/equipment'
 import {
   buildSupportAssignmentByRoom,
   computeRoomTeamThroughput,
-  getSupportDoctorForRoom,
+  getSupportDoctorsForRoom,
 } from '../services/room-team'
 
 const EXTRA_PREFIX = 'extra-'
-const ROOM_TYPES_ORDERED: ReadonlyArray<RoomType> = ['outpatient', 'surgery', 'ward']
+const ROOM_TYPES_ORDERED: ReadonlyArray<RoomType> = ['outpatient', 'emergency', 'surgery', 'ward', 'icu']
 
 function countExtras(rooms: ReadonlyArray<Room>, type: RoomType): number {
   return rooms.filter((r) => r.type === type && r.id.startsWith(`${EXTRA_PREFIX}${type}-`)).length
@@ -49,20 +49,18 @@ export function Hospital() {
     let sum = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
-      const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+      const supportDoctors = getSupportDoctorsForRoom(room.id, supportByRoom, doctorsById)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-      sum += computeRoomTeamThroughput(room, doctor, supportDoctor, equippedItem)
+      sum += computeRoomTeamThroughput(room, doctor, supportDoctors, equippedItem, equippedItemMap)
     }
     return sum
   }, [rooms, doctorByRoom, supportByRoom, doctorsById, equippedItemMap])
 
   const assignedCount = doctorByRoom.size
-  const supportCount = supportByRoom.size
+  const supportCount = supportAssignments.length
 
   const activeDoctor = activeRoom ? getAssignedDoctor(activeRoom.id, doctorByRoom) : null
-  const activeSupportDoctor = activeRoom
-    ? getSupportDoctorForRoom(activeRoom.id, supportByRoom, doctorsById)
-    : null
+  const activeSupportAssignments = activeRoom ? supportByRoom.get(activeRoom.id) ?? [] : []
 
   return (
     <main className="app-shell">
@@ -90,7 +88,7 @@ export function Hospital() {
       <section className="hospital-grid">
         {rooms.map((room) => {
           const doctor = getAssignedDoctor(room.id, doctorByRoom)
-          const supportDoctor = getSupportDoctorForRoom(room.id, supportByRoom, doctorsById)
+          const supportDoctors = getSupportDoctorsForRoom(room.id, supportByRoom, doctorsById)
           const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
           return (
             <RoomCard
@@ -99,7 +97,8 @@ export function Hospital() {
               doctor={doctor}
               onClick={() => setActiveRoom(room)}
               equipment={equippedItem}
-              supportDoctor={supportDoctor}
+              supportDoctors={supportDoctors}
+              supportEquipmentMap={equippedItemMap}
             />
           )
         })}
@@ -207,7 +206,8 @@ export function Hospital() {
         <AssignDoctorModal
           room={activeRoom}
           currentDoctor={activeDoctor}
-          currentSupportDoctor={activeSupportDoctor}
+          currentSupportAssignments={activeSupportAssignments}
+          doctorsById={doctorsById}
           equippedItemMap={equippedItemMap}
           onClose={() => setActiveRoom(null)}
         />

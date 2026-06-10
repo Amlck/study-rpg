@@ -10,11 +10,11 @@ import { lookupSprite } from '../lib/sprite-lookup'
 import type { DoctorRow, EquipmentRow } from '../db/schema'
 import { describeEquipment, getEquipmentBonus } from '../services/equipment'
 import {
-  ROOM_SUPPORT_ROLE_ANESTHESIA,
   ROOM_SUPPORT_ROLE_LABELS,
+  SUPPORT_THROUGHPUT_SHARE,
   computeRoomTeamThroughput,
-  getRoomSupportMultiplier,
-  isSupportRoleAvailableForRoom,
+  computeSupportThroughput,
+  getSupportRolesForRoom,
 } from '../services/room-team'
 import { EmojiIcon } from './EmojiIcon'
 
@@ -24,7 +24,8 @@ interface RoomCardProps {
   onClick: () => void
   /** Equipment currently worn by the assigned doctor, if any. */
   equipment?: EquipmentRow
-  supportDoctor?: DoctorRow | null
+  supportDoctors?: DoctorRow[]
+  supportEquipmentMap?: Map<string, EquipmentRow>
 }
 
 function fmtMultiplier(value: number): string {
@@ -35,7 +36,8 @@ function buildThroughputBreakdownParts(
   room: Room,
   doctor: DoctorRow | null,
   equipment: EquipmentRow | undefined,
-  supportDoctor: DoctorRow | null,
+  supportDoctors: ReadonlyArray<DoctorRow>,
+  supportEquipmentMap: Map<string, EquipmentRow> | undefined,
 ): string[] {
   if (!doctor) return ['尚未指派醫師。']
 
@@ -57,41 +59,61 @@ function buildThroughputBreakdownParts(
     parts.push(`器材 ×${fmtMultiplier(equipmentMultiplier)}（${describeEquipment(equipment).name}）`)
   }
 
-  const teamMultiplier = getRoomSupportMultiplier(
-    room,
-    doctor,
-    supportDoctor,
-    ROOM_SUPPORT_ROLE_ANESTHESIA,
-  )
-  if (teamMultiplier > 1 && supportDoctor) {
+  for (const supportDoctor of supportDoctors) {
     parts.push(
-      `團隊 ×${fmtMultiplier(teamMultiplier)}（${ROOM_SUPPORT_ROLE_LABELS.anesthesia}：${supportDoctor.name}）`,
+      `支援 ${supportDoctor.name} +${computeSupportThroughput(
+        room,
+        supportDoctor,
+        supportEquipmentMap?.get(supportDoctor.id),
+      ).toFixed(1)}（${Math.round(SUPPORT_THROUGHPUT_SHARE * 100)}%）`,
     )
   }
 
   return [
     ...parts,
-    `= ${(room.baseRate * doctorMultiplier * facilityMultiplier * affinityMultiplier * equipmentMultiplier * teamMultiplier).toFixed(1)} 患者/分`,
+    `= ${computeRoomTeamThroughput(room, doctor, supportDoctors, equipment, supportEquipmentMap).toFixed(1)} 患者/分`,
   ]
 }
 
-export function RoomCard({ room, doctor, onClick, equipment, supportDoctor = null }: RoomCardProps) {
+export function RoomCard({
+  room,
+  doctor,
+  onClick,
+  equipment,
+  supportDoctors = [],
+  supportEquipmentMap,
+}: RoomCardProps) {
   const [showBreakdown, setShowBreakdown] = useState(false)
   const equipmentBonus = getEquipmentBonus(equipment, room.type)
-  const throughput = computeRoomTeamThroughput(room, doctor, supportDoctor, equipment)
+  const throughput = computeRoomTeamThroughput(room, doctor, supportDoctors, equipment, supportEquipmentMap)
   const isAffinityMatch = doctor !== null && SUBJECT_TO_ROOM[doctor.subjectId] === room.type
   const affinityBonus = isAffinityMatch && doctor ? getAffinityBonus(doctor.rarity, doctor.subjectId, room.type) : null
-  const teamBonus = getRoomSupportMultiplier(room, doctor, supportDoctor, ROOM_SUPPORT_ROLE_ANESTHESIA)
-  const throughputBreakdownParts = buildThroughputBreakdownParts(room, doctor, equipment, supportDoctor)
+  const supportRoles = getSupportRolesForRoom(room)
+  const supportCapacity = supportRoles.length
+  const supportCount = supportDoctors.length
+  const throughputBreakdownParts = buildThroughputBreakdownParts(
+    room,
+    doctor,
+    equipment,
+    supportDoctors,
+    supportEquipmentMap,
+  )
   const throughputBreakdown = throughputBreakdownParts.join(' × ')
   const spriteUrl = doctor
     ? lookupSprite(doctor.spriteKey, THEME_PIXEL_HOSPITAL.sprites, doctor.rarity)
     : undefined
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick()
+        }
+      }}
       className={`room-card ${doctor ? 'room-card--assigned' : 'room-card--empty'}`}
       style={
         doctor
@@ -119,10 +141,12 @@ export function RoomCard({ room, doctor, onClick, equipment, supportDoctor = nul
         {doctor ? doctor.name : '指派醫師'}
       </div>
 
-      {isSupportRoleAvailableForRoom(room, ROOM_SUPPORT_ROLE_ANESTHESIA) && (
-        <div className={`room-card__support ${supportDoctor ? 'room-card__support--filled' : ''}`}>
-          <span>{ROOM_SUPPORT_ROLE_LABELS.anesthesia}</span>
-          <strong>{supportDoctor ? supportDoctor.name : '空缺'}</strong>
+      {supportCapacity > 0 && (
+        <div className={`room-card__support ${supportCount > 0 ? 'room-card__support--filled' : ''}`}>
+          <span>
+            {supportCapacity === 1 ? ROOM_SUPPORT_ROLE_LABELS[supportRoles[0]] : `支援 ${supportCount}/${supportCapacity}`}
+          </span>
+          <strong>{supportCount > 0 ? supportDoctors.map((supportDoctor) => supportDoctor.name).join('、') : '空缺'}</strong>
         </div>
       )}
 
@@ -148,9 +172,9 @@ export function RoomCard({ room, doctor, onClick, equipment, supportDoctor = nul
             <span aria-hidden>🧰</span>{fmtMultiplier(equipmentBonus)}×
           </span>
         )}
-        {teamBonus > 1 && supportDoctor && (
-          <span className="room-card__team-bonus" aria-label={`團隊加成 ${teamBonus} 倍`}>
-            <span aria-hidden>⚕</span>{fmtMultiplier(teamBonus)}×
+        {supportCount > 0 && (
+          <span className="room-card__team-bonus" aria-label={`支援醫師 ${supportCount} 位`}>
+            <span aria-hidden>⚕</span>+{supportCount}
           </span>
         )}
       </button>
@@ -161,6 +185,6 @@ export function RoomCard({ room, doctor, onClick, equipment, supportDoctor = nul
           ))}
         </div>
       )}
-    </button>
+    </div>
   )
 }

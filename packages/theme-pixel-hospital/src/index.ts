@@ -19,81 +19,33 @@ export { ROOM_SCENES } from './room-scenes'
 export { EVENT_ICONS } from './event-icons'
 export { FATE_CARD_ART } from './fate-card-art'
 
-// Slot inventory satisfies `slot_count(tier, type) ≥ default_room_count(tier, type)
-// + max_extension_cap(type)` so a maxed-out hospital (all defaults + 3 outpatient
-// / 2 surgery / 2 ward extensions purchased) has a deterministic slot per assigned
-// doctor. Sprites are 96×96 with `transform: translate(-50%,-50%)` so (x,y) is the
-// sprite center on the 768×384 scene canvas.
+type SlotRoom = SlotPosition['room']
+type SlotCounts = Partial<Record<SlotRoom, number>>
+
+function makeShelfSlots(counts: SlotCounts): SlotPosition[] {
+  const order: SlotRoom[] = ['outpatient', 'emergency', 'surgery', 'ward', 'icu']
+  const slots: SlotPosition[] = []
+  for (const room of order) {
+    const count = counts[room] ?? 0
+    for (let i = 0; i < count; i++) {
+      slots.push({
+        room,
+        x: Math.round(((i + 1) * 768) / (count + 1)),
+        y: 180 + (order.indexOf(room) % 3) * 60,
+      })
+    }
+  }
+  return slots
+}
+
+// Slot inventory satisfies `slot_count(tier, type) >= default_room_count(tier, type)
+// + max_extension_cap(type)` so a maxed-out hospital has deterministic shelf
+// capacity per assigned doctor.
 const DOCTOR_SLOT_POSITIONS: NonNullable<ThemePack['doctorSlotPositions']> = {
-  // 診所: 3 outpatient (3 default, 0 extension; no ward / no surgery rooms exist)
-  tier1: [
-    { room: 'outpatient', x: 180, y: 220 },
-    { room: 'outpatient', x: 384, y: 220 },
-    { room: 'outpatient', x: 588, y: 220 },
-  ] satisfies SlotPosition[],
-
-  // 區域醫院: 2 ward (0+2 ext) + 7 outpatient (4+3 ext) + 3 surgery (1+2 ext) = 12
-  // Top row y=180 holds the 5 default rooms; bottom row y=300 holds extension overflow.
-  tier2: [
-    // top row — defaults (5 slots evenly across 768 px)
-    { room: 'outpatient', x: 77,  y: 180 },
-    { room: 'outpatient', x: 230, y: 180 },
-    { room: 'outpatient', x: 384, y: 180 },
-    { room: 'outpatient', x: 538, y: 180 },
-    { room: 'surgery',    x: 691, y: 180 },
-    // bottom row — extensions (7 slots evenly across 768 px)
-    { room: 'ward',       x: 55,  y: 300 },
-    { room: 'ward',       x: 165, y: 300 },
-    { room: 'outpatient', x: 275, y: 300 },
-    { room: 'outpatient', x: 385, y: 300 },
-    { room: 'outpatient', x: 495, y: 300 },
-    { room: 'surgery',    x: 605, y: 300 },
-    { room: 'surgery',    x: 715, y: 300 },
-  ] satisfies SlotPosition[],
-
-  // 醫學中心: 3 ward (1+2 ext) + 7 outpatient (4+3 ext) + 4 surgery (2+2 ext) = 14
-  tier3: [
-    // top row — defaults (7 slots evenly)
-    { room: 'outpatient', x: 55,  y: 180 },
-    { room: 'outpatient', x: 165, y: 180 },
-    { room: 'outpatient', x: 275, y: 180 },
-    { room: 'outpatient', x: 385, y: 180 },
-    { room: 'surgery',    x: 495, y: 180 },
-    { room: 'surgery',    x: 605, y: 180 },
-    { room: 'ward',       x: 715, y: 180 },
-    // bottom row — extensions (7 slots evenly)
-    { room: 'ward',       x: 55,  y: 300 },
-    { room: 'ward',       x: 165, y: 300 },
-    { room: 'outpatient', x: 275, y: 300 },
-    { room: 'outpatient', x: 385, y: 300 },
-    { room: 'outpatient', x: 495, y: 300 },
-    { room: 'surgery',    x: 605, y: 300 },
-    { room: 'surgery',    x: 715, y: 300 },
-  ] satisfies SlotPosition[],
-
-  // 國家級教學醫院: 4 ward (2+2 ext) + 8 outpatient (5+3 ext) + 5 surgery (3+2 ext) = 17
-  tier4: [
-    // top row — defaults + 1 ward (9 slots, 768/9 ≈ 85 px spacing; sprite at x=43
-    // partially clips left edge — acceptable per design Decision 3)
-    { room: 'outpatient', x: 43,  y: 180 },
-    { room: 'outpatient', x: 128, y: 180 },
-    { room: 'outpatient', x: 213, y: 180 },
-    { room: 'outpatient', x: 299, y: 180 },
-    { room: 'outpatient', x: 384, y: 180 },
-    { room: 'surgery',    x: 469, y: 180 },
-    { room: 'surgery',    x: 555, y: 180 },
-    { room: 'surgery',    x: 640, y: 180 },
-    { room: 'ward',       x: 725, y: 180 },
-    // bottom row — remaining default ward + 2 ward ext + 3 outpatient ext + 2 surgery ext (8 slots)
-    { room: 'ward',       x: 48,  y: 300 },
-    { room: 'ward',       x: 144, y: 300 },
-    { room: 'ward',       x: 240, y: 300 },
-    { room: 'outpatient', x: 336, y: 300 },
-    { room: 'outpatient', x: 432, y: 300 },
-    { room: 'outpatient', x: 528, y: 300 },
-    { room: 'surgery',    x: 624, y: 300 },
-    { room: 'surgery',    x: 720, y: 300 },
-  ] satisfies SlotPosition[],
+  tier1: makeShelfSlots({ outpatient: 3 }),
+  tier2: makeShelfSlots({ outpatient: 7, emergency: 3, surgery: 3, ward: 2, icu: 1 }),
+  tier3: makeShelfSlots({ outpatient: 7, emergency: 3, surgery: 4, ward: 3, icu: 2 }),
+  tier4: makeShelfSlots({ outpatient: 8, emergency: 4, surgery: 5, ward: 4, icu: 3 }),
 }
 
 export const THEME_PIXEL_HOSPITAL: ThemePack = {

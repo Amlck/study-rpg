@@ -1,10 +1,11 @@
 /**
- * Room-scene registry — maps room type (`outpatient` / `surgery` / `ward`) to
+ * Room-scene registry — maps room type to
  * a 384×384 interior pixel scene PNG. Used by `StudySessionPage` as a backdrop
  * for the "看診中診間" hero panel.
  *
  * Generated via codex `gpt-image-2`:
- *   - All 3 scenes (2026-05-17 `redesign-hospital-economy` §10 follow-up)
+ *   - Base 3 scenes (2026-05-17 `redesign-hospital-economy` §10 follow-up)
+ *   - ER / ICU scenes (2026-06-10 ER + ICU departments)
  *
  * Uses Vite's `import.meta.glob` with `?url`. Returns `undefined` if any scene
  * is missing — caller gracefully degrades by hiding the hero panel.
@@ -13,7 +14,7 @@
  */
 
 const roomSceneModules = import.meta.glob(
-  '../sprites/scenes/{outpatient,surgery,ward}-scene.png',
+  '../sprites/scenes/{outpatient,emergency,surgery,ward,icu}-scene.png',
   {
     eager: true,
     query: '?url',
@@ -22,7 +23,7 @@ const roomSceneModules = import.meta.glob(
 ) as Record<string, string>
 
 function extractRoomTypeKey(path: string): string {
-  const match = path.match(/\/(outpatient|surgery|ward)-scene\.png$/)
+  const match = path.match(/\/(outpatient|emergency|surgery|ward|icu)-scene\.png$/)
   return match ? match[1] : ''
 }
 
@@ -33,12 +34,18 @@ const roomSceneEntries = Object.entries(roomSceneModules)
 export const ROOM_SCENES_MAP: Record<string, string> = Object.fromEntries(roomSceneEntries)
 
 export const ROOM_SCENES:
-  | { outpatient: string; surgery: string; ward: string }
+  | { outpatient: string; emergency: string; surgery: string; ward: string; icu: string }
   | undefined =
-  ROOM_SCENES_MAP.outpatient && ROOM_SCENES_MAP.surgery && ROOM_SCENES_MAP.ward
+  ROOM_SCENES_MAP.outpatient &&
+  ROOM_SCENES_MAP.emergency &&
+  ROOM_SCENES_MAP.surgery &&
+  ROOM_SCENES_MAP.ward &&
+  ROOM_SCENES_MAP.icu
     ? {
         outpatient: ROOM_SCENES_MAP.outpatient,
+        emergency: ROOM_SCENES_MAP.emergency,
         surgery: ROOM_SCENES_MAP.surgery,
         ward: ROOM_SCENES_MAP.ward,
+        icu: ROOM_SCENES_MAP.icu,
       }
     : undefined

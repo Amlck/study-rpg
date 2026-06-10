@@ -19,15 +19,14 @@ const SCENE_HEIGHT = 384
 const ROOM_LABEL: Record<SlotPosition['room'], string> = {
   ward: '病房',
   outpatient: '門診',
+  emergency: '急診',
   surgery: '開刀房',
+  icu: 'ICU',
 }
 
-// Shelf is laid out in 2 visual rows. Row 1 = outpatient alone (largest single
-// group); Row 2 = ward + surgery side by side. Sized so each row roughly
-// matches the other in cell count for a balanced look.
 const SHELF_ROW_LAYOUT: SlotPosition['room'][][] = [
-  ['outpatient'],
-  ['ward', 'surgery'],
+  ['outpatient', 'emergency'],
+  ['surgery', 'ward', 'icu'],
 ]
 
 export function HospitalScene() {
@@ -58,7 +57,9 @@ export function HospitalScene() {
     const slotsByRoom: Record<SlotPosition['room'], SlotPosition[]> = {
       ward: [],
       outpatient: [],
+      emergency: [],
       surgery: [],
+      icu: [],
     }
     for (const slot of slots) slotsByRoom[slot.room].push(slot)
 
@@ -77,8 +78,20 @@ export function HospitalScene() {
       | { kind: 'doctor'; key: string; spriteUrl: string; name: string; subjectId: string; rarity: string }
       | { kind: 'empty'; key: string }
 
-    const slotCursor: Record<SlotPosition['room'], number> = { ward: 0, outpatient: 0, surgery: 0 }
-    const shelfByRoom: Record<SlotPosition['room'], ShelfCell[]> = { ward: [], outpatient: [], surgery: [] }
+    const slotCursor: Record<SlotPosition['room'], number> = {
+      ward: 0,
+      outpatient: 0,
+      emergency: 0,
+      surgery: 0,
+      icu: 0,
+    }
+    const shelfByRoom: Record<SlotPosition['room'], ShelfCell[]> = {
+      ward: [],
+      outpatient: [],
+      emergency: [],
+      surgery: [],
+      icu: [],
+    }
 
     for (const doctor of assignedDoctors) {
       if (!doctor.assignedRoom) continue
@@ -101,7 +114,7 @@ export function HospitalScene() {
     }
 
     // Pad each room's group with empty cells up to its slot count
-    const ROOM_ORDER: SlotPosition['room'][] = ['ward', 'outpatient', 'surgery']
+    const ROOM_ORDER: SlotPosition['room'][] = ['outpatient', 'emergency', 'surgery', 'ward', 'icu']
     for (const rt of ROOM_ORDER) {
       const total = slotsByRoom[rt].length
       for (let i = shelfByRoom[rt].length; i < total; i++) {
