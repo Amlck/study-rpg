@@ -33,6 +33,8 @@ import {
 import { loadSubjectQuestionIds } from '../lib/quiz'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
 import { ER_DOCTOR_SPRITE_KEYS } from '../lib/sprite-lookup'
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
+import { getERConsultStaffingMultiplier } from '../lib/room-team'
 
 const SETTINGS_META_KEY = 'er-consult-settings'
 
@@ -233,6 +235,25 @@ export interface AnswerERConsultResult {
   reputationDelta: number
 }
 
+export async function getERConsultStaffingMultiplierFromDb(): Promise<number> {
+  const db = getHospitalDB()
+  const [rooms, doctors, supportAssignments] = await Promise.all([
+    db.rooms.toArray(),
+    db.doctors.toArray(),
+    db.roomSupportAssignments.toArray(),
+  ])
+  const doctorByRoom = buildDoctorByRoom(doctors)
+  const supportDoctorByRoom = buildSupportDoctorByRoom(doctors, supportAssignments)
+  let emergencyLeadCount = 0
+  let emergencySupportCount = 0
+  for (const room of rooms) {
+    if (room.type !== 'emergency') continue
+    if (getAssignedDoctor(room.id, doctorByRoom)) emergencyLeadCount += 1
+    emergencySupportCount += getSupportDoctors(room.id, supportDoctorByRoom).length
+  }
+  return getERConsultStaffingMultiplier({ emergencyLeadCount, emergencySupportCount })
+}
+
 /**
  * Apply a player answer to the active ER consult. Atomic across mastery,
  * questionHistory, affinity, gameCounters, and erConsultLog. Clears
@@ -262,6 +283,9 @@ export async function answerERConsult(opts: {
       db.affinity,
       db.gameCounters,
       db.erConsultLog,
+      db.rooms,
+      db.doctors,
+      db.roomSupportAssignments,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -286,11 +310,12 @@ export async function answerERConsult(opts: {
       let reputationDelta = 0
       if (opts.wasCorrect) {
         const tierMult = QUIZ_TIER_MULTIPLIER[counters.tier] ?? 1.0
+        const staffingMultiplier = await getERConsultStaffingMultiplierFromDb()
         revenueDelta = computeERConsultReward(
-          Math.round(QUIZ_REVENUE_PER_CORRECT_BASE * tierMult),
+          Math.round(QUIZ_REVENUE_PER_CORRECT_BASE * tierMult * staffingMultiplier),
         )
         reputationDelta = computeERConsultReward(
-          Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult),
+          Math.round(QUIZ_REPUTATION_PER_CORRECT_BASE * tierMult * staffingMultiplier),
         )
       }
 

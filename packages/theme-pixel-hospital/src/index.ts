@@ -32,16 +32,17 @@ const DOCTOR_SLOT_POSITIONS: NonNullable<ThemePack['doctorSlotPositions']> = {
     { room: 'outpatient', x: 588, y: 220 },
   ] satisfies SlotPosition[],
 
-  // 區域醫院: 2 ward (0+2 ext) + 7 outpatient (4+3 ext) + 3 surgery (1+2 ext) = 12
-  // Top row y=180 holds the 5 default rooms; bottom row y=300 holds extension overflow.
+  // 區域醫院: 2 ward + 7 outpatient + 3 surgery + 3 emergency = 15
+  // Includes extension capacity so maxed-out hospitals have deterministic slots.
   tier2: [
-    // top row — defaults (5 slots evenly across 768 px)
-    { room: 'outpatient', x: 77,  y: 180 },
-    { room: 'outpatient', x: 230, y: 180 },
-    { room: 'outpatient', x: 384, y: 180 },
-    { room: 'outpatient', x: 538, y: 180 },
-    { room: 'surgery',    x: 691, y: 180 },
-    // bottom row — extensions (7 slots evenly across 768 px)
+    { room: 'outpatient', x: 48,  y: 170 },
+    { room: 'outpatient', x: 144, y: 170 },
+    { room: 'outpatient', x: 240, y: 170 },
+    { room: 'outpatient', x: 336, y: 170 },
+    { room: 'surgery',    x: 432, y: 170 },
+    { room: 'emergency',  x: 528, y: 170 },
+    { room: 'emergency',  x: 624, y: 170 },
+    { room: 'emergency',  x: 720, y: 170 },
     { room: 'ward',       x: 55,  y: 300 },
     { room: 'ward',       x: 165, y: 300 },
     { room: 'outpatient', x: 275, y: 300 },
@@ -51,30 +52,31 @@ const DOCTOR_SLOT_POSITIONS: NonNullable<ThemePack['doctorSlotPositions']> = {
     { room: 'surgery',    x: 715, y: 300 },
   ] satisfies SlotPosition[],
 
-  // 醫學中心: 3 ward (1+2 ext) + 7 outpatient (4+3 ext) + 4 surgery (2+2 ext) = 14
+  // 醫學中心: 3 ward + 7 outpatient + 4 surgery + 3 emergency + 2 ICU = 19
   tier3: [
-    // top row — defaults (7 slots evenly)
-    { room: 'outpatient', x: 55,  y: 180 },
-    { room: 'outpatient', x: 165, y: 180 },
-    { room: 'outpatient', x: 275, y: 180 },
-    { room: 'outpatient', x: 385, y: 180 },
-    { room: 'surgery',    x: 495, y: 180 },
-    { room: 'surgery',    x: 605, y: 180 },
-    { room: 'ward',       x: 715, y: 180 },
-    // bottom row — extensions (7 slots evenly)
-    { room: 'ward',       x: 55,  y: 300 },
-    { room: 'ward',       x: 165, y: 300 },
-    { room: 'outpatient', x: 275, y: 300 },
-    { room: 'outpatient', x: 385, y: 300 },
-    { room: 'outpatient', x: 495, y: 300 },
-    { room: 'surgery',    x: 605, y: 300 },
-    { room: 'surgery',    x: 715, y: 300 },
+    { room: 'outpatient', x: 43,  y: 170 },
+    { room: 'outpatient', x: 128, y: 170 },
+    { room: 'outpatient', x: 213, y: 170 },
+    { room: 'outpatient', x: 299, y: 170 },
+    { room: 'surgery',    x: 384, y: 170 },
+    { room: 'surgery',    x: 469, y: 170 },
+    { room: 'emergency',  x: 555, y: 170 },
+    { room: 'emergency',  x: 640, y: 170 },
+    { room: 'ward',       x: 725, y: 170 },
+    { room: 'ward',       x: 43,  y: 300 },
+    { room: 'ward',       x: 128, y: 300 },
+    { room: 'icu',        x: 213, y: 300 },
+    { room: 'icu',        x: 299, y: 300 },
+    { room: 'outpatient', x: 384, y: 300 },
+    { room: 'outpatient', x: 469, y: 300 },
+    { room: 'outpatient', x: 555, y: 300 },
+    { room: 'surgery',    x: 640, y: 300 },
+    { room: 'surgery',    x: 725, y: 300 },
+    { room: 'emergency',  x: 384, y: 240 },
   ] satisfies SlotPosition[],
 
-  // 國家級教學醫院: 4 ward (2+2 ext) + 8 outpatient (5+3 ext) + 5 surgery (3+2 ext) = 17
+  // 國家級教學醫院: 4 ward + 8 outpatient + 5 surgery + 4 emergency + 3 ICU = 24
   tier4: [
-    // top row — defaults + 1 ward (9 slots, 768/9 ≈ 85 px spacing; sprite at x=43
-    // partially clips left edge — acceptable per design Decision 3)
     { room: 'outpatient', x: 43,  y: 180 },
     { room: 'outpatient', x: 128, y: 180 },
     { room: 'outpatient', x: 213, y: 180 },
@@ -84,7 +86,6 @@ const DOCTOR_SLOT_POSITIONS: NonNullable<ThemePack['doctorSlotPositions']> = {
     { room: 'surgery',    x: 555, y: 180 },
     { room: 'surgery',    x: 640, y: 180 },
     { room: 'ward',       x: 725, y: 180 },
-    // bottom row — remaining default ward + 2 ward ext + 3 outpatient ext + 2 surgery ext (8 slots)
     { room: 'ward',       x: 48,  y: 300 },
     { room: 'ward',       x: 144, y: 300 },
     { room: 'ward',       x: 240, y: 300 },
@@ -93,6 +94,13 @@ const DOCTOR_SLOT_POSITIONS: NonNullable<ThemePack['doctorSlotPositions']> = {
     { room: 'outpatient', x: 528, y: 300 },
     { room: 'surgery',    x: 624, y: 300 },
     { room: 'surgery',    x: 720, y: 300 },
+    { room: 'emergency',  x: 96,  y: 240 },
+    { room: 'emergency',  x: 192, y: 240 },
+    { room: 'emergency',  x: 288, y: 240 },
+    { room: 'emergency',  x: 384, y: 240 },
+    { room: 'icu',        x: 480, y: 240 },
+    { room: 'icu',        x: 576, y: 240 },
+    { room: 'icu',        x: 672, y: 240 },
   ] satisfies SlotPosition[],
 }
 

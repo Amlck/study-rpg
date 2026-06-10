@@ -13,27 +13,44 @@ import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { lookupSprite } from '../lib/sprite-lookup'
 import { getHospitalDB, type DoctorRow, type EquipmentRow } from '../db/schema'
 import { EmojiIcon } from './EmojiIcon'
-import { assignDoctor, unassignDoctor, getUnassignedDoctors } from '../lib/assignment'
+import {
+  assignDoctor,
+  assignSupportDoctorToSlot,
+  getAvailableSupportDoctors,
+  getUnassignedDoctors,
+  unassignDoctor,
+  unassignSupportDoctorFromSlot,
+} from '../lib/assignment'
 import { upgradeFacility } from '../services/facility'
 import { getEquipmentBonus } from '../services/equipment'
+import { computeSupportThroughput, getRoomSupportCapacity, SUPPORT_THROUGHPUT_SHARE } from '../lib/room-team'
 
 interface AssignDoctorModalProps {
   room: Room
   currentDoctor: DoctorRow | null
+  currentSupportDoctors?: DoctorRow[]
   /** Equipment currently equipped by each doctor, keyed by doctorId. */
   equippedItemMap?: Map<string, EquipmentRow>
   onClose: () => void
 }
 
-export function AssignDoctorModal({ room: initialRoom, currentDoctor, equippedItemMap, onClose }: AssignDoctorModalProps) {
+export function AssignDoctorModal({
+  room: initialRoom,
+  currentDoctor,
+  currentSupportDoctors = [],
+  equippedItemMap,
+  onClose,
+}: AssignDoctorModalProps) {
   const db = getHospitalDB()
   // Live-track the room so facility upgrades reflect immediately in the modal
   const liveRoom = useLiveQuery(() => db.rooms.get(initialRoom.id), [initialRoom.id])
   const room = liveRoom ?? initialRoom
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const [candidates, setCandidates] = useState<DoctorRow[]>([])
+  const [supportCandidatesBySlot, setSupportCandidatesBySlot] = useState<Record<number, DoctorRow[]>>({})
   const [busy, setBusy] = useState(false)
   const [facilityError, setFacilityError] = useState<string | null>(null)
+  const supportCapacity = getRoomSupportCapacity(room.type)
 
   useEffect(() => {
     let cancelled = false
@@ -47,6 +64,31 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, equippedIt
       cancelled = true
     }
   }, [currentDoctor])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (supportCapacity <= 0) {
+        if (!cancelled) setSupportCandidatesBySlot({})
+        return
+      }
+      const next: Record<number, DoctorRow[]> = {}
+      for (let slot = 1; slot <= supportCapacity; slot += 1) {
+        const currentSupportDoctor = currentSupportDoctors[slot - 1] ?? null
+        const available = await getAvailableSupportDoctors(room.id, slot, currentDoctor?.id ?? null)
+        const withoutDuplicateCurrent = currentSupportDoctor
+          ? available.filter((d) => d.id !== currentSupportDoctor.id)
+          : available
+        next[slot] = currentSupportDoctor
+          ? [currentSupportDoctor, ...withoutDuplicateCurrent]
+          : withoutDuplicateCurrent
+      }
+      if (!cancelled) setSupportCandidatesBySlot(next)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [currentDoctor, currentSupportDoctors, room.id, supportCapacity])
 
   async function handlePick(doctor: DoctorRow) {
     if (busy) return
@@ -68,6 +110,31 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, equippedIt
     setBusy(true)
     try {
       await unassignDoctor(room.id)
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handlePickSupport(slot: number, doctor: DoctorRow) {
+    if (busy) return
+    setBusy(true)
+    try {
+      const currentSupportDoctor = currentSupportDoctors[slot - 1] ?? null
+      if (doctor.id !== currentSupportDoctor?.id) {
+        await assignSupportDoctorToSlot(room.id, slot, doctor.id)
+      }
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleUnassignSupport(slot: number) {
+    if (busy) return
+    setBusy(true)
+    try {
+      await unassignSupportDoctorFromSlot(room.id, slot)
       onClose()
     } finally {
       setBusy(false)
@@ -152,6 +219,75 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, equippedIt
           </ul>
         )}
 
+        {supportCapacity > 0 && (
+          <section className="assign-modal__support" aria-label="支援醫師">
+            <header className="assign-modal__section-head">
+              <h3>支援醫師</h3>
+              <span>{ROOM_TYPE_LABELS[room.type]} · {supportCapacity} 格 · {Math.round(SUPPORT_THROUGHPUT_SHARE * 100)}% 產能</span>
+            </header>
+            {Array.from({ length: supportCapacity }, (_, i) => i + 1).map((slot) => {
+              const supportCandidates = supportCandidatesBySlot[slot] ?? []
+              const currentSupportDoctor = currentSupportDoctors[slot - 1] ?? null
+              return (
+                <div key={slot} className="assign-modal__support-slot">
+                  <div className="assign-modal__support-slot-head">
+                    <strong>支援 #{slot}</strong>
+                    {currentSupportDoctor && (
+                      <button
+                        type="button"
+                        className="assign-modal__unassign assign-modal__unassign--support"
+                        onClick={() => void handleUnassignSupport(slot)}
+                        disabled={busy}
+                      >
+                        取消支援
+                      </button>
+                    )}
+                  </div>
+                  {supportCandidates.length === 0 ? (
+                    <p className="assign-modal__empty assign-modal__empty--compact">
+                      目前沒有可支援的空閒醫師。
+                    </p>
+                  ) : (
+                    <ul className="assign-modal__list assign-modal__list--support">
+                      {supportCandidates.map((d) => {
+                        const isCurrent = d.id === currentSupportDoctor?.id
+                        const equippedItem = equippedItemMap?.get(d.id)
+                        const throughput = computeSupportThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
+                        const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
+                        return (
+                          <li key={d.id}>
+                            <button
+                              type="button"
+                              className={`assign-modal__row ${isCurrent ? 'assign-modal__row--current' : ''}`}
+                              onClick={() => void handlePickSupport(slot, d)}
+                              disabled={busy}
+                              style={{ ['--rarity-color' as string]: `var(--rarity-${d.rarity.toLowerCase()})` } as React.CSSProperties}
+                            >
+                              <span className="assign-modal__sprite">
+                                {spriteUrl ? <img src={spriteUrl} alt="" /> : <EmojiIcon char="🩺" size={32} />}
+                              </span>
+                              <span className="assign-modal__info">
+                                <span className="assign-modal__name">{d.name}</span>
+                                <span className="assign-modal__meta">
+                                  {d.rarity} {RARITY_LABELS[d.rarity]} · ×{d.powerMultiplier.toFixed(1)}
+                                </span>
+                              </span>
+                              <span className="assign-modal__throughput">
+                                +{throughput.toFixed(1)}/分
+                                {isCurrent && <small>（目前支援）</small>}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
+          </section>
+        )}
+
         <section className="assign-modal__facility" aria-label="設施升級">
           <h3 className="assign-modal__facility-title">設施升級</h3>
           <p className="assign-modal__facility-current">
@@ -202,4 +338,3 @@ export function AssignDoctorModal({ room: initialRoom, currentDoctor, equippedIt
     </div>
   )
 }
-

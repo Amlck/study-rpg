@@ -1575,6 +1575,13 @@ body:has(.modal-backdrop) {
   text-align: center;
 }
 
+.room-card__support {
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--accent-rose);
+  text-align: center;
+}
+
 .room-card--empty .room-card__name {
   color: var(--frame-light);
 }
@@ -1673,6 +1680,61 @@ body:has(.modal-backdrop) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.assign-modal__list--support {
+  max-height: 220px;
+  margin-bottom: 10px;
+}
+
+.assign-modal__support {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255,255,255,0.25);
+  border: 1px solid var(--frame-dark);
+}
+
+.assign-modal__section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--frame-dark);
+  padding-bottom: 4px;
+}
+
+.assign-modal__section-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.assign-modal__section-head span {
+  font-size: 12px;
+  color: var(--frame-light);
+}
+
+.assign-modal__empty--compact {
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.assign-modal__support-slot {
+  margin-top: 10px;
+}
+
+.assign-modal__support-slot + .assign-modal__support-slot {
+  padding-top: 10px;
+  border-top: 1px dashed var(--frame-light);
+}
+
+.assign-modal__support-slot-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
 }
 
 .assign-modal__row {
@@ -1779,6 +1841,11 @@ body:has(.modal-backdrop) {
 .assign-modal__unassign:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+.assign-modal__unassign--support {
+  padding: 6px 12px;
+  font-size: 13px;
 }
 
 /* ── Offline cap notice ────────────────────────────────── */

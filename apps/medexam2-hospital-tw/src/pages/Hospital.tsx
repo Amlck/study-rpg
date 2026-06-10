@@ -5,7 +5,6 @@ import {
   ROOM_EXTENSION_COSTS,
   ROOM_EXTENSION_UNLOCKED_TIERS,
   ROOM_TYPE_LABELS,
-  computeThroughput,
   type Room,
   type RoomType,
 } from '@study-rpg/content-medexam2-tw'
@@ -15,11 +14,12 @@ import { RoomCard } from '../components/RoomCard'
 import { AssignDoctorModal } from '../components/AssignDoctorModal'
 import { purchaseRoomExtension, type ExtensionResult } from '../services/room-extension'
 import { SurfaceHint } from '../components/SurfaceHint'
-import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { computeRoomThroughputWithSupport } from '../lib/room-team'
 
 const EXTRA_PREFIX = 'extra-'
-const ROOM_TYPES_ORDERED: ReadonlyArray<RoomType> = ['outpatient', 'surgery', 'ward']
+const ROOM_TYPES_ORDERED: ReadonlyArray<RoomType> = ['outpatient', 'emergency', 'surgery', 'ward', 'icu']
 
 function countExtras(rooms: ReadonlyArray<Room>, type: RoomType): number {
   return rooms.filter((r) => r.type === type && r.id.startsWith(`${EXTRA_PREFIX}${type}-`)).length
@@ -29,6 +29,7 @@ export function Hospital() {
   const db = getHospitalDB()
   const rooms = useLiveQuery(() => db.rooms.orderBy('slot').toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
+  const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
   const [activeRoom, setActiveRoom] = useState<Room | null>(null)
@@ -36,21 +37,35 @@ export function Hospital() {
   const [extBusy, setExtBusy] = useState(false)
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+  const supportDoctorByRoom = useMemo(
+    () => buildSupportDoctorByRoom(doctors, supportAssignments),
+    [doctors, supportAssignments],
+  )
   const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let sum = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
+      const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-      sum += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
+      sum += computeRoomThroughputWithSupport(
+        room,
+        doctor,
+        getEquipmentBonus(equippedItem, room.type),
+        supportDoctors.map((supportDoctor) => ({
+          doctor: supportDoctor,
+          equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
+        })),
+      )
     }
     return sum
-  }, [rooms, doctorByRoom, equippedItemMap])
+  }, [rooms, doctorByRoom, supportDoctorByRoom, equippedItemMap])
 
   const assignedCount = doctorByRoom.size
 
   const activeDoctor = activeRoom ? getAssignedDoctor(activeRoom.id, doctorByRoom) : null
+  const activeSupportDoctors = activeRoom ? getSupportDoctors(activeRoom.id, supportDoctorByRoom) : []
 
   return (
     <main className="app-shell">
@@ -77,14 +92,17 @@ export function Hospital() {
       <section className="hospital-grid">
         {rooms.map((room) => {
           const doctor = getAssignedDoctor(room.id, doctorByRoom)
+          const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
           const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
           return (
             <RoomCard
               key={room.id}
               room={room}
               doctor={doctor}
+              supportDoctors={supportDoctors}
               onClick={() => setActiveRoom(room)}
               equipment={equippedItem}
+              supportEquipmentMap={equippedItemMap}
             />
           )
         })}
@@ -192,6 +210,7 @@ export function Hospital() {
         <AssignDoctorModal
           room={activeRoom}
           currentDoctor={activeDoctor}
+          currentSupportDoctors={activeSupportDoctors}
           equippedItemMap={equippedItemMap}
           onClose={() => setActiveRoom(null)}
         />

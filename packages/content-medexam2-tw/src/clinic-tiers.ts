@@ -45,8 +45,16 @@ export const QUIZ_TIER_MULTIPLIER: Record<HospitalTier, number> = {
   國家級教學醫院: 2.0,
 }
 
+const ROOM_BASE_RATE: Record<Room['type'], number> = {
+  outpatient: 10,
+  surgery: 10,
+  ward: 10,
+  emergency: 12,
+  icu: 14,
+}
+
 function room(id: string, type: Room['type'], slot: number): Room {
-  return { id, type, baseRate: 10, roomFacility: 1.0, facilityLevel: 1, assignedDoctorId: null, slot }
+  return { id, type, baseRate: ROOM_BASE_RATE[type], roomFacility: 1.0, facilityLevel: 1, assignedDoctorId: null, slot }
 }
 
 export const TIER_ROOMS: Record<HospitalTier, Room[]> = {
@@ -61,6 +69,7 @@ export const TIER_ROOMS: Record<HospitalTier, Room[]> = {
     room('outpatient-3', 'outpatient', 3),
     room('outpatient-4', 'outpatient', 4),
     room('surgery-1', 'surgery', 1),
+    room('emergency-1', 'emergency', 1),
   ],
   醫學中心: [
     room('outpatient-1', 'outpatient', 1),
@@ -69,7 +78,9 @@ export const TIER_ROOMS: Record<HospitalTier, Room[]> = {
     room('outpatient-4', 'outpatient', 4),
     room('surgery-1', 'surgery', 1),
     room('surgery-2', 'surgery', 2),
+    room('emergency-1', 'emergency', 1),
     room('ward-1', 'ward', 1),
+    room('icu-1', 'icu', 1),
   ],
   國家級教學醫院: [
     room('outpatient-1', 'outpatient', 1),
@@ -80,8 +91,12 @@ export const TIER_ROOMS: Record<HospitalTier, Room[]> = {
     room('surgery-1', 'surgery', 1),
     room('surgery-2', 'surgery', 2),
     room('surgery-3', 'surgery', 3),
+    room('emergency-1', 'emergency', 1),
+    room('emergency-2', 'emergency', 2),
     room('ward-1', 'ward', 1),
     room('ward-2', 'ward', 2),
+    room('icu-1', 'icu', 1),
+    room('icu-2', 'icu', 2),
   ],
 }
 

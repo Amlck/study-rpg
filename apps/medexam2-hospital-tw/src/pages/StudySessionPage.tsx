@@ -17,16 +17,17 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   computeSalaryDrain,
-  computeThroughput,
   ROOM_TYPE_LABELS,
+  type RoomType,
 } from '@study-rpg/content-medexam2-tw'
 import { ROOM_SCENES } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB } from '../db/schema'
 import { getStudySessionController, useStudySessionTick } from '../lib/tick'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { SurfaceHint } from '../components/SurfaceHint'
-import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { computeRoomThroughputWithSupport } from '../lib/room-team'
 
 export function StudySessionPage() {
   const db = getHospitalDB()
@@ -35,22 +36,36 @@ export function StudySessionPage() {
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const doctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
+  const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
 
   const controller = getStudySessionController()
   const state = useStudySessionTick()
 
   const doctorByRoom = useMemo(() => buildDoctorByRoom(doctors), [doctors])
+  const supportDoctorByRoom = useMemo(
+    () => buildSupportDoctorByRoom(doctors, supportAssignments),
+    [doctors, supportAssignments],
+  )
   const equippedItemMap = useMemo(() => buildEquippedItemMap(allEquipment), [allEquipment])
 
   const totalThroughput = useMemo(() => {
     let t = 0
     for (const room of rooms) {
       const doctor = getAssignedDoctor(room.id, doctorByRoom)
+      const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
       const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-      t += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
+      t += computeRoomThroughputWithSupport(
+        room,
+        doctor,
+        getEquipmentBonus(equippedItem, room.type),
+        supportDoctors.map((supportDoctor) => ({
+          doctor: supportDoctor,
+          equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
+        })),
+      )
     }
     return t
-  }, [rooms, doctorByRoom, equippedItemMap])
+  }, [rooms, doctorByRoom, supportDoctorByRoom, equippedItemMap])
 
   const salaryDrain = useMemo(() => {
     if (!counters) return 0
@@ -64,24 +79,23 @@ export function StudySessionPage() {
     [rooms, doctorByRoom],
   )
 
-  // §10 follow-up: pick a room-scene backdrop based on the most-represented
-  // assigned room type. Falls back to outpatient (the default first-tier room)
-  // when nothing is assigned. ROOM_SCENES is undefined until codex sprites
-  // ship — hero panel hides gracefully in that case.
+  // Pick a room-scene backdrop based on the most-represented assigned room
+  // type. Falls back to outpatient when nothing is assigned, and to ward if an
+  // optional department asset fails to resolve.
   const heroScene = useMemo(() => {
     if (!ROOM_SCENES) return null
     if (assignedRooms.length === 0) return ROOM_SCENES.outpatient
-    const counts: Record<string, number> = { outpatient: 0, surgery: 0, ward: 0 }
+    const counts: Record<RoomType, number> = { outpatient: 0, emergency: 0, surgery: 0, ward: 0, icu: 0 }
     for (const r of assignedRooms) counts[r.type] = (counts[r.type] ?? 0) + 1
-    let topType: 'outpatient' | 'surgery' | 'ward' = 'outpatient'
+    let topType: RoomType = 'outpatient'
     let topCount = -1
-    for (const t of ['outpatient', 'surgery', 'ward'] as const) {
+    for (const t of ['outpatient', 'emergency', 'surgery', 'ward', 'icu'] as const) {
       if (counts[t] > topCount) {
         topType = t
         topCount = counts[t]
       }
     }
-    return ROOM_SCENES[topType]
+    return ROOM_SCENES[topType] ?? ROOM_SCENES.ward
   }, [assignedRooms])
 
   function fmt(n: number, digits = 0): string {
@@ -195,12 +209,24 @@ export function StudySessionPage() {
           <ul className="study-session__room-list">
             {assignedRooms.map((room) => {
               const d = getAssignedDoctor(room.id, doctorByRoom)
+              const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
               const equippedItem = d ? equippedItemMap.get(d.id) : undefined
-              const throughput = computeThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
+              const throughput = computeRoomThroughputWithSupport(
+                room,
+                d,
+                getEquipmentBonus(equippedItem, room.type),
+                supportDoctors.map((supportDoctor) => ({
+                  doctor: supportDoctor,
+                  equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
+                })),
+              )
               return (
                 <li key={room.id} className="study-session__room-item">
                   <span className="room-type-label">{ROOM_TYPE_LABELS[room.type]} #{room.slot}</span>
-                  <span className="doctor-name">{d?.name ?? '（未指派）'}</span>
+                  <span className="doctor-name">
+                    {d?.name ?? '（未指派）'}
+                    {supportDoctors.length > 0 ? ` + ${supportDoctors.map((supportDoctor) => supportDoctor.name).join(' + ')}` : ''}
+                  </span>
                   <span className="throughput">{fmt(throughput, 1)} / 分</span>
                 </li>
               )

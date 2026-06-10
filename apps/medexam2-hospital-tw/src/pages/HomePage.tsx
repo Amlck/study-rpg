@@ -10,7 +10,6 @@ import {
   TIER_DIVERSIFICATION_REQUIREMENTS,
   TIER_UPGRADE_THRESHOLDS,
   computeSalaryDrain,
-  computeThroughput,
   countDistinctSubjectsAtRarity,
   getNextTier,
   rarityIsAtLeast,
@@ -37,8 +36,9 @@ import { RecruitmentBanner } from '../components/RecruitmentBanner'
 import { RecruitmentResultModal } from '../components/RecruitmentResultModal'
 import { DevAffinityControls } from '../components/DevAffinityControls'
 import { HospitalScene } from '../components/HospitalScene'
-import { buildDoctorByRoom, getAssignedDoctor } from '../lib/room-doctor-map'
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from '../lib/room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
+import { computeRoomThroughputWithSupport } from '../lib/room-team'
 import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
@@ -73,6 +73,7 @@ export function HomePage() {
   const rooms = useLiveQuery(() => db.rooms.toArray(), []) ?? []
   const allDoctors = useLiveQuery(() => db.doctors.toArray(), []) ?? []
   const allEquipment = useLiveQuery(() => db.equipment.toArray(), []) ?? []
+  const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
@@ -236,12 +237,22 @@ export function HomePage() {
 
       {(() => {
         const doctorByRoom = buildDoctorByRoom(allDoctors)
+        const supportDoctorByRoom = buildSupportDoctorByRoom(allDoctors, supportAssignments)
         const equippedItemMap = buildEquippedItemMap(allEquipment)
         let throughput = 0
         for (const room of rooms) {
           const d = getAssignedDoctor(room.id, doctorByRoom)
+          const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
           const equippedItem = d ? equippedItemMap.get(d.id) : undefined
-          throughput += computeThroughput(room, d, getEquipmentBonus(equippedItem, room.type))
+          throughput += computeRoomThroughputWithSupport(
+            room,
+            d,
+            getEquipmentBonus(equippedItem, room.type),
+            supportDoctors.map((supportDoctor) => ({
+              doctor: supportDoctor,
+              equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
+            })),
+          )
         }
         const salary = counters ? computeSalaryDrain(allDoctors, counters.tier) : 0
         // Inactive branch shows a counterfactual baseline (tick paused, no actual

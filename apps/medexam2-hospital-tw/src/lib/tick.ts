@@ -25,7 +25,6 @@ import {
   VIP_BOOST_MULTIPLIER,
   applySalaryClamp,
   computeSalaryDrain,
-  computeThroughput,
   countDistinctSubjectsAtRarity,
   createStudySessionController,
   getNextTier,
@@ -49,9 +48,10 @@ import {
   isERConsultExpired,
   rollNewERConsult,
 } from '../services/er-consultation'
-import { buildDoctorByRoom, getAssignedDoctor } from './room-doctor-map'
+import { buildDoctorByRoom, buildSupportDoctorByRoom, getAssignedDoctor, getSupportDoctors } from './room-doctor-map'
 import { buildEquippedItemMap, getEquipmentBonus } from '../services/equipment'
 import { EQUIPMENT_TICKET_CAP } from '../data/equipment'
+import { computeRoomThroughputWithSupport } from './room-team'
 
 /** Equipment tickets granted on tier upgrade (indexed by the tier you just reached). */
 const TIER_UPGRADE_EQUIPMENT_TICKETS: Partial<Record<HospitalTier, number>> = {
@@ -150,15 +150,26 @@ export async function runTick(): Promise<TickResult> {
 
       const rooms = await db.rooms.toArray()
       const doctors = await db.doctors.toArray()
+      const supportAssignments = await db.roomSupportAssignments.toArray()
       const doctorByRoom = buildDoctorByRoom(doctors)
+      const supportDoctorByRoom = buildSupportDoctorByRoom(doctors, supportAssignments)
       const allEquipment = await db.equipment.toArray()
       const equippedItemMap = buildEquippedItemMap(allEquipment)
 
       let totalThroughput = 0
       for (const room of rooms) {
         const doctor = getAssignedDoctor(room.id, doctorByRoom)
+        const supportDoctors = getSupportDoctors(room.id, supportDoctorByRoom)
         const equippedItem = doctor ? equippedItemMap.get(doctor.id) : undefined
-        totalThroughput += computeThroughput(room, doctor, getEquipmentBonus(equippedItem, room.type))
+        totalThroughput += computeRoomThroughputWithSupport(
+          room,
+          doctor,
+          getEquipmentBonus(equippedItem, room.type),
+          supportDoctors.map((supportDoctor) => ({
+            doctor: supportDoctor,
+            equipmentBonus: getEquipmentBonus(equippedItemMap.get(supportDoctor.id), room.type),
+          })),
+        )
       }
 
       const elapsedMin = elapsedSec / 60

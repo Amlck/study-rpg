@@ -97,6 +97,19 @@ export interface EquipmentMaterialsRow {
 
 export type RoomRow = Room
 
+export interface RoomSupportAssignmentRow {
+  /** Stable primary key: `${roomId}:${slot}`. */
+  id: string
+  /** Team-capable room id. */
+  roomId: string
+  /** 1-indexed support slot inside the room. */
+  slot: number
+  /** Doctor id. Invariants ensure a doctor supports at most one slot. */
+  doctorId: string
+  assignedAt: number
+  _updatedAt?: number
+}
+
 export interface GameCountersRow {
   id: 'singleton'
   revenue: number
@@ -360,6 +373,8 @@ export interface HospitalLocalBackupRecord {
     gachaStats: GachaStatsRow | null
     tickets: TicketsRow | null
     rooms: RoomRow[]
+    /** Optional — present on backups taken post-v18. */
+    roomSupportAssignments?: RoomSupportAssignmentRow[]
     affinity: AffinityRow[]
   }
   doctors: DoctorRow[]
@@ -390,6 +405,7 @@ export class HospitalDB extends Dexie {
   gachaStats!: EntityTable<GachaStatsRow, 'id'>
   tickets!: EntityTable<TicketsRow, 'id'>
   rooms!: EntityTable<RoomRow, 'id'>
+  roomSupportAssignments!: EntityTable<RoomSupportAssignmentRow, 'id'>
   gameCounters!: EntityTable<GameCountersRow, 'id'>
   mastery!: EntityTable<MasteryRow, 'subjectId'>
   questionHistory!: EntityTable<QuestionHistoryRow, 'questionId'>
@@ -832,6 +848,39 @@ export class HospitalDB extends Dexie {
     this.version(17).stores({
       leaderboardProfile: '&user_id',
     })
+    // v18: surgery rooms may carry one support doctor via an additive
+    // assignment table. Primary doctor assignment remains Doctor.assignedRoom.
+    this.version(18).stores({
+      roomSupportAssignments: '&roomId, doctorId, assignedAt',
+    })
+    // v19: ER/ICU team staffing generalizes support assignments from
+    // one-row-per-room to slot-aware rows (`id = roomId:slot`).
+    this.version(19)
+      .stores({
+        roomSupportAssignments: '&id, roomId, doctorId, assignedAt',
+      })
+      .upgrade(async (tx) => {
+        const table = tx.table<Partial<RoomSupportAssignmentRow> & { roomId: string; doctorId: string }, string>(
+          'roomSupportAssignments',
+        )
+        const legacyRows = await table.toArray()
+        await table.clear()
+        if (legacyRows.length > 0) {
+          await table.bulkPut(
+            legacyRows
+              .filter((row) => row.roomId && row.doctorId)
+              .map((row) => {
+                const slot = Number.isFinite(row.slot) && row.slot! > 0 ? Math.floor(row.slot!) : 1
+                return {
+                  ...row,
+                  id: `${row.roomId}:${slot}`,
+                  slot,
+                  assignedAt: row.assignedAt ?? Date.now(),
+                }
+              }),
+          )
+        }
+      })
   }
 }
 

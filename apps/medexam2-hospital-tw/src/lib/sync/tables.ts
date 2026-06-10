@@ -24,11 +24,13 @@ import type {
   MasteryRow,
   MonotonicCountersRow,
   QuestionHistoryRow,
+  RoomSupportAssignmentRow,
   RoomRow,
   TargetedTicketHistoryRow,
   TargetedTicketRow,
   TicketsRow,
 } from '../../db/schema'
+import { normalizeSupportAssignment } from '../room-team'
 
 /** Local row written via Dexie has `_updatedAt: number` injected by hook. */
 export type WithUpdatedAt<T> = T & { _updatedAt?: number }
@@ -92,6 +94,7 @@ interface HospitalStateBlob {
   gachaStats: GachaStatsRow | null
   tickets: TicketsRow | null
   rooms: RoomRow[]
+  roomSupportAssignments?: RoomSupportAssignmentRow[]
   affinity: AffinityRow[]
 }
 
@@ -103,14 +106,15 @@ function cloudIsNewer(cloudUpdatedAt: string, localMs: number | undefined): bool
 }
 
 async function readHospitalStateBlob(db: HospitalDB): Promise<HospitalStateBlob> {
-  const [gameCounters, gachaStats, tickets, rooms, affinity] = await Promise.all([
+  const [gameCounters, gachaStats, tickets, rooms, roomSupportAssignments, affinity] = await Promise.all([
     db.gameCounters.get(GAME_COUNTERS_ID).then((r) => r ?? null),
     db.gachaStats.get(GACHA_STATS_ID).then((r) => r ?? null),
     db.tickets.get(TICKETS_ID).then((r) => r ?? null),
     db.rooms.toArray(),
+    db.roomSupportAssignments.toArray(),
     db.affinity.toArray(),
   ])
-  return { gameCounters, gachaStats, tickets, rooms, affinity }
+  return { gameCounters, gachaStats, tickets, rooms, roomSupportAssignments, affinity }
 }
 
 async function writeHospitalStateBlob(
@@ -126,7 +130,7 @@ async function writeHospitalStateBlob(
   } as T)
   await db.transaction(
     'rw',
-    [db.gameCounters, db.gachaStats, db.tickets, db.rooms, db.affinity],
+    [db.gameCounters, db.gachaStats, db.tickets, db.rooms, db.roomSupportAssignments, db.affinity],
     async () => {
       if (blob.gameCounters) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +153,17 @@ async function writeHospitalStateBlob(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await db.rooms.bulkPut(sanitized.map(stamp) as any[])
       }
+      {
+        const supportAssignments = blob.roomSupportAssignments ?? []
+        await db.roomSupportAssignments.clear()
+        if (supportAssignments.length > 0) {
+          const normalizedSupportAssignments = supportAssignments.map((row) =>
+            normalizeSupportAssignment(row),
+          )
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await db.roomSupportAssignments.bulkPut(normalizedSupportAssignments.map(stamp) as any[])
+        }
+      }
       if (blob.affinity && blob.affinity.length > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await db.affinity.bulkPut(blob.affinity.map(stamp) as any[])
@@ -169,7 +184,7 @@ const HOSPITAL_STATE: TableAdapter = {
   // increment) marks the blob dirty within the normal debounce window
   // instead of waiting for the next gameCounters tick. All hooks still
   // mark dirty under the canonical 'gameCounters' key.
-  extraDexieTables: ['rooms', 'tickets', 'gachaStats', 'affinity'],
+  extraDexieTables: ['rooms', 'roomSupportAssignments', 'tickets', 'gachaStats', 'affinity'],
   async snapshotDirty(db, dirtyPks, userId, updatedAt, appVersion) {
     if (!dirtyPks.size) return []
     const blob = await readHospitalStateBlob(db as HospitalDB)

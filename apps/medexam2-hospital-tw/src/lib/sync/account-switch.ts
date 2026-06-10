@@ -55,6 +55,7 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       db.gachaStats,
       db.tickets,
       db.rooms,
+      db.roomSupportAssignments,
       db.affinity,
       db.doctors,
       db.mastery,
@@ -73,6 +74,7 @@ export async function clearLocalSyncTables(db: HospitalDB): Promise<void> {
       await db.gachaStats.clear()
       await db.tickets.clear()
       await db.rooms.clear()
+      await db.roomSupportAssignments.clear()
       await db.affinity.clear()
       await db.doctors.clear()
       await db.mastery.clear()

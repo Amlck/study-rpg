@@ -6,8 +6,9 @@
  *   2. Delete doctor from `db.doctors` (removing the doctor row also drops its
  *      `assignedRoom` pointer — the single source of truth post `fix-medexam2-
  *      doctor-room-pointer-drift`, so no rooms-table mutation is needed)
- *   3. Refund `powerMultiplier × 1000` to `gameCounters.revenue`
- *   4. Append a `retirementLog` row for the 24-hour diversification grace lookup
+ *   3. Clear any room-team support assignment for that doctor
+ *   4. Refund `powerMultiplier × 1000` to `gameCounters.revenue`
+ *   5. Append a `retirementLog` row for the 24-hour diversification grace lookup
  *
  * Curator note: retirement is destructive (db.doctors row gone). The UI MUST
  * present an explicit confirmation modal before invoking this service.
@@ -23,7 +24,7 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
   const db = getHospitalDB()
   return db.transaction(
     'rw',
-    [db.doctors, db.gameCounters, db.retirementLog],
+    [db.doctors, db.roomSupportAssignments, db.gameCounters, db.retirementLog],
     async () => {
       const doctor = await db.doctors.get(doctorId)
       if (!doctor) return { kind: 'not-found', doctorId } as RetireResult
@@ -35,6 +36,10 @@ export async function retireDoctor(doctorId: string): Promise<RetireResult> {
       // of truth, removing the row implicitly clears the room's occupancy —
       // no `rooms.put` needed.
       await db.doctors.delete(doctorId)
+      const supportRows = await db.roomSupportAssignments.where('doctorId').equals(doctorId).toArray()
+      for (const row of supportRows) {
+        await db.roomSupportAssignments.delete(row.id)
+      }
 
       // Refund to revenue
       const counters = await db.gameCounters.get('singleton')

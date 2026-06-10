@@ -24,6 +24,7 @@ import {
   type MasteryRow,
   type QuestionHistoryRow,
   type RoomRow,
+  type RoomSupportAssignmentRow,
   type TicketsRow,
 } from '../../db/schema'
 import { HOSPITAL_ADAPTERS } from './tables'
@@ -173,6 +174,9 @@ export async function getMaxLocalUpdatedAt(db: HospitalDB): Promise<number | nul
     | undefined
   bump(tickets?._updatedAt)
   await db.rooms.each((row) => bump((row as RoomRow & { _updatedAt?: number })._updatedAt))
+  await db.roomSupportAssignments.each((row) =>
+    bump((row as RoomSupportAssignmentRow & { _updatedAt?: number })._updatedAt),
+  )
   await db.affinity.each((row) =>
     bump((row as AffinityRow & { _updatedAt?: number })._updatedAt),
   )
@@ -276,6 +280,7 @@ export async function snapshotLocalToBackup(
     gachaStats,
     tickets,
     rooms,
+    roomSupportAssignments,
     affinity,
     doctors,
     mastery,
@@ -292,6 +297,7 @@ export async function snapshotLocalToBackup(
     db.gachaStats.get('global').then((r) => r ?? null),
     db.tickets.get('global').then((r) => r ?? null),
     db.rooms.toArray(),
+    db.roomSupportAssignments.toArray(),
     db.affinity.toArray(),
     db.doctors.toArray(),
     db.mastery.toArray(),
@@ -314,6 +320,7 @@ export async function snapshotLocalToBackup(
       gachaStats,
       tickets,
       rooms,
+      roomSupportAssignments,
       affinity,
     },
     doctors,
@@ -344,6 +351,7 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       db.gachaStats,
       db.tickets,
       db.rooms,
+      db.roomSupportAssignments,
       db.affinity,
       db.doctors,
       db.mastery,
@@ -361,6 +369,7 @@ export async function wipeLocalSyncedTables(db: HospitalDB): Promise<void> {
       await db.gachaStats.clear()
       await db.tickets.clear()
       await db.rooms.clear()
+      await db.roomSupportAssignments.clear()
       await db.affinity.clear()
       await db.doctors.clear()
       await db.mastery.clear()

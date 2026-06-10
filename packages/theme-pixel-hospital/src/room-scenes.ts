@@ -1,44 +1,34 @@
 /**
- * Room-scene registry — maps room type (`outpatient` / `surgery` / `ward`) to
- * a 384×384 interior pixel scene PNG. Used by `StudySessionPage` as a backdrop
- * for the "看診中診間" hero panel.
+ * Room-scene registry — maps room type to a 384x384 interior pixel scene PNG.
+ * Used by `StudySessionPage` as a backdrop for the "看診中診間" hero panel.
  *
- * Generated via codex `gpt-image-2`:
- *   - All 3 scenes (2026-05-17 `redesign-hospital-economy` §10 follow-up)
- *
- * Uses Vite's `import.meta.glob` with `?url`. Returns `undefined` if any scene
- * is missing — caller gracefully degrades by hiding the hero panel.
- * Forks that ship fewer scenes SHALL omit `roomScenes` from their theme pack
- * entirely.
+ * ER / ICU callers still fall back to ward on image-load failure in the app UI.
  */
 
-const roomSceneModules = import.meta.glob(
-  '../sprites/scenes/{outpatient,surgery,ward}-scene.png',
-  {
-    eager: true,
-    query: '?url',
-    import: 'default',
-  },
-) as Record<string, string>
+import outpatientScene from '../sprites/scenes/outpatient-scene.png?url'
+import surgeryScene from '../sprites/scenes/surgery-scene.png?url'
+import wardScene from '../sprites/scenes/ward-scene.png?url'
+import emergencyScene from '../sprites/scenes/emergency-scene.png?url'
+import icuScene from '../sprites/scenes/icu-scene.png?url'
 
-function extractRoomTypeKey(path: string): string {
-  const match = path.match(/\/(outpatient|surgery|ward)-scene\.png$/)
-  return match ? match[1] : ''
+export const ROOM_SCENES_MAP: Record<string, string> = {
+  outpatient: outpatientScene,
+  surgery: surgeryScene,
+  ward: wardScene,
+  emergency: emergencyScene,
+  icu: icuScene,
 }
 
-const roomSceneEntries = Object.entries(roomSceneModules)
-  .map(([path, url]) => [extractRoomTypeKey(path), url] as const)
-  .filter(([key]) => key)
-
-export const ROOM_SCENES_MAP: Record<string, string> = Object.fromEntries(roomSceneEntries)
-
-export const ROOM_SCENES:
-  | { outpatient: string; surgery: string; ward: string }
-  | undefined =
-  ROOM_SCENES_MAP.outpatient && ROOM_SCENES_MAP.surgery && ROOM_SCENES_MAP.ward
-    ? {
-        outpatient: ROOM_SCENES_MAP.outpatient,
-        surgery: ROOM_SCENES_MAP.surgery,
-        ward: ROOM_SCENES_MAP.ward,
-      }
-    : undefined
+export const ROOM_SCENES: {
+  outpatient: string
+  surgery: string
+  ward: string
+  emergency: string
+  icu: string
+} = {
+  outpatient: outpatientScene,
+  surgery: surgeryScene,
+  ward: wardScene,
+  emergency: emergencyScene,
+  icu: icuScene,
+}

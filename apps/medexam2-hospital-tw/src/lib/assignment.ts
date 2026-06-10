@@ -13,6 +13,12 @@
  */
 
 import { getHospitalDB, type DoctorRow } from '../db/schema'
+import {
+  getRoomSupportCapacity,
+  makeRoomSupportAssignmentId,
+  normalizeSupportAssignment,
+  roomSupportsTeams,
+} from './room-team'
 
 /**
  * Assign a doctor to a room. If a different doctor was already in that room,
@@ -23,9 +29,15 @@ import { getHospitalDB, type DoctorRow } from '../db/schema'
  */
 export async function assignDoctor(roomId: string, doctorId: string): Promise<void> {
   const db = getHospitalDB()
-  await db.transaction('rw', db.doctors, async () => {
+  await db.transaction('rw', [db.doctors, db.roomSupportAssignments], async () => {
     const doctor = await db.doctors.get(doctorId)
     if (!doctor) throw new Error(`assignDoctor: doctor ${doctorId} not found`)
+
+    // A doctor cannot be primary and support at the same time.
+    const supportRows = await db.roomSupportAssignments.where('doctorId').equals(doctorId).toArray()
+    for (const row of supportRows) {
+      await db.roomSupportAssignments.delete(row.id)
+    }
 
     // Displace any other doctor pointing to the target room.
     const all = await db.doctors.toArray()
@@ -54,8 +66,81 @@ export async function unassignDoctor(roomId: string): Promise<void> {
 
 export async function getUnassignedDoctors(): Promise<DoctorRow[]> {
   const db = getHospitalDB()
-  const all = await db.doctors.orderBy('obtainedAt').reverse().toArray()
-  return all.filter((d) => d.assignedRoom === null)
+  const [all, supportAssignments] = await Promise.all([
+    db.doctors.orderBy('obtainedAt').reverse().toArray(),
+    db.roomSupportAssignments.toArray(),
+  ])
+  const supportDoctorIds = new Set(supportAssignments.map((row) => row.doctorId))
+  return all.filter((d) => d.assignedRoom === null && !supportDoctorIds.has(d.id))
+}
+
+export async function getAvailableSupportDoctors(
+  roomId: string,
+  slot: number,
+  primaryDoctorId: string | null,
+): Promise<DoctorRow[]> {
+  const db = getHospitalDB()
+  const [all, currentSupport, supportAssignments] = await Promise.all([
+    db.doctors.orderBy('obtainedAt').reverse().toArray(),
+    db.roomSupportAssignments.get(makeRoomSupportAssignmentId(roomId, slot)),
+    db.roomSupportAssignments.toArray(),
+  ])
+  const supportDoctorIds = new Set(
+    supportAssignments
+      .filter((row) => row.roomId !== roomId)
+      .map((row) => row.doctorId),
+  )
+  const currentSupportDoctorId = currentSupport?.doctorId ?? null
+  return all.filter((d) => {
+    if (d.id === primaryDoctorId) return false
+    if (d.id === currentSupportDoctorId) return true
+    return d.assignedRoom === null && !supportDoctorIds.has(d.id)
+  })
+}
+
+export async function assignSupportDoctor(roomId: string, doctorId: string): Promise<void> {
+  return assignSupportDoctorToSlot(roomId, 1, doctorId)
+}
+
+export async function assignSupportDoctorToSlot(roomId: string, slot: number, doctorId: string): Promise<void> {
+  const db = getHospitalDB()
+  await db.transaction('rw', [db.rooms, db.doctors, db.roomSupportAssignments], async () => {
+    const [room, doctor] = await Promise.all([db.rooms.get(roomId), db.doctors.get(doctorId)])
+    if (!room) throw new Error(`assignSupportDoctor: room ${roomId} not found`)
+    if (!doctor) throw new Error(`assignSupportDoctor: doctor ${doctorId} not found`)
+    const capacity = getRoomSupportCapacity(room.type)
+    if (!roomSupportsTeams(room.type)) {
+      throw new Error(`assignSupportDoctor: room ${roomId} does not support team slots`)
+    }
+    if (!Number.isFinite(slot) || slot < 1 || slot > capacity) {
+      throw new Error(`assignSupportDoctor: slot ${slot} is invalid for room ${roomId}`)
+    }
+    if (doctor.assignedRoom !== null) {
+      throw new Error(`assignSupportDoctor: doctor ${doctorId} is already assigned as primary`)
+    }
+
+    const existingRows = await db.roomSupportAssignments.where('doctorId').equals(doctorId).toArray()
+    for (const row of existingRows) {
+      if (row.roomId !== roomId || row.slot !== slot) await db.roomSupportAssignments.delete(row.id)
+    }
+
+    await db.roomSupportAssignments.put({
+      id: makeRoomSupportAssignmentId(roomId, slot),
+      roomId,
+      slot,
+      doctorId,
+      assignedAt: Date.now(),
+    })
+  })
+}
+
+export async function unassignSupportDoctor(roomId: string): Promise<void> {
+  return unassignSupportDoctorFromSlot(roomId, 1)
+}
+
+export async function unassignSupportDoctorFromSlot(roomId: string, slot: number): Promise<void> {
+  const db = getHospitalDB()
+  await db.roomSupportAssignments.delete(makeRoomSupportAssignmentId(roomId, slot))
 }
 
 export interface AssignmentRepairReport {
@@ -68,6 +153,8 @@ export interface AssignmentRepairReport {
     doctorsDuplicates: number
     /** Doctors whose `assignedRoom` pointed to a non-existent room id. */
     doctorsOrphans: number
+    /** Support rows removed because they referenced invalid rooms/doctors or broke exclusivity. */
+    supportAssignments: number
   }
 }
 
@@ -90,12 +177,13 @@ export async function checkAssignmentInvariants(): Promise<AssignmentRepairRepor
   const db = getHospitalDB()
   const report: AssignmentRepairReport = {
     scanned: { rooms: 0, doctors: 0 },
-    repaired: { roomsReset: 0, doctorsDuplicates: 0, doctorsOrphans: 0 },
+    repaired: { roomsReset: 0, doctorsDuplicates: 0, doctorsOrphans: 0, supportAssignments: 0 },
   }
 
-  await db.transaction('rw', db.rooms, db.doctors, async () => {
+  await db.transaction('rw', db.rooms, db.doctors, db.roomSupportAssignments, async () => {
     const rooms = await db.rooms.toArray()
     const doctors = await db.doctors.toArray()
+    const supportAssignments = await db.roomSupportAssignments.toArray()
     report.scanned.rooms = rooms.length
     report.scanned.doctors = doctors.length
 
@@ -142,13 +230,42 @@ export async function checkAssignmentInvariants(): Promise<AssignmentRepairRepor
       await db.doctors.put({ ...d, assignedRoom: null })
       report.repaired.doctorsOrphans += 1
     }
+
+    const roomsById = new Map(rooms.map((r) => [r.id, r]))
+    const doctorsById = new Map(doctors.map((d) => [d.id, d]))
+    const supportDoctorIds = new Set<string>()
+    for (const row of supportAssignments) {
+      const normalized = normalizeSupportAssignment(row)
+      const rowId = row.id ?? normalized.id
+      if (normalized.id !== row.id || normalized.slot !== row.slot) {
+        await db.roomSupportAssignments.delete(rowId)
+        await db.roomSupportAssignments.put(normalized)
+      }
+      const room = roomsById.get(normalized.roomId)
+      const doctor = doctorsById.get(normalized.doctorId)
+      const invalid =
+        !room ||
+        !roomSupportsTeams(room.type) ||
+        normalized.slot < 1 ||
+        normalized.slot > getRoomSupportCapacity(room.type) ||
+        !doctor ||
+        doctor.assignedRoom !== null ||
+        supportDoctorIds.has(normalized.doctorId)
+      if (invalid) {
+        await db.roomSupportAssignments.delete(normalized.id)
+        report.repaired.supportAssignments += 1
+      } else {
+        supportDoctorIds.add(normalized.doctorId)
+      }
+    }
   })
 
-  const { roomsReset, doctorsDuplicates, doctorsOrphans } = report.repaired
-  if (roomsReset + doctorsDuplicates + doctorsOrphans > 0) {
+  const { roomsReset, doctorsDuplicates, doctorsOrphans, supportAssignments } = report.repaired
+  if (roomsReset + doctorsDuplicates + doctorsOrphans + supportAssignments > 0) {
     console.info(
-      `[assignment] repaired ${roomsReset + doctorsDuplicates + doctorsOrphans} drift(s): ` +
-        `roomsReset=${roomsReset}, doctorsDuplicates=${doctorsDuplicates}, doctorsOrphans=${doctorsOrphans}`,
+      `[assignment] repaired ${roomsReset + doctorsDuplicates + doctorsOrphans + supportAssignments} drift(s): ` +
+        `roomsReset=${roomsReset}, doctorsDuplicates=${doctorsDuplicates}, doctorsOrphans=${doctorsOrphans}, ` +
+        `supportAssignments=${supportAssignments}`,
     )
   }
 
