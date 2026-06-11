@@ -2116,28 +2116,21 @@ body:has(.modal-backdrop) {
 
 .doctor-shelf {
   width: 100%;
-  max-width: 700px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 0 8px;
-}
-
-/* Inter-group gap matches intra-row cell gap so cells across all ranks share
-   one virtual 8px column grid. Center the rank's content under the hospital
-   canvas above. */
-.doctor-shelf__rank {
-  display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: center;
+  gap: 10px;
+  padding: 4px 0 8px;
 }
 
 .doctor-shelf__group {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
 }
 
 .doctor-shelf__group-header {
@@ -2165,7 +2158,9 @@ body:has(.modal-backdrop) {
   display: flex;
   gap: 8px;
   padding: 4px 0;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: thin;
 }
 

@@ -201,6 +201,17 @@ export function AssignDoctorModal({
   const currentSupportDoctors = supportRoles
     .map((roleId) => currentSupportDoctorByRole.get(roleId) ?? null)
     .filter((doctor): doctor is DoctorRow => doctor !== null)
+  const leadCandidateThroughput = (doctor: DoctorRow): number =>
+    computeRoomTeamThroughput(
+      room,
+      doctor,
+      currentSupportDoctors,
+      equippedItemMap?.get(doctor.id),
+      equippedItemMap,
+    )
+  const rankedCandidates = [...candidates].sort(
+    (a, b) => leadCandidateThroughput(b) - leadCandidateThroughput(a) || b.obtainedAt - a.obtainedAt,
+  )
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -222,10 +233,10 @@ export function AssignDoctorModal({
           </p>
         ) : (
           <ul className="assign-modal__list">
-            {candidates.map((d) => {
+            {rankedCandidates.map((d) => {
               const isCurrent = d.id === currentDoctor?.id
-              const equippedItem = equippedItemMap?.get(d.id)
               const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
+              const throughput = leadCandidateThroughput(d)
               return (
                 <li key={d.id}>
                   <button
@@ -245,7 +256,7 @@ export function AssignDoctorModal({
                       </span>
                     </span>
                     <span className="assign-modal__throughput">
-                      {computeRoomTeamThroughput(room, d, currentSupportDoctors, equippedItem, equippedItemMap).toFixed(1)}/分
+                      {throughput.toFixed(1)}/分
                       {isCurrent && <small>（目前）</small>}
                     </span>
                   </button>
@@ -261,6 +272,12 @@ export function AssignDoctorModal({
             {supportRoles.map((roleId) => {
               const currentSupportDoctor = currentSupportDoctorByRole.get(roleId) ?? null
               const supportCandidates = supportCandidatesByRole[roleId] ?? []
+              const rankedSupportCandidates = [...supportCandidates].sort(
+                (a, b) =>
+                  computeSupportThroughput(room, b, equippedItemMap?.get(b.id)) -
+                    computeSupportThroughput(room, a, equippedItemMap?.get(a.id)) ||
+                  b.obtainedAt - a.obtainedAt,
+              )
               return (
                 <section key={roleId} className="assign-modal__section assign-modal__support" aria-label={ROOM_SUPPORT_ROLE_LABELS[roleId]}>
                   <h3 className="assign-modal__section-title">{ROOM_SUPPORT_ROLE_LABELS[roleId]}</h3>
@@ -274,7 +291,7 @@ export function AssignDoctorModal({
                     </p>
                   ) : (
                     <ul className="assign-modal__list">
-                      {supportCandidates.map((d) => {
+                      {rankedSupportCandidates.map((d) => {
                         const isCurrent = d.id === currentSupportDoctor?.id
                         const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
                         const supportThroughput = computeSupportThroughput(room, d, equippedItemMap?.get(d.id))

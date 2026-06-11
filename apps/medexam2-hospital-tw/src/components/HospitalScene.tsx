@@ -24,11 +24,6 @@ const ROOM_LABEL: Record<SlotPosition['room'], string> = {
   icu: 'ICU',
 }
 
-const SHELF_ROW_LAYOUT: SlotPosition['room'][][] = [
-  ['outpatient', 'emergency'],
-  ['surgery', 'ward', 'icu'],
-]
-
 export function HospitalScene() {
   const db = getHospitalDB()
   const counters = useLiveQuery(() => db.gameCounters.get('singleton'), [])
@@ -167,58 +162,48 @@ export function HospitalScene() {
         </div>
 
         <div className="doctor-shelf" aria-label="醫院員工名牌">
-          {SHELF_ROW_LAYOUT.map((rowRoomTypes, rowIdx) => {
-            const rowGroups = rowRoomTypes
-              .map((rt) => groups.find((g) => g.roomType === rt))
-              .filter((g): g is NonNullable<typeof g> => g !== undefined)
-            if (rowGroups.length === 0) return null
-            return (
-              <div key={rowIdx} className="doctor-shelf__rank">
-                {rowGroups.map((group) => (
-                  <div key={group.roomType} className="doctor-shelf__group">
-                    <div className="doctor-shelf__group-header">
-                      <span className="doctor-shelf__group-label">{ROOM_LABEL[group.roomType]}</span>
-                      <span className="doctor-shelf__group-count">
-                        {group.filledCount} / {group.totalCount}
-                      </span>
-                    </div>
-                    <div className="doctor-shelf__row">
-                      {group.cells.map((cell) =>
-                        cell.kind === 'doctor' ? (
-                          <div
-                            key={cell.key}
-                            className={`doctor-shelf__cell doctor-shelf__cell--filled doctor-shelf__cell--${cell.rarity.toLowerCase()}`}
-                            title={`${cell.name}・${cell.subjectId}・${cell.rarity}`}
-                          >
-                            <div className="doctor-shelf__sprite-frame">
-                              <img
-                                className="doctor-shelf__sprite"
-                                src={cell.spriteUrl}
-                                alt={`${cell.name} (${cell.subjectId})`}
-                              />
-                            </div>
-                            <span className="doctor-shelf__name">{cell.name}</span>
-                            <span className="doctor-shelf__subject">{cell.subjectId}</span>
-                          </div>
-                        ) : (
-                          <div
-                            key={cell.key}
-                            className="doctor-shelf__cell doctor-shelf__cell--empty"
-                            title={`空缺：${ROOM_LABEL[group.roomType]}`}
-                          >
-                            <div className="doctor-shelf__sprite-frame doctor-shelf__sprite-frame--empty">
-                              <span className="doctor-shelf__placeholder">?</span>
-                            </div>
-                            <span className="doctor-shelf__name doctor-shelf__name--empty">空缺</span>
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                ))}
+          {groups.map((group) => (
+            <div key={group.roomType} className="doctor-shelf__group">
+              <div className="doctor-shelf__group-header">
+                <span className="doctor-shelf__group-label">{ROOM_LABEL[group.roomType]}</span>
+                <span className="doctor-shelf__group-count">
+                  {group.filledCount} / {group.totalCount}
+                </span>
               </div>
-            )
-          })}
+              <div className="doctor-shelf__row">
+                {group.cells.map((cell) =>
+                  cell.kind === 'doctor' ? (
+                    <div
+                      key={cell.key}
+                      className={`doctor-shelf__cell doctor-shelf__cell--filled doctor-shelf__cell--${cell.rarity.toLowerCase()}`}
+                      title={`${cell.name}・${cell.subjectId}・${cell.rarity}`}
+                    >
+                      <div className="doctor-shelf__sprite-frame">
+                        <img
+                          className="doctor-shelf__sprite"
+                          src={cell.spriteUrl}
+                          alt={`${cell.name} (${cell.subjectId})`}
+                        />
+                      </div>
+                      <span className="doctor-shelf__name">{cell.name}</span>
+                      <span className="doctor-shelf__subject">{cell.subjectId}</span>
+                    </div>
+                  ) : (
+                    <div
+                      key={cell.key}
+                      className="doctor-shelf__cell doctor-shelf__cell--empty"
+                      title={`空缺：${ROOM_LABEL[group.roomType]}`}
+                    >
+                      <div className="doctor-shelf__sprite-frame doctor-shelf__sprite-frame--empty">
+                        <span className="doctor-shelf__placeholder">?</span>
+                      </div>
+                      <span className="doctor-shelf__name doctor-shelf__name--empty">空缺</span>
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
