@@ -1,10 +1,10 @@
 # `.github/workflows/` — CI 設定說明
 
-## `deploy.yml` — Push to main → GitHub Pages
+## `deploy.yml` — Push to main / DrSu-Local → GitHub Pages
 
 Static SPA deploy via official `actions/deploy-pages@v5`. Triggers:
 
-- 任何 `push` 到 `main` branch
+- 任何 `push` 到 `main` 或 `DrSu-Local` branch
 - 在 GitHub Actions UI 手動 `workflow_dispatch`
 
 PR / 其他 branch push **不會** 觸發 deploy。
