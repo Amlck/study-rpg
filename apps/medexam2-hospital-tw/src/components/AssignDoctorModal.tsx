@@ -214,7 +214,7 @@ export function AssignDoctorModal({
           </p>
         </header>
 
-        <section className="assign-modal__section">
+        <section className="assign-modal__section assign-modal__lead">
           <h3 className="assign-modal__section-title">主治醫師</h3>
         {candidates.length === 0 ? (
           <p className="assign-modal__empty">
@@ -256,78 +256,82 @@ export function AssignDoctorModal({
         )}
         </section>
 
-        {supportRoles.map((roleId) => {
-          const currentSupportDoctor = currentSupportDoctorByRole.get(roleId) ?? null
-          const supportCandidates = supportCandidatesByRole[roleId] ?? []
-          return (
-            <section key={roleId} className="assign-modal__section assign-modal__support" aria-label={ROOM_SUPPORT_ROLE_LABELS[roleId]}>
-              <h3 className="assign-modal__section-title">{ROOM_SUPPORT_ROLE_LABELS[roleId]}</h3>
-              <p className="assign-modal__support-hint">
-                {ROOM_SUPPORT_ROLE_DESCRIPTIONS[roleId]}
-              </p>
+        {supportRoles.length > 0 && (
+          <div className="assign-modal__support-grid">
+            {supportRoles.map((roleId) => {
+              const currentSupportDoctor = currentSupportDoctorByRole.get(roleId) ?? null
+              const supportCandidates = supportCandidatesByRole[roleId] ?? []
+              return (
+                <section key={roleId} className="assign-modal__section assign-modal__support" aria-label={ROOM_SUPPORT_ROLE_LABELS[roleId]}>
+                  <h3 className="assign-modal__section-title">{ROOM_SUPPORT_ROLE_LABELS[roleId]}</h3>
+                  <p className="assign-modal__support-hint">
+                    {ROOM_SUPPORT_ROLE_DESCRIPTIONS[roleId]}
+                  </p>
 
-              {supportCandidates.length === 0 ? (
-                <p className="assign-modal__empty">
-                  目前沒有可支援的醫師。已擔任主治或其他支援的醫師不會出現在這裡。
-                </p>
-              ) : (
-                <ul className="assign-modal__list">
-                  {supportCandidates.map((d) => {
-                    const isCurrent = d.id === currentSupportDoctor?.id
-                    const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
-                    const supportThroughput = computeSupportThroughput(room, d, equippedItemMap?.get(d.id))
-                    const equippedItem = currentDoctor ? equippedItemMap?.get(currentDoctor.id) : undefined
-                    const teamThroughput = computeRoomTeamThroughput(
-                      room,
-                      currentDoctor,
-                      [d],
-                      equippedItem,
-                      equippedItemMap,
-                    )
-                    return (
-                      <li key={d.id}>
-                        <button
-                          type="button"
-                          className={`assign-modal__row ${isCurrent ? 'assign-modal__row--current' : ''}`}
-                          onClick={() => void handlePickSupport(roleId, d)}
-                          disabled={busy}
-                          style={{ ['--rarity-color' as string]: `var(--rarity-${d.rarity.toLowerCase()})` } as React.CSSProperties}
-                        >
-                          <span className="assign-modal__sprite">
-                            {spriteUrl ? <img src={spriteUrl} alt="" /> : <EmojiIcon char="⚕" size={32} />}
-                          </span>
-                          <span className="assign-modal__info">
-                            <span className="assign-modal__name">{d.name}</span>
-                            <span className="assign-modal__meta">
-                              {d.rarity} {RARITY_LABELS[d.rarity]} · {d.subjectId}
-                            </span>
-                          </span>
-                          <span className="assign-modal__throughput">
-                            +{supportThroughput.toFixed(1)}/分
-                            <small>（{Math.round(SUPPORT_THROUGHPUT_SHARE * 100)}% 支援）</small>
-                            {currentDoctor && <small>團隊 {teamThroughput.toFixed(1)}/分</small>}
-                            {isCurrent && <small>（目前）</small>}
-                          </span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              {supportError && <p className="assign-modal__facility-error">{supportError}</p>}
-              {currentSupportDoctor && (
-                <button
-                  type="button"
-                  className="assign-modal__unassign assign-modal__support-unassign"
-                  onClick={() => void handleUnassignSupport(roleId)}
-                  disabled={busy}
-                >
-                  取消{ROOM_SUPPORT_ROLE_LABELS[roleId]}
-                </button>
-              )}
-            </section>
-          )
-        })}
+                  {supportCandidates.length === 0 ? (
+                    <p className="assign-modal__empty">
+                      目前沒有可支援的醫師。已擔任主治或其他支援的醫師不會出現在這裡。
+                    </p>
+                  ) : (
+                    <ul className="assign-modal__list">
+                      {supportCandidates.map((d) => {
+                        const isCurrent = d.id === currentSupportDoctor?.id
+                        const spriteUrl = lookupSprite(d.spriteKey, THEME_PIXEL_HOSPITAL.sprites, d.rarity)
+                        const supportThroughput = computeSupportThroughput(room, d, equippedItemMap?.get(d.id))
+                        const equippedItem = currentDoctor ? equippedItemMap?.get(currentDoctor.id) : undefined
+                        const teamThroughput = computeRoomTeamThroughput(
+                          room,
+                          currentDoctor,
+                          [d],
+                          equippedItem,
+                          equippedItemMap,
+                        )
+                        return (
+                          <li key={d.id}>
+                            <button
+                              type="button"
+                              className={`assign-modal__row ${isCurrent ? 'assign-modal__row--current' : ''}`}
+                              onClick={() => void handlePickSupport(roleId, d)}
+                              disabled={busy}
+                              style={{ ['--rarity-color' as string]: `var(--rarity-${d.rarity.toLowerCase()})` } as React.CSSProperties}
+                            >
+                              <span className="assign-modal__sprite">
+                                {spriteUrl ? <img src={spriteUrl} alt="" /> : <EmojiIcon char="⚕" size={32} />}
+                              </span>
+                              <span className="assign-modal__info">
+                                <span className="assign-modal__name">{d.name}</span>
+                                <span className="assign-modal__meta">
+                                  {d.rarity} {RARITY_LABELS[d.rarity]} · {d.subjectId}
+                                </span>
+                              </span>
+                              <span className="assign-modal__throughput">
+                                +{supportThroughput.toFixed(1)}/分
+                                <small>（{Math.round(SUPPORT_THROUGHPUT_SHARE * 100)}% 支援）</small>
+                                {currentDoctor && <small>團隊 {teamThroughput.toFixed(1)}/分</small>}
+                                {isCurrent && <small>（目前）</small>}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                  {supportError && <p className="assign-modal__facility-error">{supportError}</p>}
+                  {currentSupportDoctor && (
+                    <button
+                      type="button"
+                      className="assign-modal__unassign assign-modal__support-unassign"
+                      onClick={() => void handleUnassignSupport(roleId)}
+                      disabled={busy}
+                    >
+                      取消{ROOM_SUPPORT_ROLE_LABELS[roleId]}
+                    </button>
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        )}
 
         <section className="assign-modal__facility" aria-label="設施升級">
           <h3 className="assign-modal__facility-title">設施升級</h3>
