@@ -23,6 +23,7 @@ import {
 } from '../db/schema'
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
+import { buildStudyInsights } from '../lib/study-insights'
 import { getNextDailyRefreshLabel } from '../lib/daily-ticket'
 import {
   ALL_YEARS,
@@ -47,6 +48,7 @@ import { QuizModal } from '../components/QuizModal'
 import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
 import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
+import { StudyInsightsPanel } from '../components/StudyInsightsPanel'
 import { readHospitalCredits } from '../services/hospital-credits'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
@@ -76,6 +78,7 @@ export function HomePage() {
   const supportAssignments = useLiveQuery(() => db.roomSupportAssignments.toArray(), []) ?? []
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
+  const questionHistoryRows = useLiveQuery(() => db.questionHistory.toArray(), []) ?? []
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
   const yearFilter = useMemo(() => effectiveYearSet(persistedYearFilter), [persistedYearFilter])
   const dueCountMap = useLiveQuery(async () => {
@@ -113,6 +116,17 @@ export function HomePage() {
     for (const r of masteryRows) m[r.subjectId] = r
     return m
   }, [masteryRows])
+
+  const studyInsights = useMemo(
+    () =>
+      buildStudyInsights({
+        subjects,
+        history: questionHistoryRows,
+        poolSizeBySubject: poolSizeMap,
+        dueCountBySubject: dueCountMap,
+      }),
+    [subjects, questionHistoryRows, poolSizeMap, dueCountMap],
+  )
 
   const showStarterCard = counters?.hasUsedStarterPull === false
 
@@ -296,6 +310,11 @@ export function HomePage() {
       )}
 
       <YearFilterBar />
+
+      <StudyInsightsPanel
+        data={studyInsights}
+        onStartQuiz={(subjectId) => setActiveQuizSubject(subjectId)}
+      />
 
       <section className="banners">
         {subjects.map((s) => {

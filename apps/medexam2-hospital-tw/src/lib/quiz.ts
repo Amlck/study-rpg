@@ -71,10 +71,33 @@ export async function loadPlayablePoolFor(subjectId: SubjectId): Promise<Questio
   return bySubject.get(subjectId) ?? []
 }
 
+export function pickQuestionFromPool(
+  pool: Question[],
+  seenIds: ReadonlySet<string>,
+  opts?: {
+    answeredIds?: ReadonlySet<string>
+    rng?: () => number
+  },
+): Question | null {
+  if (pool.length === 0) return null
+
+  const rng = opts?.rng ?? Math.random
+  const notSeenThisSession = pool.filter((q) => !seenIds.has(q.id))
+  if (opts?.answeredIds) {
+    const unseen = notSeenThisSession.filter((q) => !opts.answeredIds!.has(q.id))
+    if (unseen.length > 0) return unseen[Math.floor(rng() * unseen.length)]
+  }
+  if (notSeenThisSession.length > 0) {
+    return notSeenThisSession[Math.floor(rng() * notSeenThisSession.length)]
+  }
+  return pool[Math.floor(rng() * pool.length)]
+}
+
 /**
- * Pick a random question from the given subject's pool. Re-rolls up to 3 times
- * if the candidate id is in `seenIds`; accepts on the 3rd repeat to prevent
- * infinite loops on small subject pools.
+ * Pick a question from the given subject's pool. Selection order is:
+ *   1. unanswered globally and not seen in this modal/training session
+ *   2. already answered globally but not seen in this session
+ *   3. any question in the pool, once the session has exhausted the pool
  *
  * When `opts.yearFilter` is provided AND partially constrains the pool (size
  * > 0 AND < 10), the pool is narrowed to questions whose `meta.year` is in
@@ -86,17 +109,13 @@ export async function loadPlayablePoolFor(subjectId: SubjectId): Promise<Questio
 export async function pickRandomQuestion(
   subjectId: SubjectId,
   seenIds: Set<string>,
-  opts?: { yearFilter?: Set<number> },
+  opts?: {
+    yearFilter?: Set<number>
+    answeredIds?: ReadonlySet<string>
+  },
 ): Promise<Question | null> {
   const pool = applyYearFilter(await loadPlayablePoolFor(subjectId), opts?.yearFilter)
-  if (pool.length === 0) return null
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const candidate = pool[Math.floor(Math.random() * pool.length)]
-    if (!seenIds.has(candidate.id)) return candidate
-  }
-  // 3 re-rolls all hit seen; accept the latest random pick anyway
-  return pool[Math.floor(Math.random() * pool.length)]
+  return pickQuestionFromPool(pool, seenIds, { answeredIds: opts?.answeredIds })
 }
 
 /**

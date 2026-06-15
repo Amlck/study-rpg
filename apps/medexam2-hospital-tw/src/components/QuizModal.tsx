@@ -5,7 +5,7 @@ import type { BugReportCategory, Question, SubjectId } from '@study-rpg/core'
 import { RARITY_LABELS, getSpecialtyMultiplier } from '@study-rpg/content-medexam2-tw'
 import { THEME_PIXEL_HOSPITAL } from '@study-rpg/theme-pixel-hospital'
 import { getHospitalDB, type DoctorRow } from '../db/schema'
-import { loadPoolSizeMap, pickQuestionById, pickRandomQuestion } from '../lib/quiz'
+import { pickQuestionById, pickRandomQuestion } from '../lib/quiz'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
 import { applyQuizReward } from '../services/quiz-rewards'
 import { getNextDueCardForSubject } from '../lib/srs-scheduler'
@@ -164,10 +164,17 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
       }
     }
 
-    // No due card available → fall back to random new question.
+    // No due card available -> prefer questions never answered in this subject,
+    // then recycle answered cards once the filtered pool is exhausted.
     wasFromDueRef.current = false
+    const answeredKeys = await db.questionHistory
+      .where('subjectId')
+      .equals(forSubject)
+      .primaryKeys()
+    const answeredIds = new Set(answeredKeys.map(String))
     const q = await pickRandomQuestion(forSubject, seenIdsRef.current, {
       yearFilter: activeYearFilter,
+      answeredIds,
     })
     if (!q) {
       setPoolEmpty(true)
@@ -176,16 +183,8 @@ export function QuizModal({ initialSubject, onClose }: QuizModalProps) {
       setPoolEmpty(false)
       setQuestion(q)
 
-      // Exhaustion toast detection
-      const poolSizeMap = await loadPoolSizeMap()
-      const poolSize = poolSizeMap.get(forSubject) ?? 0
-      if (
-        poolSize > 0 &&
-        seenIdsRef.current.size >= poolSize &&
-        seenIdsRef.current.has(q.id) &&
-        !firedExhaustedRef.current.has(forSubject)
-      ) {
-        emitToast('本科獨立題已掃完，繼續會開始重練')
+      if (answeredIds.has(q.id) && !firedExhaustedRef.current.has(forSubject)) {
+        emitToast('本科未做題已掃完，繼續會開始重練')
         firedExhaustedRef.current.add(forSubject)
       }
     }

@@ -149,8 +149,14 @@ export function TrainingPage() {
     setBusy(true)
     try {
       const seenIds = new Set<string>()
+      const answeredKeys = await db.questionHistory
+        .where('subjectId')
+        .equals(confirming.doctor.subjectId)
+        .primaryKeys()
+      const answeredIds = new Set(answeredKeys.map(String))
       const question = await pickRandomQuestion(confirming.doctor.subjectId, seenIds, {
         yearFilter,
+        answeredIds,
       })
       setTrainingBattle({
         doctor: confirming.doctor,
@@ -213,10 +219,17 @@ export function TrainingPage() {
   async function handleBattleNext(): Promise<void> {
     if (!trainingBattle || !trainingBattle.revealed || trainingBattle.finished) return
     setTrainingBattle((current) => current ? { ...current, loading: true } : current)
+    const answeredKeys = await db.questionHistory
+      .where('subjectId')
+      .equals(trainingBattle.doctor.subjectId)
+      .primaryKeys()
     const question = await pickRandomQuestion(
       trainingBattle.doctor.subjectId,
       trainingBattle.seenIds,
-      { yearFilter },
+      {
+        yearFilter,
+        answeredIds: new Set(answeredKeys.map(String)),
+      },
     )
     setTrainingBattle((current) => {
       if (!current) return current
