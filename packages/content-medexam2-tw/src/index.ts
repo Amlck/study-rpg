@@ -29,11 +29,13 @@ interface BuiltMeta {
   id: string
   displayName: string
   locale: string
-  builtAt: string
-  sourceCredit: string
-  sourceUrl: string
-  license: string
-  stats: { totalQuestions: number; parsedFiles: number; totalFiles: number; subjects: number }
+  builtAt?: string
+  sourceCredit?: string
+  sourceUrl?: string
+  license?: string
+  stats?: { totalQuestions: number; parsedFiles: number; totalFiles: number; subjects: number }
+  examMeta?: { builtAt?: string; stats?: { totalQuestions: number; parsedFiles: number; totalFiles: number; subjects: number } }
+  credits?: Array<{ name: string; url?: string; license: string }>
 }
 
 /**
@@ -57,8 +59,20 @@ export async function getContentPack(baseUrl = '/content/medexam2-tw'): Promise<
         id: meta.id,
         displayName: meta.displayName,
         locale: meta.locale,
-        examMeta: { builtAt: meta.builtAt, stats: meta.stats },
-        credits: [{ name: meta.sourceCredit, url: meta.sourceUrl, license: meta.license }],
+        examMeta: {
+          builtAt: meta.builtAt ?? meta.examMeta?.builtAt ?? '',
+          stats: meta.stats ?? meta.examMeta?.stats ?? {
+            totalQuestions: questions.length,
+            parsedFiles: 0,
+            totalFiles: 0,
+            subjects: subjects.length,
+          },
+        },
+        credits: meta.credits ?? [{
+          name: meta.sourceCredit ?? '中華民國考選部歷屆考題',
+          url: meta.sourceUrl,
+          license: meta.license ?? '公資源',
+        }],
       },
       subjects,
       questions,

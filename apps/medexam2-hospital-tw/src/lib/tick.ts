@@ -58,6 +58,7 @@ import {
   computeRoomTeamThroughput,
   getSupportDoctorsForRoom,
 } from '../services/room-team'
+import { addStudyTimeBuckets } from './study-time'
 
 /** Shared credits granted on tier upgrade (indexed by the tier you just reached). */
 const TIER_UPGRADE_HOSPITAL_CREDITS: Partial<Record<HospitalTier, number>> = {
@@ -134,6 +135,7 @@ export async function runTick(): Promise<TickResult> {
       db.eventLog,
       db.erConsultLog,
       db.equipment,
+      db.studyTimeBuckets,
     ],
     async () => {
       const counters = await db.gameCounters.get('singleton')
@@ -379,6 +381,8 @@ export async function runTick(): Promise<TickResult> {
           lastEquipmentTicketStudyMinutes: newLastMilestone,
         })
       }
+
+      await addStudyTimeBuckets(db, now, elapsedSec * 1000)
 
       // Grant shared credits (study milestone + tier upgrade) in a single write.
       const tierBundle = upgradedTo ? (TIER_UPGRADE_HOSPITAL_CREDITS[upgradedTo] ?? 0) : 0

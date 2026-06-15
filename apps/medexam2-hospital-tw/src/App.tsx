@@ -18,6 +18,9 @@ import { BookmarksPage } from './pages/BookmarksPage'
 import { EquipmentPage } from './pages/EquipmentPage'
 import { SupplyPage } from './pages/SupplyPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
+import { ChallengePickerPage } from './pages/ChallengePickerPage'
+import { ChallengeRunnerPage } from './pages/ChallengeRunnerPage'
+import { ChallengeResultPage } from './pages/ChallengeResultPage'
 import { useStudySessionTick } from './lib/tick'
 import { checkAssignmentInvariants } from './lib/assignment'
 import { useSync } from './lib/sync/useSync'
@@ -296,6 +299,9 @@ function App() {
         <Route path="/supply" element={<SupplyPage />} />
         <Route path="/equipment" element={<EquipmentPage />} />
         <Route path="/bookmarks" element={<BookmarksPage />} />
+        <Route path="/challenge" element={<ChallengePickerPage />} />
+        <Route path="/challenge/run/:paperId" element={<ChallengeRunnerPage />} />
+        <Route path="/challenge/result/:attemptId" element={<ChallengeResultPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
       </Routes>
     </HashRouter>

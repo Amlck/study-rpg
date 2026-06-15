@@ -76,18 +76,18 @@ export function buildStudyInsights(input: BuildStudyInsightsInput): StudyInsight
     const coverageRate = totalPlayable > 0 ? answered / totalPlayable : 0
     const allTimeRate = attempts > 0 ? allTimeCorrect / attempts : null
     const recent = intervals['7d']
-    const recentRate = recent.rate
-    const recentGap = recentRate === null ? 0.25 : 1 - recentRate
+    const signal = chooseCorrectRateSignal(intervals, allTimeRate, attempts)
+    const correctRateGap = signal.rate === null ? 0.45 : 1 - signal.rate
     const recentSampleGap = Math.max(0, 10 - recent.total) / 10
     const wrongPressure = answered > 0 ? wrongLastCount / answered : 0
     const duePressure = Math.min(1, dueCount / 12)
 
     const priorityScore = clamp(
-      (1 - coverageRate) * 34 +
-        recentGap * 30 +
+      correctRateGap * 58 +
         wrongPressure * 18 +
         duePressure * 12 +
-        recentSampleGap * 6,
+        recentSampleGap * 8 +
+        (1 - coverageRate) * 4,
       0,
       100,
     )
@@ -110,6 +110,7 @@ export function buildStudyInsights(input: BuildStudyInsightsInput): StudyInsight
         answered,
         coverageRate,
         recent,
+        signal,
         wrongLastCount,
         dueCount,
       }),
@@ -150,19 +151,31 @@ function intervalPerformance(rows: QuestionHistoryRow[], cutoff: number): Interv
   }
 }
 
+function chooseCorrectRateSignal(
+  intervals: Record<IntervalKey, IntervalPerformance>,
+  allTimeRate: number | null,
+  attempts: number,
+): { rate: number | null; source: '7d' | '14d' | 'all-time' | 'none' } {
+  if (intervals['7d'].total >= 5) return { rate: intervals['7d'].rate, source: '7d' }
+  if (intervals['14d'].total >= 8) return { rate: intervals['14d'].rate, source: '14d' }
+  if (attempts >= 10) return { rate: allTimeRate, source: 'all-time' }
+  return { rate: null, source: 'none' }
+}
+
 function recommend(input: {
   answered: number
   coverageRate: number
   recent: IntervalPerformance
+  signal: ReturnType<typeof chooseCorrectRateSignal>
   wrongLastCount: number
   dueCount: number
 }): string {
   if (input.answered === 0) return '先做 20 題'
-  if (input.coverageRate < 0.3) return '補題量'
-  if (input.recent.total < 5) return '補近期樣本'
-  if ((input.recent.rate ?? 1) < 0.65) return '弱科優先'
+  if (input.signal.source === 'none') return '補近期樣本'
+  if ((input.signal.rate ?? 1) < 0.65) return '弱科優先'
   if (input.wrongLastCount >= 10) return '錯題回收'
   if (input.dueCount > 0) return 'SRS 回收'
+  if (input.coverageRate < 0.3) return '補題量'
   return '維持手感'
 }
 

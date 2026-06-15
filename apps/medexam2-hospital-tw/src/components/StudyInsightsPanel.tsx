@@ -5,6 +5,7 @@ import { EmojiIcon } from './EmojiIcon'
 interface StudyInsightsPanelProps {
   data: StudyInsightsResult
   onStartQuiz: (subjectId: SubjectId) => void
+  onStartChallenge?: (subjectId: SubjectId) => void
 }
 
 const INTERVALS: Array<{ key: IntervalKey; label: string }> = [
@@ -13,7 +14,7 @@ const INTERVALS: Array<{ key: IntervalKey; label: string }> = [
   { key: '14d', label: '14日' },
 ]
 
-export function StudyInsightsPanel({ data, onStartQuiz }: StudyInsightsPanelProps) {
+export function StudyInsightsPanel({ data, onStartQuiz, onStartChallenge }: StudyInsightsPanelProps) {
   if (data.summary.totalPlayable === 0) return null
 
   const priority = data.insights.slice(0, 5)
@@ -28,7 +29,7 @@ export function StudyInsightsPanel({ data, onStartQuiz }: StudyInsightsPanelProp
           <h2 className="study-insights__title">
             <EmojiIcon char="📈" size={22} /> 弱科雷達
           </h2>
-          <p className="study-insights__subtitle">近況、錯題、題量一起看</p>
+          <p className="study-insights__subtitle">正答率優先，錯題 / SRS 其次</p>
         </div>
         <div className="study-insights__summary">
           <Metric label="已做" value={`${data.summary.answered}/${data.summary.totalPlayable}`} />
@@ -42,7 +43,12 @@ export function StudyInsightsPanel({ data, onStartQuiz }: StudyInsightsPanelProp
           <h3 className="study-insights__section-title">今日優先</h3>
           <div className="study-insights__bars">
             {priority.map((row) => (
-              <PriorityBar key={row.subjectId} row={row} onStartQuiz={onStartQuiz} />
+              <PriorityBar
+                key={row.subjectId}
+                row={row}
+                onStartQuiz={onStartQuiz}
+                onStartChallenge={onStartChallenge}
+              />
             ))}
           </div>
         </div>
@@ -64,7 +70,7 @@ export function StudyInsightsPanel({ data, onStartQuiz }: StudyInsightsPanelProp
             <span key={interval.key}>{interval.label}</span>
           ))}
           <span>錯題</span>
-          <span>建議</span>
+          <span>動作</span>
         </div>
         {data.insights.map((row) => (
           <div key={row.subjectId} className="study-insights__heatmap-row">
@@ -73,13 +79,24 @@ export function StudyInsightsPanel({ data, onStartQuiz }: StudyInsightsPanelProp
               <IntervalCell key={interval.key} row={row} interval={interval.key} />
             ))}
             <span className="study-insights__wrong-count">{row.wrongLastCount}</span>
-            <button
-              type="button"
-              className="study-insights__quick-start"
-              onClick={() => onStartQuiz(row.subjectId)}
-            >
-              {row.recommendation}
-            </button>
+            <span className="study-insights__actions">
+              <button
+                type="button"
+                className="study-insights__quick-start"
+                onClick={() => onStartQuiz(row.subjectId)}
+              >
+                {row.recommendation}
+              </button>
+              {onStartChallenge && (
+                <button
+                  type="button"
+                  className="study-insights__challenge"
+                  onClick={() => onStartChallenge(row.subjectId)}
+                >
+                  整回
+                </button>
+              )}
+            </span>
           </div>
         ))}
       </div>
@@ -96,23 +113,41 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
-function PriorityBar({ row, onStartQuiz }: { row: SubjectInsight; onStartQuiz: (subjectId: SubjectId) => void }) {
+function PriorityBar({
+  row,
+  onStartQuiz,
+  onStartChallenge,
+}: {
+  row: SubjectInsight
+  onStartQuiz: (subjectId: SubjectId) => void
+  onStartChallenge?: (subjectId: SubjectId) => void
+}) {
   return (
-    <button
-      type="button"
-      className="study-insights__bar-row"
-      onClick={() => onStartQuiz(row.subjectId)}
-      aria-label={`${row.displayName} 優先度 ${Math.round(row.priorityScore)}`}
-    >
-      <span className="study-insights__bar-label">{row.displayName}</span>
-      <span className="study-insights__bar-track">
-        <span
-          className="study-insights__bar-fill"
-          style={{ width: `${Math.max(4, row.priorityScore)}%` }}
-        />
-      </span>
-      <span className="study-insights__bar-score">{Math.round(row.priorityScore)}</span>
-    </button>
+    <div className="study-insights__bar-row" aria-label={`${row.displayName} 優先度 ${Math.round(row.priorityScore)}`}>
+      <button
+        type="button"
+        className="study-insights__bar-main"
+        onClick={() => onStartQuiz(row.subjectId)}
+      >
+        <span className="study-insights__bar-label">{row.displayName}</span>
+        <span className="study-insights__bar-track">
+          <span
+            className="study-insights__bar-fill"
+            style={{ width: `${Math.max(4, row.priorityScore)}%` }}
+          />
+        </span>
+        <span className="study-insights__bar-score">{Math.round(row.priorityScore)}</span>
+      </button>
+      {onStartChallenge && (
+        <button
+          type="button"
+          className="study-insights__bar-challenge"
+          onClick={() => onStartChallenge(row.subjectId)}
+        >
+          整回
+        </button>
+      )}
+    </div>
   )
 }
 

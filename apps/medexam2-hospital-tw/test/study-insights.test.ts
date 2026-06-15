@@ -58,23 +58,24 @@ describe('study insights', () => {
     expect(insight.intervals['14d']).toMatchObject({ total: 3, correct: 2 })
   })
 
-  it('prioritizes low-coverage weak subjects above well-practiced subjects', () => {
+  it('prioritizes weak correct rates above low coverage alone', () => {
     const result = buildStudyInsights({
       subjects: [subject('內科'), subject('外科')],
       history: [
-        history('m1', '內科', 1, 'wrong'),
-        history('m2', '內科', 2, 'wrong'),
-        ...Array.from({ length: 80 }, (_, idx) =>
+        ...Array.from({ length: 12 }, (_, idx) =>
+          history(`m${idx}`, '內科', idx % 5, idx < 4 ? 'correct' : 'wrong'),
+        ),
+        ...Array.from({ length: 35 }, (_, idx) =>
           history(`s${idx}`, '外科', idx % 5, 'correct'),
         ),
       ],
       poolSizeBySubject: { 內科: 100, 外科: 100 },
-      dueCountBySubject: { 內科: 4, 外科: 0 },
+      dueCountBySubject: { 內科: 0, 外科: 0 },
       now,
     })
 
     expect(result.insights[0].subjectId).toBe('內科')
-    expect(result.insights[0].recommendation).toBe('補題量')
-    expect(result.summary.answered).toBe(82)
+    expect(result.insights[0].recommendation).toBe('弱科優先')
+    expect(result.insights[1].recommendation).toBe('維持手感')
   })
 })

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Subject, SubjectId } from '@study-rpg/core'
 import {
@@ -24,6 +24,7 @@ import {
 import { allocateDailyCap, getDueQueueAllSubjects } from '../lib/srs-scheduler'
 import { useCompletionMap } from '../lib/completion'
 import { buildStudyInsights } from '../lib/study-insights'
+import { buildStudyTimeMap } from '../lib/study-time'
 import { getNextDailyRefreshLabel } from '../lib/daily-ticket'
 import {
   ALL_YEARS,
@@ -49,12 +50,14 @@ import { StarterPullCard } from '../components/StarterPullCard'
 import { StarterPullModal } from '../components/StarterPullModal'
 import { LeaderboardPromoBanner } from '../components/LeaderboardPromoBanner'
 import { StudyInsightsPanel } from '../components/StudyInsightsPanel'
+import { StudyTimeMapPanel } from '../components/StudyTimeMapPanel'
 import { readHospitalCredits } from '../services/hospital-credits'
 
 type Toast = { id: number; text: string; kind: 'unlock' | 'error' }
 
 export function HomePage() {
   const db = getHospitalDB()
+  const navigate = useNavigate()
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
   const [starterResult, setStarterResult] = useState<{ doctor: DoctorRow } | null>(null)
@@ -79,6 +82,7 @@ export function HomePage() {
   const anyAssigned = allDoctors.some((d) => d.assignedRoom !== null)
   const masteryRows = useLiveQuery(() => db.mastery.toArray(), []) ?? []
   const questionHistoryRows = useLiveQuery(() => db.questionHistory.toArray(), []) ?? []
+  const studyTimeBuckets = useLiveQuery(() => db.studyTimeBuckets.toArray(), []) ?? []
   const persistedYearFilter = useLiveQuery(() => getYearFilter(), [], null) ?? null
   const yearFilter = useMemo(() => effectiveYearSet(persistedYearFilter), [persistedYearFilter])
   const dueCountMap = useLiveQuery(async () => {
@@ -127,6 +131,10 @@ export function HomePage() {
       }),
     [subjects, questionHistoryRows, poolSizeMap, dueCountMap],
   )
+  const studyTimeMap = useMemo(
+    () => buildStudyTimeMap(studyTimeBuckets),
+    [studyTimeBuckets],
+  )
 
   const showStarterCard = counters?.hasUsedStarterPull === false
 
@@ -172,6 +180,9 @@ export function HomePage() {
           </Link>
           <Link to="/bookmarks" className="nav-link">
             收藏 →
+          </Link>
+          <Link to="/challenge" className="nav-link">
+            整回 →
           </Link>
           <Link to="/leaderboard" className="nav-link">
             排名 →
@@ -311,9 +322,12 @@ export function HomePage() {
 
       <YearFilterBar />
 
+      <StudyTimeMapPanel data={studyTimeMap} />
+
       <StudyInsightsPanel
         data={studyInsights}
         onStartQuiz={(subjectId) => setActiveQuizSubject(subjectId)}
+        onStartChallenge={(subjectId) => navigate(`/challenge?subject=${encodeURIComponent(subjectId)}`)}
       />
 
       <section className="banners">

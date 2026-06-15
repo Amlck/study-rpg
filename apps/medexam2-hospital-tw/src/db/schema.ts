@@ -190,6 +190,44 @@ export interface MonotonicCountersRow {
   lastEquipmentTicketStudyMinutes?: number
 }
 
+export interface StudyTimeBucketRow {
+  /** Stable local-time bucket id: `${dayKey}:${hour}`. */
+  id: string
+  /** Local calendar day, e.g. `2026-06-15`. */
+  dayKey: string
+  /** Local hour of day, 0-23. */
+  hour: number
+  /** Active study-session minutes accumulated in this bucket. */
+  minutes: number
+  updatedAt: number
+}
+
+export interface ChallengePerQuestionAnswer {
+  questionId: string
+  userSelection: string | null
+  isCorrect: boolean
+}
+
+export interface ChallengeAttemptRow {
+  id: string
+  paperId: string
+  startedAt: number
+  finishedAt: number
+  elapsedSec: number
+  totalScore: number
+  perQuestionAnswers: ChallengePerQuestionAnswer[]
+}
+
+export interface ChallengeInProgressRow {
+  key: 'challengeInProgress'
+  paperId: string
+  startedAt: number
+  currentQuestionIndex: number
+  selections: Record<string, string>
+  elapsedSecAtPause: number
+  lastResumedAt: number | null
+}
+
 /**
  * Banner first-unlock ticket bonus log (add-quiz-economy-redesign, v8).
  * Local-only — NOT cloud-synced. One row per subject means that subject
@@ -426,6 +464,9 @@ export class HospitalDB extends Dexie {
   equipmentMaterials!: EntityTable<EquipmentMaterialsRow, 'id'>
   leaderboardProfile!: EntityTable<LeaderboardProfileRow, 'user_id'>
   roomSupportAssignments!: Table<RoomSupportAssignmentRow, [string, RoomSupportRoleId]>
+  studyTimeBuckets!: EntityTable<StudyTimeBucketRow, 'id'>
+  challengeAttempts!: EntityTable<ChallengeAttemptRow, 'id'>
+  challengeInProgress!: EntityTable<ChallengeInProgressRow, 'key'>
 
   constructor(name = 'study-rpg-medexam2-hospital-tw') {
     super(name)
@@ -913,6 +954,21 @@ export class HospitalDB extends Dexie {
           await supportTable.put(migrated)
         }
       })
+
+    // v21: local study-time heatmap telemetry. Records active session minutes
+    // by local day + hour for HomePage visual analytics. Local-only; total
+    // study minutes remain the cloud-synced source for leaderboard/sync.
+    this.version(21).stores({
+      studyTimeBuckets: '&id, dayKey, hour, updatedAt',
+    })
+
+    // v22: full historical paper challenge mode for 二階. Local-only attempt
+    // history; submitted answers still write into questionHistory/mastery so
+    // weakspot radar and SRS learn from whole-paper practice.
+    this.version(22).stores({
+      challengeAttempts: '&id, paperId, finishedAt',
+      challengeInProgress: '&key',
+    })
   }
 }
 
