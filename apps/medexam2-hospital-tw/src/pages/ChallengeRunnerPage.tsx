@@ -32,6 +32,7 @@ export function ChallengeRunnerPage() {
   const [allQuestions, setAllQuestions] = useState<Question[]>([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selections, setSelections] = useState<Record<string, string>>({})
+  const [flags, setFlags] = useState<Set<string>>(new Set())
   const [elapsedSec, setElapsedSec] = useState(0)
   const [paused, setPaused] = useState(false)
   const [confirmSubmit, setConfirmSubmit] = useState(false)
@@ -39,6 +40,8 @@ export function ChallengeRunnerPage() {
   const [resumeNotice, setResumeNotice] = useState(false)
   const startedAtRef = useRef(Date.now())
   const elapsedSecRef = useRef(0)
+  /** Tracks whether the player manually paused — prevents auto-resume on tab-return. */
+  const manuallyPausedRef = useRef(false)
 
   useEffect(() => { elapsedSecRef.current = elapsedSec }, [elapsedSec])
 
@@ -104,10 +107,20 @@ export function ChallengeRunnerPage() {
 
   useEffect(() => {
     const onVisibility = () => {
-      setPaused(document.visibilityState === 'hidden')
+      if (document.visibilityState === 'hidden') {
+        setPaused(true)
+      } else if (!manuallyPausedRef.current) {
+        setPaused(false)
+      }
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
+  const toggleManualPause = useCallback(() => {
+    const next = !manuallyPausedRef.current
+    manuallyPausedRef.current = next
+    setPaused(next)
   }, [])
 
   useEffect(() => {
@@ -203,13 +216,23 @@ export function ChallengeRunnerPage() {
           <h1><EmojiIcon char="📝" size={28} /> {paperLabel(paperId)}</h1>
           <p>{answeredCount}/{questions.length} 題 · {formatElapsed(elapsedSec)}{paused ? ' · 已暫停' : ''}</p>
         </div>
-        <button
-          type="button"
-          className="challenge-submit"
-          onClick={() => unansweredCount > 0 ? setConfirmSubmit(true) : void submit()}
-        >
-          交卷
-        </button>
+        <div className="challenge-runner__actions">
+          <button
+            type="button"
+            className="challenge-pause-btn"
+            onClick={toggleManualPause}
+            aria-label={paused ? '繼續計時' : '暫停計時'}
+          >
+            {paused ? '▶ 繼續' : '⏸ 暫停'}
+          </button>
+          <button
+            type="button"
+            className="challenge-submit"
+            onClick={() => unansweredCount > 0 ? setConfirmSubmit(true) : void submit()}
+          >
+            交卷
+          </button>
+        </div>
       </header>
 
       {resumeNotice && <div className="challenge-toast">已從上次中斷處恢復</div>}
@@ -223,10 +246,11 @@ export function ChallengeRunnerPage() {
               className={[
                 'challenge-jump',
                 idx === currentIdx ? 'challenge-jump--current' : '',
+                flags.has(q.id) ? 'challenge-jump--flagged' : '',
                 selections[q.id] ? 'challenge-jump--answered' : '',
               ].filter(Boolean).join(' ')}
               onClick={() => setCurrentIdx(idx)}
-              aria-label={`第 ${idx + 1} 題${selections[q.id] ? ' 已作答' : ''}`}
+              aria-label={`第 ${idx + 1} 題${selections[q.id] ? ' 已作答' : ''}${flags.has(q.id) ? ' 已標記' : ''}`}
             >
               {idx + 1}
             </button>
@@ -237,6 +261,18 @@ export function ChallengeRunnerPage() {
           <div className="challenge-question__meta">
             <span>第 {currentIdx + 1} 題</span>
             <span>{current.subject}</span>
+            <button
+              type="button"
+              className={`challenge-flag-btn${flags.has(current.id) ? ' challenge-flag-btn--active' : ''}`}
+              onClick={() => setFlags((prev) => {
+                const next = new Set(prev)
+                next.has(current.id) ? next.delete(current.id) : next.add(current.id)
+                return next
+              })}
+              aria-label={flags.has(current.id) ? '取消標記' : '標記此題'}
+            >
+              {flags.has(current.id) ? '🚩 已標記' : '⚑ 標記'}
+            </button>
           </div>
           <p className="challenge-question__stem">{current.stem}</p>
           {current.imagePath && (

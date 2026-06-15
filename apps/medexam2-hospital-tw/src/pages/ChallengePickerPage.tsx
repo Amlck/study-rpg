@@ -11,6 +11,7 @@ import {
   latestAttemptByPaperMap,
   paperShortLabel,
 } from '../lib/challenge'
+import { getChallengeInProgress } from '../services/challenge-attempts'
 
 function formatAttempt(score: number, total: number, finishedAt: number): string {
   const d = new Date(finishedAt)
@@ -24,17 +25,44 @@ function subjectHint(subjectId: string | null): string {
   return `${subjectId} 主要在 ${paper}，已先把相關卷別排到前面。`
 }
 
+function pct(correct: number, total: number): string {
+  if (total <= 0) return '-'
+  return `${Math.round((correct / total) * 100)}%`
+}
+
+type PaperSummary = ReturnType<typeof buildChallengePaperSummaries>[number]
+
+interface Sitting {
+  key: string
+  year: number
+  session: number
+  papers: PaperSummary[]
+}
+
 export function ChallengePickerPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const focusSubject = searchParams.get('subject')
   const [questions, setQuestions] = useState<Question[]>([])
+  const [inProgressPaperId, setInProgressPaperId] = useState<string | null>(null)
+  const [inProgressAnswered, setInProgressAnswered] = useState(0)
 
   useEffect(() => {
     const base = import.meta.env.BASE_URL.replace(/\/$/, '')
     getContentPack(`${base}/content/medexam2-tw`)
       .then((pack) => setQuestions(pack.questions))
       .catch((err) => console.error('[challenge-picker] load content failed:', err))
+  }, [])
+
+  useEffect(() => {
+    getChallengeInProgress()
+      .then((row) => {
+        if (row) {
+          setInProgressPaperId(row.paperId)
+          setInProgressAnswered(Object.keys(row.selections).length)
+        }
+      })
+      .catch(() => { /* ignore */ })
   }, [])
 
   const attempts = useLiveQuery(() => getHospitalDB().challengeAttempts.toArray(), []) ?? []
@@ -53,6 +81,21 @@ export function ChallengePickerPage() {
     })
   }, [summaries, focusPaper])
 
+  const sittings = useMemo<Sitting[]>(() => {
+    const map = new Map<string, PaperSummary[]>()
+    for (const p of sorted) {
+      const key = `${p.year}-${p.session}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(p)
+    }
+    return [...map.entries()].map(([key, papers]) => ({
+      key,
+      year: papers[0].year,
+      session: papers[0].session,
+      papers,
+    }))
+  }, [sorted])
+
   return (
     <main className="app-shell challenge-page challenge-picker">
       <header className="challenge-page__header">
@@ -66,38 +109,79 @@ export function ChallengePickerPage() {
       {summaries.length === 0 ? (
         <p className="challenge-empty">正在整理歷屆卷...</p>
       ) : (
-        <section className="challenge-paper-grid" aria-label="歷屆整回卷">
-          {sorted.map((paper) => {
-            const isFocus = focusPaper === paper.paper
-            const total = paper.latestAttempt?.perQuestionAnswers.length ?? paper.questionCount
+        <div className="challenge-sittings" aria-label="歷屆整回卷">
+          {sittings.map(({ key, year, session, papers }) => {
+            const attempted = papers.filter((p) => p.latestAttempt)
+            const aggScore = attempted.reduce((s, p) => s + p.latestAttempt!.totalScore, 0)
+            const aggTotal = attempted.reduce(
+              (s, p) => s + p.latestAttempt!.perQuestionAnswers.length, 0,
+            )
             return (
-              <button
-                key={paper.paperId}
-                type="button"
-                className={`challenge-paper-card${isFocus ? ' challenge-paper-card--focus' : ''}`}
-                onClick={() => navigate(`/challenge/run/${encodeURIComponent(paper.paperId)}`)}
-              >
-                <span className="challenge-paper-card__year">{paper.year}</span>
-                <span className="challenge-paper-card__meta">
-                  第 {paper.session} 次 · {paperShortLabel(paper.paper)}
-                </span>
-                <span className="challenge-paper-card__count">{paper.questionCount} 題</span>
-                <span className="challenge-paper-card__subjects">
-                  {paper.subjects.slice(0, 3).map((s) => s.subjectId).join(' / ')}
-                </span>
-                {paper.latestAttempt ? (
-                  <span className="challenge-paper-card__attempt">
-                    上次 {formatAttempt(paper.latestAttempt.totalScore, total, paper.latestAttempt.finishedAt)}
+              <section key={key} className="challenge-sitting">
+                <header className="challenge-sitting__header">
+                  <span className="challenge-sitting__title">
+                    {year} 年第 {session} 次
                   </span>
-                ) : (
-                  <span className="challenge-paper-card__attempt challenge-paper-card__attempt--empty">
-                    尚未挑戰
-                  </span>
-                )}
-              </button>
+                  {attempted.length > 0 ? (
+                    <span className="challenge-sitting__agg">
+                      合計 {aggScore}/{aggTotal}
+                      <small>（{pct(aggScore, aggTotal)}）</small>
+                      {attempted.length < papers.length && (
+                        <small> · {papers.length - attempted.length} 份未挑戰</small>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="challenge-sitting__agg challenge-sitting__agg--empty">
+                      尚未挑戰
+                    </span>
+                  )}
+                </header>
+                <div className="challenge-paper-grid">
+                  {papers.map((paper) => {
+                    const isFocus = focusPaper === paper.paper
+                    const isInProgress = paper.paperId === inProgressPaperId
+                    const total = paper.latestAttempt?.perQuestionAnswers.length ?? paper.questionCount
+                    return (
+                      <button
+                        key={paper.paperId}
+                        type="button"
+                        className={[
+                          'challenge-paper-card',
+                          isFocus ? 'challenge-paper-card--focus' : '',
+                          isInProgress ? 'challenge-paper-card--inprogress' : '',
+                        ].filter(Boolean).join(' ')}
+                        onClick={() => navigate(`/challenge/run/${encodeURIComponent(paper.paperId)}`)}
+                      >
+                        <span className="challenge-paper-card__year">{paper.year}</span>
+                        <span className="challenge-paper-card__meta">
+                          第 {paper.session} 次 · {paperShortLabel(paper.paper)}
+                        </span>
+                        <span className="challenge-paper-card__count">{paper.questionCount} 題</span>
+                        <span className="challenge-paper-card__subjects">
+                          {paper.subjects.slice(0, 3).map((s) => s.subjectId).join(' / ')}
+                        </span>
+                        {isInProgress && (
+                          <span className="challenge-paper-card__attempt challenge-paper-card__attempt--inprogress">
+                            繼續（已答 {inProgressAnswered} 題）
+                          </span>
+                        )}
+                        {!isInProgress && paper.latestAttempt ? (
+                          <span className="challenge-paper-card__attempt">
+                            上次 {formatAttempt(paper.latestAttempt.totalScore, total, paper.latestAttempt.finishedAt)}
+                          </span>
+                        ) : !isInProgress ? (
+                          <span className="challenge-paper-card__attempt challenge-paper-card__attempt--empty">
+                            尚未挑戰
+                          </span>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
             )
           })}
-        </section>
+        </div>
       )}
     </main>
   )

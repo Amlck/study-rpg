@@ -117,9 +117,45 @@ export function ChallengeResultPage() {
           </p>
         )}
         <p className="challenge-result__note">
-          錯題已寫入 SRS；本科正答率也會反映到首頁弱科雷達。
+          {wrongRows.length > 0
+            ? `${wrongRows.length} 題錯題已寫入 SRS，下次複習時會優先出現；本科正答率也會反映到首頁弱科雷達。`
+            : '全對！本科正答率已反映到首頁弱科雷達。'}
         </p>
       </section>
+
+      {priorAttempts.length > 0 && (
+        <section className="challenge-history" aria-label="歷次成績">
+          <h2>歷次成績</h2>
+          <div className="challenge-history__list">
+            {[...priorAttempts]
+              .sort((a, b) => a.finishedAt - b.finishedAt)
+              .map((a, i) => (
+                <div key={a.id} className="challenge-history__row">
+                  <span className="challenge-history__nth">第 {i + 1} 次</span>
+                  <span className="challenge-history__date">
+                    {new Date(a.finishedAt).toLocaleDateString('zh-TW')}
+                  </span>
+                  <span className="challenge-history__score">
+                    {a.totalScore}/{a.perQuestionAnswers.length}
+                    <small>（{pct(a.totalScore, a.perQuestionAnswers.length)}）</small>
+                  </span>
+                  <span className="challenge-history__time">{formatElapsed(a.elapsedSec)}</span>
+                </div>
+              ))}
+            <div className="challenge-history__row challenge-history__row--current">
+              <span className="challenge-history__nth">第 {priorAttempts.length + 1} 次</span>
+              <span className="challenge-history__date">
+                {new Date(attempt.finishedAt).toLocaleDateString('zh-TW')}
+              </span>
+              <span className="challenge-history__score">
+                {attempt.totalScore}/{total}
+                <small>（{pct(attempt.totalScore, total)}）</small>
+              </span>
+              <span className="challenge-history__time">{formatElapsed(attempt.elapsedSec)}</span>
+            </div>
+          </div>
+        </section>
+      )}
 
       {breakdown.length > 0 && (
         <section className="challenge-breakdown" aria-label="科別正答率">

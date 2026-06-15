@@ -7925,6 +7925,55 @@ body:has(.modal-backdrop) {
   color: var(--accent-sky);
 }
 
+.challenge-paper-card__attempt--inprogress {
+  color: var(--accent-gold);
+  font-weight: bold;
+}
+
+.challenge-paper-card--inprogress {
+  border-color: var(--accent-gold);
+  box-shadow: 4px 4px 0 var(--accent-gold);
+}
+
+/* ── Sitting group ──────────────────── */
+.challenge-sittings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.challenge-sitting__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--frame-light);
+}
+
+.challenge-sitting__title {
+  font-family: var(--font-pixel-cjk);
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--frame-dark);
+}
+
+.challenge-sitting__agg {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.challenge-sitting__agg small {
+  margin-left: 4px;
+  color: var(--frame-light);
+  font-size: 11px;
+}
+
+.challenge-sitting__agg--empty {
+  color: var(--accent-sky);
+}
+
 .challenge-submit {
   min-height: 34px;
   padding: 7px 14px;
@@ -7942,6 +7991,58 @@ body:has(.modal-backdrop) {
 .challenge-submit:focus-visible {
   transform: translate(-1px, -1px);
   outline: none;
+}
+
+.challenge-runner__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.challenge-pause-btn {
+  min-height: 34px;
+  padding: 7px 12px;
+  color: var(--frame-dark);
+  background: var(--bg-paper);
+  border: 2px solid var(--frame-dark);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 var(--frame-light);
+  font-family: var(--font-pixel-cjk);
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.challenge-pause-btn:hover,
+.challenge-pause-btn:focus-visible {
+  transform: translate(-1px, -1px);
+  outline: none;
+  background: var(--accent-gold);
+}
+
+.challenge-flag-btn {
+  padding: 2px 8px;
+  color: var(--frame-dark);
+  background: transparent;
+  border: 2px solid var(--frame-light);
+  border-radius: 2px;
+  font-family: var(--font-pixel-cjk);
+  font-size: 13px;
+  cursor: pointer;
+  transition: none;
+}
+
+.challenge-flag-btn:hover,
+.challenge-flag-btn:focus-visible {
+  border-color: var(--accent-rose);
+  outline: none;
+}
+
+.challenge-flag-btn--active {
+  color: var(--accent-rose);
+  border-color: var(--accent-rose);
+  background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
 }
 
 .challenge-runner__layout {
@@ -7986,6 +8087,15 @@ body:has(.modal-backdrop) {
 .challenge-jump--current {
   background: var(--accent-gold);
   box-shadow: inset 0 0 0 2px var(--frame-dark);
+}
+
+.challenge-jump--flagged {
+  outline: 2px solid var(--accent-rose);
+  outline-offset: -2px;
+}
+
+.challenge-jump--flagged.challenge-jump--answered {
+  background: color-mix(in srgb, var(--accent-leaf) 70%, var(--accent-rose) 30%);
 }
 
 .challenge-question,
@@ -8259,6 +8369,65 @@ body:has(.modal-backdrop) {
 
 .challenge-review-card__explanation p {
   margin: 6px 0 0;
+}
+
+/* ── History ─────────────────────────── */
+.challenge-history {
+  background: var(--bg-paper);
+  border: 3px solid var(--frame-dark);
+  border-radius: 4px;
+  box-shadow: 4px 4px 0 var(--frame-light);
+  padding: 14px;
+}
+
+.challenge-history h2 {
+  margin: 0 0 10px;
+  font-family: var(--font-pixel-cjk);
+  font-size: 16px;
+  color: var(--frame-dark);
+}
+
+.challenge-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.challenge-history__row {
+  display: grid;
+  grid-template-columns: 60px 90px 1fr 80px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 2px solid var(--frame-light);
+  border-radius: 2px;
+  font-size: 13px;
+}
+
+.challenge-history__row--current {
+  border-color: var(--accent-gold);
+  background: color-mix(in srgb, var(--accent-gold) 12%, transparent);
+  font-weight: bold;
+}
+
+.challenge-history__nth {
+  color: var(--frame-dark);
+  font-family: var(--font-pixel-cjk);
+}
+
+.challenge-history__date {
+  color: var(--frame-light);
+}
+
+.challenge-history__score small {
+  margin-left: 4px;
+  color: var(--frame-light);
+  font-size: 11px;
+}
+
+.challenge-history__time {
+  text-align: right;
+  color: var(--frame-light);
 }
 
 @media (max-width: 760px) {
