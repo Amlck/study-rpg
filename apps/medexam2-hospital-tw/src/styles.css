@@ -8056,20 +8056,21 @@ body:has(.modal-backdrop) {
   position: sticky;
   top: 12px;
   z-index: 5;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(34px, 38px));
-  gap: 5px;
-  max-height: 118px;
-  overflow: auto;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 8px;
   background: var(--bg-paper);
   border: 2px solid var(--frame-dark);
   border-radius: 4px;
+  scrollbar-color: var(--frame-light) transparent;
 }
 
 .challenge-jump {
-  min-width: 0;
-  aspect-ratio: 1;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
   padding: 0;
   color: var(--frame-dark);
   background: var(--bg-cream);

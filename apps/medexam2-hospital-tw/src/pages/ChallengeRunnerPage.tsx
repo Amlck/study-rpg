@@ -25,6 +25,12 @@ function uuid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
 export function ChallengeRunnerPage() {
   const { paperId: rawPaperId } = useParams<{ paperId: string }>()
   const paperId = rawPaperId ? decodeURIComponent(rawPaperId) : ''
@@ -57,6 +63,11 @@ export function ChallengeRunnerPage() {
   const questions = useMemo(
     () => selectChallengePaperQuestions(allQuestions, paperId),
     [allQuestions, paperId],
+  )
+  const current = questions.length > 0 ? questions[Math.min(currentIdx, questions.length - 1)] : null
+  const currentOptionKeys = useMemo(
+    () => (current ? Object.keys(current.options) : []),
+    [current],
   )
 
   useEffect(() => {
@@ -199,6 +210,64 @@ export function ChallengeRunnerPage() {
     navigate(`/challenge/result/${attempt.id}`)
   }, [db, elapsedSec, navigate, paperId, questions, selections])
 
+  const answeredCount = Object.keys(selections).length
+  const unansweredCount = questions.length - answeredCount
+
+  const handleSubmitIntent = useCallback(() => {
+    if (confirmSubmit) {
+      setConfirmSubmit(false)
+      void submit()
+      return
+    }
+    if (unansweredCount > 0) setConfirmSubmit(true)
+    else void submit()
+  }, [confirmSubmit, submit, unansweredCount])
+
+  useEffect(() => {
+    if (!hydrated || !paperId || questions.length === 0) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.isComposing ||
+        isTextEntryTarget(event.target)
+      ) {
+        return
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        handleSubmitIntent()
+        return
+      }
+
+      if (confirmSubmit || !current) return
+
+      const optionIndex = ['1', '2', '3', '4'].indexOf(event.key)
+      if (optionIndex === -1) return
+
+      const optionKey = currentOptionKeys[optionIndex]
+      if (!optionKey) return
+
+      event.preventDefault()
+      setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [
+    confirmSubmit,
+    current,
+    currentOptionKeys,
+    handleSubmitIntent,
+    hydrated,
+    paperId,
+    questions.length,
+  ])
+
   if (!paperId) {
     return (
       <main className="app-shell challenge-page">
@@ -220,10 +289,9 @@ export function ChallengeRunnerPage() {
       </main>
     )
   }
-
-  const current = questions[Math.min(currentIdx, questions.length - 1)]
-  const answeredCount = Object.keys(selections).length
-  const unansweredCount = questions.length - answeredCount
+  if (!current) {
+    return <main className="app-shell challenge-page"><p className="challenge-empty">載入題目...</p></main>
+  }
 
   return (
     <main className="app-shell challenge-page challenge-runner">
@@ -245,7 +313,8 @@ export function ChallengeRunnerPage() {
           <button
             type="button"
             className="challenge-submit"
-            onClick={() => unansweredCount > 0 ? setConfirmSubmit(true) : void submit()}
+            onClick={handleSubmitIntent}
+            aria-keyshortcuts="Enter"
           >
             交卷
           </button>
@@ -301,12 +370,13 @@ export function ChallengeRunnerPage() {
             <p className="challenge-question__missing-image">此題原始題本含圖片，目前題庫尚未提供圖檔。</p>
           )}
           <div className="challenge-options">
-            {Object.entries(current.options).map(([key, text]) => (
+            {Object.entries(current.options).map(([key, text], optionIndex) => (
               <button
                 key={key}
                 type="button"
                 className={`challenge-option${selections[current.id] === key ? ' challenge-option--selected' : ''}`}
                 onClick={() => setSelections((prev) => ({ ...prev, [current.id]: key }))}
+                aria-keyshortcuts={String(optionIndex + 1)}
               >
                 <span className="challenge-option__key">({key})</span>
                 <span>{text}</span>
