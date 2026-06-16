@@ -47,6 +47,12 @@ function pickPaperPrimarySubject(questions: Question[]): string {
   return best
 }
 
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
 interface Props {
   content: ContentPack
   player: Player
@@ -79,6 +85,14 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
   const inProgressSaveTimer = useRef<number | null>(null)
   const elapsedSecRef = useRef<number>(0)
   useEffect(() => { elapsedSecRef.current = elapsedSec }, [elapsedSec])
+
+  const current = questions[currentIdx] ?? null
+  const answeredCount = Object.keys(selections).length
+  const unansweredCount = Math.max(questions.length - answeredCount, 0)
+  const currentOptionKeys = useMemo(
+    () => (current ? Object.keys(current.options) : []),
+    [current],
+  )
 
   // ─── Hydration: load mockInProgress on mount ────────────────────────────────
   useEffect(() => {
@@ -254,6 +268,54 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
     navigate(`/mock/result/${attemptId}`)
   }, [paperId, questions, selections, elapsedSec, player, setPlayer, onGuaranteedSRRoll, navigate])
 
+  const handleSubmitIntent = useCallback(() => {
+    if (confirmSubmit) {
+      setConfirmSubmit(false)
+      void doSubmit()
+      return
+    }
+    if (unansweredCount > 0) setConfirmSubmit(true)
+    else void doSubmit()
+  }, [confirmSubmit, doSubmit, unansweredCount])
+
+  // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!hydrated || !paperId || questions.length === 0) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.isComposing ||
+        isTextEntryTarget(event.target)
+      ) {
+        return
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        handleSubmitIntent()
+        return
+      }
+
+      if (confirmSubmit || !current) return
+
+      const optionIndex = ['1', '2', '3', '4'].indexOf(event.key)
+      if (optionIndex === -1) return
+
+      const optionKey = currentOptionKeys[optionIndex]
+      if (!optionKey) return
+
+      event.preventDefault()
+      setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [confirmSubmit, current, currentOptionKeys, handleSubmitIntent, hydrated, paperId, questions.length])
+
   if (!paperId) {
     return (
       <div className="mock-runner-page">
@@ -273,10 +335,6 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
   if (!hydrated) {
     return <div className="mock-runner-page"><p className="mock-loading">載入中...</p></div>
   }
-
-  const current = questions[currentIdx]
-  const answeredCount = Object.keys(selections).length
-  const unansweredCount = questions.length - answeredCount
 
   return (
     <div className="mock-runner-page">
@@ -304,13 +362,14 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
         <div className="mock-question-subject">[{current.subject}]</div>
         <div className="mock-question-stem">{current.stem}</div>
         <div className="mock-question-options">
-          {Object.entries(current.options).map(([key, text]) => {
+          {Object.entries(current.options).map(([key, text], optionIndex) => {
             const selected = selections[current.id] === key
             return (
               <button
                 key={key}
                 className={`mock-option ${selected ? 'mock-option-selected' : ''}`}
                 onClick={() => setSelections({ ...selections, [current.id]: key })}
+                aria-keyshortcuts={String(optionIndex + 1)}
               >
                 <span className="mock-option-key">({key})</span>
                 <span className="mock-option-text">{text}</span>
@@ -343,10 +402,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
           disabled={currentIdx === questions.length - 1}
           onClick={() => setCurrentIdx(currentIdx + 1)}
         >下一題</button>
-        <button className="mock-submit-btn" onClick={() => {
-          if (unansweredCount > 0) setConfirmSubmit(true)
-          else void doSubmit()
-        }}>交卷</button>
+        <button className="mock-submit-btn" onClick={handleSubmitIntent} aria-keyshortcuts="Enter">交卷</button>
       </nav>
 
       {confirmSubmit && (

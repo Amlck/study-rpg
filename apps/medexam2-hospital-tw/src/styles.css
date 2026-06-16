@@ -8274,6 +8274,50 @@ body:has(.modal-backdrop) {
   color: var(--frame-light);
 }
 
+.challenge-result__reward {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--bg-cream) 78%, white 22%);
+  border: 1px solid var(--frame-light);
+  border-radius: 4px;
+}
+
+.challenge-result__reward h2 {
+  margin: 0;
+  color: var(--frame-dark);
+  font-size: 16px;
+}
+
+.challenge-result__reward p {
+  margin: 0;
+  color: var(--frame-light);
+}
+
+.challenge-result__reward-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.challenge-result__reward-grid span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--bg-paper);
+  border: 1px solid var(--frame-light);
+  border-radius: 3px;
+  color: var(--frame-light);
+  font-size: 12px;
+}
+
+.challenge-result__reward-grid strong {
+  color: var(--frame-dark);
+  font-family: var(--font-pixel-num);
+  font-size: 18px;
+}
+
 .challenge-result__delta--up strong {
   color: var(--accent-leaf);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { Question } from '@study-rpg/core'
-import { getContentPack } from '@study-rpg/content-medexam2-tw'
+import { getContentPack, HOSPITAL_CREDIT_LABEL } from '@study-rpg/content-medexam2-tw'
 import { EmojiIcon } from '../components/EmojiIcon'
 import type { ChallengeAttemptRow } from '../db/schema'
 import {
@@ -86,6 +86,7 @@ export function ChallengeResultPage() {
   const total = attempt.perQuestionAnswers.length
   const wrongRows = attempt.perQuestionAnswers.filter((row) => !row.isCorrect)
   const delta = latestPrior ? attempt.totalScore - latestPrior.totalScore : null
+  const reward = attempt.economyReward
 
   return (
     <main className="app-shell challenge-page challenge-result">
@@ -115,6 +116,40 @@ export function ChallengeResultPage() {
             {delta !== 0 && <strong>{delta > 0 ? ` +${delta}` : ` ${delta}`}</strong>}
             {delta === 0 && <strong> 持平</strong>}
           </p>
+        )}
+        {reward && (
+          <div className="challenge-result__reward" aria-label="整回經濟獎勵">
+            <h2>整回獎勵</h2>
+            {reward.revenueDelta > 0 ||
+            reward.reputationDelta > 0 ||
+            reward.hospitalCreditDelta > 0 ? (
+              <>
+                <div className="challenge-result__reward-grid">
+                  <span>
+                    <strong>+{reward.revenueDelta.toLocaleString()}</strong>
+                    收入
+                  </span>
+                  <span>
+                    <strong>+{reward.reputationDelta.toLocaleString()}</strong>
+                    聲望
+                  </span>
+                  <span>
+                    <strong>+{reward.hospitalCreditDelta}</strong>
+                    {HOSPITAL_CREDIT_LABEL}
+                  </span>
+                </div>
+                <p>
+                  {reward.bestScoreDelta > 0 && `個人最佳刷新 +${reward.bestScoreDelta} 題。`}
+                  {reward.firstPass && ' 首次達到 60% 及格門檻。'}
+                  {reward.firstHonors && ' 首次達到 80% 榮譽門檻。'}
+                </p>
+              </>
+            ) : (
+              <p>
+                本回沒有額外整回獎勵；每題答對仍已照常給予收入與聲望。刷新個人最佳、首次達到 60% 或首次達到 80% 會再給整回 bonus。
+              </p>
+            )}
+          </div>
         )}
         <p className="challenge-result__note">
           {wrongRows.length > 0

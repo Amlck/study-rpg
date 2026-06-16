@@ -5,6 +5,7 @@ import { getContentPack } from '@study-rpg/content-medexam2-tw'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { getHospitalDB, type ChallengeAttemptRow } from '../db/schema'
 import {
+  computeChallengeEconomyReward,
   formatElapsed,
   paperLabel,
   scoreChallenge,
@@ -12,6 +13,7 @@ import {
 } from '../lib/challenge'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
 import { applyQuizReward } from '../services/quiz-rewards'
+import { applyChallengeEconomyReward } from '../services/challenge-rewards'
 import {
   clearChallengeInProgress,
   getChallengeInProgress,
@@ -133,7 +135,7 @@ export function ChallengeRunnerPage() {
     if (!paperId || questions.length === 0) return
     const now = Date.now()
     const score = scoreChallenge(questions, selections)
-    const attempt: ChallengeAttemptRow = {
+    let attempt: ChallengeAttemptRow = {
       id: uuid(),
       paperId,
       startedAt: startedAtRef.current,
@@ -157,6 +159,13 @@ export function ChallengeRunnerPage() {
         db.bannerUnlockBonusLog,
       ],
       async () => {
+        const priorAttempts = await db.challengeAttempts.where('paperId').equals(paperId).toArray()
+        const economyReward = computeChallengeEconomyReward(
+          score.totalScore,
+          score.perQuestionAnswers.length,
+          priorAttempts,
+        )
+        attempt = { ...attempt, economyReward }
         await db.challengeAttempts.put(attempt)
         for (const answer of score.perQuestionAnswers) {
           const question = byId.get(answer.questionId)
@@ -174,6 +183,14 @@ export function ChallengeRunnerPage() {
             isDisputed: answer.userSelection !== null && question.disputed === true,
             isFresh: priorHistory === undefined,
           })
+        }
+        const grantedChallengeCredits = await applyChallengeEconomyReward(economyReward)
+        if (grantedChallengeCredits !== economyReward.hospitalCreditDelta) {
+          attempt = {
+            ...attempt,
+            economyReward: { ...economyReward, hospitalCreditDelta: grantedChallengeCredits },
+          }
+          await db.challengeAttempts.put(attempt)
         }
         await db.challengeInProgress.delete('challengeInProgress')
       },

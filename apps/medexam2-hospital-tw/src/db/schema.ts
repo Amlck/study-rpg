@@ -216,6 +216,17 @@ export interface ChallengeAttemptRow {
   elapsedSec: number
   totalScore: number
   perQuestionAnswers: ChallengePerQuestionAnswer[]
+  economyReward?: {
+    revenueDelta: number
+    reputationDelta: number
+    hospitalCreditDelta: number
+    bestScoreDelta: number
+    previousBestScore: number | null
+    firstPass: boolean
+    firstHonors: boolean
+    pass: boolean
+    honors: boolean
+  }
 }
 
 export interface ChallengeInProgressRow {

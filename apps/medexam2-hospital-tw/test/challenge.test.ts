@@ -4,6 +4,7 @@ import {
   SUBJECT_TO_CHALLENGE_PAPER,
   buildChallengePaperSummaries,
   challengePaperIdOf,
+  computeChallengeEconomyReward,
   decodeChallengePaperId,
   scoreChallenge,
   selectChallengePaperQuestions,
@@ -68,5 +69,70 @@ describe('challenge helpers', () => {
       { questionId: 'q2', userSelection: 'D', isCorrect: true },
       { questionId: 'q3', userSelection: null, isCorrect: false },
     ])
+  })
+
+  it('grants first-pass and honors credits only when each threshold is first crossed', () => {
+    const firstPass = computeChallengeEconomyReward(56, 80, [])
+    expect(firstPass.hospitalCreditDelta).toBe(1)
+    expect(firstPass.firstPass).toBe(true)
+    expect(firstPass.firstHonors).toBe(false)
+
+    const laterHonors = computeChallengeEconomyReward(65, 80, [
+      {
+        id: 'a1',
+        paperId: '115-1-醫學三',
+        startedAt: 1,
+        finishedAt: 2,
+        elapsedSec: 100,
+        totalScore: 56,
+        perQuestionAnswers: Array.from({ length: 80 }, (_, idx) => ({
+          questionId: `q${idx}`,
+          userSelection: 'A',
+          isCorrect: idx < 56,
+        })),
+      },
+    ])
+    expect(laterHonors.hospitalCreditDelta).toBe(1)
+    expect(laterHonors.firstPass).toBe(false)
+    expect(laterHonors.firstHonors).toBe(true)
+
+    const repeat = computeChallengeEconomyReward(65, 80, [
+      {
+        id: 'a2',
+        paperId: '115-1-醫學三',
+        startedAt: 1,
+        finishedAt: 2,
+        elapsedSec: 100,
+        totalScore: 65,
+        perQuestionAnswers: Array.from({ length: 80 }, (_, idx) => ({
+          questionId: `q${idx}`,
+          userSelection: 'A',
+          isCorrect: idx < 65,
+        })),
+      },
+    ])
+    expect(repeat.hospitalCreditDelta).toBe(0)
+  })
+
+  it('rewards only new personal-best points with revenue and reputation', () => {
+    const reward = computeChallengeEconomyReward(55, 80, [
+      {
+        id: 'a1',
+        paperId: '115-1-醫學三',
+        startedAt: 1,
+        finishedAt: 2,
+        elapsedSec: 100,
+        totalScore: 50,
+        perQuestionAnswers: Array.from({ length: 80 }, (_, idx) => ({
+          questionId: `q${idx}`,
+          userSelection: 'A',
+          isCorrect: idx < 50,
+        })),
+      },
+    ])
+
+    expect(reward.bestScoreDelta).toBe(5)
+    expect(reward.revenueDelta).toBe(200)
+    expect(reward.reputationDelta).toBe(200)
   })
 })

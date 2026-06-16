@@ -1,4 +1,8 @@
 import type { Question, SubjectId } from '@study-rpg/core'
+import {
+  QUIZ_REPUTATION_PER_CORRECT_BASE,
+  QUIZ_REVENUE_PER_CORRECT_BASE,
+} from '@study-rpg/content-medexam2-tw'
 import type { ChallengeAttemptRow, ChallengePerQuestionAnswer } from '../db/schema'
 
 export type ChallengePaper = '醫學三' | '醫學四' | '醫學五' | '醫學六'
@@ -18,7 +22,23 @@ export interface ChallengeScoreResult {
   perQuestionAnswers: ChallengePerQuestionAnswer[]
 }
 
+export interface ChallengeEconomyReward {
+  revenueDelta: number
+  reputationDelta: number
+  hospitalCreditDelta: number
+  bestScoreDelta: number
+  previousBestScore: number | null
+  firstPass: boolean
+  firstHonors: boolean
+  pass: boolean
+  honors: boolean
+}
+
 export const CHALLENGE_PAPERS: ChallengePaper[] = ['醫學三', '醫學四', '醫學五', '醫學六']
+
+export const CHALLENGE_PASS_RATE = 0.6
+export const CHALLENGE_HONORS_RATE = 0.8
+export const CHALLENGE_BEST_SCORE_REWARD_MULTIPLIER = 0.5
 
 export const SUBJECT_TO_CHALLENGE_PAPER: Record<string, ChallengePaper> = {
   內科: '醫學三',
@@ -161,6 +181,46 @@ export function scoreChallenge(
   return {
     totalScore: perQuestionAnswers.reduce((sum, row) => sum + (row.isCorrect ? 1 : 0), 0),
     perQuestionAnswers,
+  }
+}
+
+export function computeChallengeEconomyReward(
+  totalScore: number,
+  totalQuestions: number,
+  priorAttempts: ChallengeAttemptRow[],
+): ChallengeEconomyReward {
+  const previousBestScore = priorAttempts.length > 0
+    ? Math.max(...priorAttempts.map((attempt) => attempt.totalScore))
+    : null
+  const bestScoreDelta = Math.max(0, totalScore - (previousBestScore ?? 0))
+  const rate = totalQuestions > 0 ? totalScore / totalQuestions : 0
+  const pass = rate >= CHALLENGE_PASS_RATE
+  const honors = rate >= CHALLENGE_HONORS_RATE
+  const priorPassed = priorAttempts.some((attempt) => {
+    const total = attempt.perQuestionAnswers.length
+    return total > 0 && attempt.totalScore / total >= CHALLENGE_PASS_RATE
+  })
+  const priorHonors = priorAttempts.some((attempt) => {
+    const total = attempt.perQuestionAnswers.length
+    return total > 0 && attempt.totalScore / total >= CHALLENGE_HONORS_RATE
+  })
+  const firstPass = pass && !priorPassed
+  const firstHonors = honors && !priorHonors
+
+  return {
+    revenueDelta: Math.round(
+      bestScoreDelta * QUIZ_REVENUE_PER_CORRECT_BASE * CHALLENGE_BEST_SCORE_REWARD_MULTIPLIER,
+    ),
+    reputationDelta: Math.round(
+      bestScoreDelta * QUIZ_REPUTATION_PER_CORRECT_BASE * CHALLENGE_BEST_SCORE_REWARD_MULTIPLIER,
+    ),
+    hospitalCreditDelta: (firstPass ? 1 : 0) + (firstHonors ? 1 : 0),
+    bestScoreDelta,
+    previousBestScore,
+    firstPass,
+    firstHonors,
+    pass,
+    honors,
   }
 }
 
