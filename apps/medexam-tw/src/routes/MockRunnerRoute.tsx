@@ -278,6 +278,10 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
     else void doSubmit()
   }, [confirmSubmit, doSubmit, unansweredCount])
 
+  const handleNextIntent = useCallback(() => {
+    setCurrentIdx((idx) => Math.min(idx + 1, Math.max(questions.length - 1, 0)))
+  }, [questions.length])
+
   // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!hydrated || !paperId || questions.length === 0) return
@@ -296,7 +300,8 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
 
       if (event.key === 'Enter') {
         event.preventDefault()
-        handleSubmitIntent()
+        if (confirmSubmit) handleSubmitIntent()
+        else handleNextIntent()
         return
       }
 
@@ -314,7 +319,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [confirmSubmit, current, currentOptionKeys, handleSubmitIntent, hydrated, paperId, questions.length])
+  }, [confirmSubmit, current, currentOptionKeys, handleNextIntent, handleSubmitIntent, hydrated, paperId, questions.length])
 
   if (!paperId) {
     return (

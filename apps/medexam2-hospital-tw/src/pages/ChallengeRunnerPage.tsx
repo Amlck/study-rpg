@@ -223,6 +223,10 @@ export function ChallengeRunnerPage() {
     else void submit()
   }, [confirmSubmit, submit, unansweredCount])
 
+  const handleNextIntent = useCallback(() => {
+    setCurrentIdx((idx) => Math.min(idx + 1, Math.max(questions.length - 1, 0)))
+  }, [questions.length])
+
   useEffect(() => {
     if (!hydrated || !paperId || questions.length === 0) return
 
@@ -240,7 +244,8 @@ export function ChallengeRunnerPage() {
 
       if (event.key === 'Enter') {
         event.preventDefault()
-        handleSubmitIntent()
+        if (confirmSubmit) handleSubmitIntent()
+        else handleNextIntent()
         return
       }
 
@@ -262,6 +267,7 @@ export function ChallengeRunnerPage() {
     confirmSubmit,
     current,
     currentOptionKeys,
+    handleNextIntent,
     handleSubmitIntent,
     hydrated,
     paperId,
