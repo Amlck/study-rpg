@@ -358,27 +358,6 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
         第 {currentIdx + 1} / {questions.length} 題 · 已作答 {answeredCount}
       </div>
 
-      <article className="mock-question-card">
-        <div className="mock-question-subject">[{current.subject}]</div>
-        <div className="mock-question-stem">{current.stem}</div>
-        <div className="mock-question-options">
-          {Object.entries(current.options).map(([key, text], optionIndex) => {
-            const selected = selections[current.id] === key
-            return (
-              <button
-                key={key}
-                className={`mock-option ${selected ? 'mock-option-selected' : ''}`}
-                onClick={() => setSelections({ ...selections, [current.id]: key })}
-                aria-keyshortcuts={String(optionIndex + 1)}
-              >
-                <span className="mock-option-key">({key})</span>
-                <span className="mock-option-text">{text}</span>
-              </button>
-            )
-          })}
-        </div>
-      </article>
-
       <nav className="mock-nav">
         <button
           className="mock-nav-btn"
@@ -404,6 +383,27 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
         >下一題</button>
         <button className="mock-submit-btn" onClick={handleSubmitIntent} aria-keyshortcuts="Enter">交卷</button>
       </nav>
+
+      <article className="mock-question-card">
+        <div className="mock-question-subject">[{current.subject}]</div>
+        <div className="mock-question-stem">{current.stem}</div>
+        <div className="mock-question-options">
+          {Object.entries(current.options).map(([key, text], optionIndex) => {
+            const selected = selections[current.id] === key
+            return (
+              <button
+                key={key}
+                className={`mock-option ${selected ? 'mock-option-selected' : ''}`}
+                onClick={() => setSelections({ ...selections, [current.id]: key })}
+                aria-keyshortcuts={String(optionIndex + 1)}
+              >
+                <span className="mock-option-key">({key})</span>
+                <span className="mock-option-text">{text}</span>
+              </button>
+            )
+          })}
+        </div>
+      </article>
 
       {confirmSubmit && (
         <div className="mock-confirm-overlay" onClick={() => setConfirmSubmit(false)}>

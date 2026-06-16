@@ -8047,7 +8047,7 @@ body:has(.modal-backdrop) {
 
 .challenge-runner__layout {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -8055,10 +8055,11 @@ body:has(.modal-backdrop) {
 .challenge-jump-grid {
   position: sticky;
   top: 12px;
+  z-index: 5;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(34px, 38px));
   gap: 5px;
-  max-height: calc(100vh - 120px);
+  max-height: 118px;
   overflow: auto;
   padding: 8px;
   background: var(--bg-paper);
@@ -8109,7 +8110,8 @@ body:has(.modal-backdrop) {
 }
 
 .challenge-question {
-  padding: 14px;
+  padding: 18px;
+  font-size: 17px;
 }
 
 .challenge-question__meta {
@@ -8126,6 +8128,10 @@ body:has(.modal-backdrop) {
 .challenge-review-card__explanation p {
   white-space: pre-wrap;
   line-height: 1.65;
+}
+
+.challenge-question__stem {
+  font-size: 19px;
 }
 
 .challenge-question__figure {
@@ -8158,16 +8164,18 @@ body:has(.modal-backdrop) {
 .challenge-option,
 .challenge-review-card__option {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
-  padding: 9px 10px;
+  padding: 12px 14px;
   text-align: left;
   color: var(--frame-dark);
   background: var(--bg-cream);
   border: 2px solid var(--frame-light);
   border-radius: 4px;
   font-family: inherit;
+  font-size: 17px;
+  line-height: 1.5;
 }
 
 .challenge-option {
