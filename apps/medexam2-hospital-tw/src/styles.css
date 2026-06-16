@@ -8118,10 +8118,19 @@ body:has(.modal-backdrop) {
 .challenge-question__meta {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 10px;
   margin-bottom: 10px;
   color: var(--accent-rose);
   font-weight: bold;
+}
+
+.challenge-question__tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .challenge-question__stem,
@@ -8194,6 +8203,20 @@ body:has(.modal-backdrop) {
   font-weight: bold;
 }
 
+.challenge-question__explanation {
+  margin-top: 14px;
+  padding: 14px;
+  background: var(--bg-cream);
+  border: 2px solid var(--frame-light);
+  border-radius: 4px;
+}
+
+.challenge-question__explanation h2 {
+  margin: 0 0 8px;
+  color: var(--accent-rose);
+  font-size: 17px;
+}
+
 .challenge-question__nav,
 .challenge-confirm__actions {
   display: flex;
@@ -8204,7 +8227,8 @@ body:has(.modal-backdrop) {
 }
 
 .challenge-question__nav button,
-.challenge-confirm__actions button {
+.challenge-confirm__actions button,
+.challenge-explanation-btn {
   min-height: 32px;
   padding: 6px 12px;
   background: var(--bg-cream);
@@ -8213,6 +8237,10 @@ body:has(.modal-backdrop) {
   box-shadow: 2px 2px 0 var(--frame-light);
   font-family: inherit;
   cursor: pointer;
+}
+
+.challenge-explanation-btn--active {
+  background: var(--accent-gold);
 }
 
 .challenge-question__nav button:disabled {

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { Question, SubjectId } from '@study-rpg/core'
 import { getContentPack } from '@study-rpg/content-medexam2-tw'
 import { EmojiIcon } from '../components/EmojiIcon'
+import { ExplanationMarkdown } from '../components/ExplanationMarkdown'
 import { getHospitalDB, type ChallengeAttemptRow } from '../db/schema'
 import {
   computeChallengeEconomyReward,
@@ -19,6 +20,9 @@ import {
   getChallengeInProgress,
   saveChallengeInProgress,
 } from '../services/challenge-attempts'
+import { addStudyTimeBuckets } from '../lib/study-time'
+
+const STUDY_TIME_FLUSH_MS = 15_000
 
 function uuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
@@ -46,8 +50,10 @@ export function ChallengeRunnerPage() {
   const [confirmSubmit, setConfirmSubmit] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const [resumeNotice, setResumeNotice] = useState(false)
+  const [shownExplanations, setShownExplanations] = useState<Set<string>>(new Set())
   const startedAtRef = useRef(Date.now())
   const elapsedSecRef = useRef(0)
+  const studyTimeRecordedAtRef = useRef<number | null>(null)
   /** Tracks whether the player manually paused — prevents auto-resume on tab-return. */
   const manuallyPausedRef = useRef(false)
 
@@ -141,6 +147,30 @@ export function ChallengeRunnerPage() {
     const t = window.setTimeout(() => setResumeNotice(false), 3500)
     return () => window.clearTimeout(t)
   }, [resumeNotice])
+
+  useEffect(() => {
+    if (!hydrated || !paperId || paused || questions.length === 0) {
+      studyTimeRecordedAtRef.current = null
+      return
+    }
+
+    studyTimeRecordedAtRef.current = Date.now()
+    const flush = () => {
+      const now = Date.now()
+      const last = studyTimeRecordedAtRef.current
+      studyTimeRecordedAtRef.current = now
+      if (!last || now <= last) return
+      void addStudyTimeBuckets(db, now, now - last).catch((err) => {
+        console.error('[challenge-runner] addStudyTimeBuckets failed:', err)
+      })
+    }
+
+    const timer = window.setInterval(flush, STUDY_TIME_FLUSH_MS)
+    return () => {
+      window.clearInterval(timer)
+      flush()
+    }
+  }, [db, hydrated, paperId, paused, questions.length])
 
   const submit = useCallback(async () => {
     if (!paperId || questions.length === 0) return
@@ -353,18 +383,32 @@ export function ChallengeRunnerPage() {
           <div className="challenge-question__meta">
             <span>第 {currentIdx + 1} 題</span>
             <span>{current.subject}</span>
-            <button
-              type="button"
-              className={`challenge-flag-btn${flags.has(current.id) ? ' challenge-flag-btn--active' : ''}`}
-              onClick={() => setFlags((prev) => {
-                const next = new Set(prev)
-                next.has(current.id) ? next.delete(current.id) : next.add(current.id)
-                return next
-              })}
-              aria-label={flags.has(current.id) ? '取消標記' : '標記此題'}
-            >
-              {flags.has(current.id) ? '🚩 已標記' : '⚑ 標記'}
-            </button>
+            <div className="challenge-question__tools">
+              <button
+                type="button"
+                className={`challenge-explanation-btn${shownExplanations.has(current.id) ? ' challenge-explanation-btn--active' : ''}`}
+                onClick={() => setShownExplanations((prev) => {
+                  const next = new Set(prev)
+                  next.has(current.id) ? next.delete(current.id) : next.add(current.id)
+                  return next
+                })}
+                aria-expanded={shownExplanations.has(current.id)}
+              >
+                {shownExplanations.has(current.id) ? '隱藏詳解' : '詳解'}
+              </button>
+              <button
+                type="button"
+                className={`challenge-flag-btn${flags.has(current.id) ? ' challenge-flag-btn--active' : ''}`}
+                onClick={() => setFlags((prev) => {
+                  const next = new Set(prev)
+                  next.has(current.id) ? next.delete(current.id) : next.add(current.id)
+                  return next
+                })}
+                aria-label={flags.has(current.id) ? '取消標記' : '標記此題'}
+              >
+                {flags.has(current.id) ? '🚩 已標記' : '⚑ 標記'}
+              </button>
+            </div>
           </div>
           <p className="challenge-question__stem">{current.stem}</p>
           {current.imagePath && (
@@ -389,6 +433,12 @@ export function ChallengeRunnerPage() {
               </button>
             ))}
           </div>
+          {shownExplanations.has(current.id) && (
+            <section className="challenge-question__explanation">
+              <h2>詳解</h2>
+              <ExplanationMarkdown text={current.explanation ?? ''} />
+            </section>
+          )}
           <footer className="challenge-question__nav">
             <button type="button" disabled={currentIdx === 0} onClick={() => setCurrentIdx((idx) => idx - 1)}>
               上一題
