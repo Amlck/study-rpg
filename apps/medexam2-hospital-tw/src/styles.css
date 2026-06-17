@@ -8103,6 +8103,7 @@ body:has(.modal-backdrop) {
 .challenge-question,
 .challenge-result__summary,
 .challenge-breakdown,
+.challenge-learning,
 .challenge-review-card {
   background: var(--bg-paper);
   border: 3px solid var(--frame-dark);
@@ -8215,6 +8216,51 @@ body:has(.modal-backdrop) {
   margin: 0 0 8px;
   color: var(--accent-rose);
   font-size: 17px;
+}
+
+.challenge-confidence {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--frame-light);
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.challenge-confidence__buttons {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-cream);
+  border: 2px solid var(--frame-light);
+  border-radius: 4px;
+}
+
+.challenge-confidence__btn {
+  min-width: 48px;
+  min-height: 30px;
+  padding: 4px 8px;
+  color: var(--frame-dark);
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.challenge-confidence__btn:hover,
+.challenge-confidence__btn:focus-visible {
+  outline: 2px solid var(--accent-sky);
+  outline-offset: 1px;
+}
+
+.challenge-confidence__btn--active {
+  background: var(--accent-sky);
+  color: var(--bg-paper);
 }
 
 .challenge-question__nav,
@@ -8368,7 +8414,13 @@ body:has(.modal-backdrop) {
   margin-bottom: 14px;
 }
 
+.challenge-learning {
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
 .challenge-breakdown h2,
+.challenge-learning h2,
 .challenge-review h2 {
   margin: 0 0 10px;
   color: var(--frame-dark);
@@ -8414,13 +8466,139 @@ body:has(.modal-backdrop) {
   font-family: var(--font-pixel-num);
 }
 
+.challenge-learning__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.challenge-learning-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--bg-cream);
+  border: 2px solid var(--frame-light);
+  border-radius: 4px;
+}
+
+.challenge-learning-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.challenge-learning-card__head h3 {
+  margin: 0;
+  color: var(--accent-rose);
+  font-size: 16px;
+}
+
+.challenge-learning-card__head span {
+  color: var(--frame-light);
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.challenge-learning-card__stats,
+.challenge-learning-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.challenge-learning-card__stats span,
+.challenge-learning-card__chips span {
+  padding: 3px 6px;
+  color: var(--frame-dark);
+  background: var(--bg-paper);
+  border: 1px solid var(--frame-light);
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.challenge-learning-card__stats span:first-child {
+  border-color: var(--accent-rose);
+}
+
+.challenge-learning-card__chips--types span {
+  background: color-mix(in srgb, var(--accent-sky) 14%, var(--bg-paper));
+}
+
+.challenge-learning-card__group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.challenge-learning-card__group strong {
+  color: var(--frame-light);
+  font-size: 12px;
+}
+
+.challenge-learning-card__chips--reasons span {
+  background: color-mix(in srgb, var(--accent-rose) 12%, var(--bg-paper));
+}
+
 .challenge-review-card {
   padding: 12px;
 }
 
+.challenge-review-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .challenge-review-card h3 {
-  margin: 0 0 8px;
+  margin: 0;
   color: var(--accent-rose);
+}
+
+.challenge-review-card__bookmark {
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  color: var(--frame-dark);
+  background: var(--bg-cream);
+  border: 2px solid var(--frame-light);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.challenge-review-card__bookmark:hover,
+.challenge-review-card__bookmark:focus-visible {
+  border-color: var(--accent-gold);
+  outline: none;
+}
+
+.challenge-review-card__bookmark--on {
+  background: var(--accent-gold);
+  border-color: var(--frame-dark);
+}
+
+.challenge-review-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.challenge-review-card__badges span {
+  padding: 3px 6px;
+  color: var(--frame-dark);
+  background: color-mix(in srgb, var(--accent-sky) 14%, var(--bg-paper));
+  border: 1px solid var(--frame-light);
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: bold;
 }
 
 .challenge-review-card__option {
@@ -8442,13 +8620,57 @@ body:has(.modal-backdrop) {
   font-weight: bold;
 }
 
+.challenge-review-card__reasons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px;
+  background: var(--bg-cream);
+  border: 1px dashed var(--frame-light);
+  border-radius: 4px;
+}
+
+.challenge-review-card__reasons > span {
+  color: var(--frame-light);
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.challenge-review-card__reason {
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--frame-dark);
+  background: var(--bg-paper);
+  border: 2px solid var(--frame-light);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.challenge-review-card__reason:hover,
+.challenge-review-card__reason:focus-visible {
+  border-color: var(--accent-rose);
+  outline: none;
+}
+
+.challenge-review-card__reason--active {
+  color: var(--bg-paper);
+  background: var(--accent-rose);
+  border-color: var(--frame-dark);
+}
+
 .challenge-review-card__explanation {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 2px dashed var(--frame-light);
 }
 
-.challenge-review-card__explanation p {
+.challenge-review-card__explanation p,
+.challenge-review-card__explanation .explanation-markdown {
   margin: 6px 0 0;
 }
 
@@ -8533,5 +8755,10 @@ body:has(.modal-backdrop) {
 
   .challenge-review-card__option {
     grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .challenge-review-card__head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

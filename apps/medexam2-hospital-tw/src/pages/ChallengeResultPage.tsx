@@ -3,15 +3,21 @@ import { Link, useParams } from 'react-router-dom'
 import type { Question } from '@study-rpg/core'
 import { getContentPack, HOSPITAL_CREDIT_LABEL } from '@study-rpg/content-medexam2-tw'
 import { EmojiIcon } from '../components/EmojiIcon'
-import type { ChallengeAttemptRow } from '../db/schema'
+import { ExplanationMarkdown } from '../components/ExplanationMarkdown'
+import type { ChallengeAttemptRow, ChallengeMistakeReason } from '../db/schema'
 import {
+  CHALLENGE_CONFIDENCE_OPTIONS,
+  CHALLENGE_MISTAKE_REASON_OPTIONS,
+  buildLearningBreakdown,
   buildSubjectBreakdown,
   formatElapsed,
   paperLabel,
 } from '../lib/challenge'
+import { toggleBookmark, useAllBookmarks } from '../services/bookmarks'
 import {
   getChallengeAttemptById,
   listChallengeAttemptsByPaper,
+  saveChallengeAttempt,
 } from '../services/challenge-attempts'
 
 function pct(correct: number, total: number): string {
@@ -19,12 +25,21 @@ function pct(correct: number, total: number): string {
   return `${Math.round((correct / total) * 100)}%`
 }
 
+const confidenceLabel = new Map(
+  CHALLENGE_CONFIDENCE_OPTIONS.map((option) => [option.value, option.label]),
+)
+
+const mistakeReasonLabel = new Map(
+  CHALLENGE_MISTAKE_REASON_OPTIONS.map((option) => [option.value, option.label]),
+)
+
 export function ChallengeResultPage() {
   const { attemptId } = useParams<{ attemptId: string }>()
   const [attempt, setAttempt] = useState<ChallengeAttemptRow | null>(null)
   const [priorAttempts, setPriorAttempts] = useState<ChallengeAttemptRow[]>([])
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
+  const bookmarks = useAllBookmarks() ?? []
 
   useEffect(() => {
     const base = import.meta.env.BASE_URL.replace(/\/$/, '')
@@ -62,6 +77,10 @@ export function ChallengeResultPage() {
     () => attempt ? buildSubjectBreakdown(attempt, questionsById) : [],
     [attempt, questionsById],
   )
+  const learningBreakdown = useMemo(
+    () => attempt ? buildLearningBreakdown(attempt, questionsById) : [],
+    [attempt, questionsById],
+  )
   const latestPrior = useMemo(
     () => priorAttempts.reduce<ChallengeAttemptRow | null>(
       (latest, row) => (!latest || row.finishedAt > latest.finishedAt ? row : latest),
@@ -69,6 +88,39 @@ export function ChallengeResultPage() {
     ),
     [priorAttempts],
   )
+  const bookmarkedQuestionIds = useMemo(
+    () => new Set(bookmarks.map((bookmark) => bookmark.questionId)),
+    [bookmarks],
+  )
+
+  const updateMistakeReason = async (
+    questionId: string,
+    reason: ChallengeMistakeReason,
+  ) => {
+    if (!attempt) return
+    const next: ChallengeAttemptRow = {
+      ...attempt,
+      perQuestionAnswers: attempt.perQuestionAnswers.map((answer) => (
+        answer.questionId === questionId
+          ? { ...answer, mistakeReason: answer.mistakeReason === reason ? undefined : reason }
+          : answer
+      )),
+    }
+    setAttempt(next)
+    try {
+      await saveChallengeAttempt(next)
+    } catch (err) {
+      console.error('[challenge-result] save mistake reason failed:', err)
+    }
+  }
+
+  const handleToggleBookmark = async (questionId: string) => {
+    try {
+      await toggleBookmark(questionId)
+    } catch (err) {
+      console.error('[challenge-result] toggle bookmark failed:', err)
+    }
+  }
 
   if (loading) {
     return <main className="app-shell challenge-page"><p className="challenge-empty">載入結果...</p></main>
@@ -85,6 +137,12 @@ export function ChallengeResultPage() {
 
   const total = attempt.perQuestionAnswers.length
   const wrongRows = attempt.perQuestionAnswers.filter((row) => !row.isCorrect)
+  const reviewRows = attempt.perQuestionAnswers.filter((row) => (
+    !row.isCorrect ||
+    row.flagged === true ||
+    row.confidence === 'guess' ||
+    row.confidence === 'unsure'
+  ))
   const delta = latestPrior ? attempt.totalScore - latestPrior.totalScore : null
   const reward = attempt.economyReward
 
@@ -107,6 +165,7 @@ export function ChallengeResultPage() {
           <span>正答率 {pct(attempt.totalScore, total)}</span>
           <span>耗時 {formatElapsed(attempt.elapsedSec)}</span>
           <span>第 {priorAttempts.length + 1} 次</span>
+          <span>複習 {reviewRows.length} 題</span>
         </div>
         {delta === null ? (
           <p className="challenge-result__delta">首次挑戰此卷，下一次會顯示進步幅度。</p>
@@ -214,13 +273,74 @@ export function ChallengeResultPage() {
         </section>
       )}
 
+      {learningBreakdown.length > 0 && (
+        <section className="challenge-learning" aria-label="學習診斷">
+          <h2>學習診斷</h2>
+          <div className="challenge-learning__grid">
+            {learningBreakdown.map((row) => (
+              <article key={row.subjectId} className="challenge-learning-card">
+                <div className="challenge-learning-card__head">
+                  <h3>{row.subjectId}</h3>
+                  <span>{row.total} 題待複習</span>
+                </div>
+                <div className="challenge-learning-card__stats">
+                  <span>錯 {row.wrong}</span>
+                  <span>標記 {row.flagged}</span>
+                  <span>低把握 {row.lowConfidence}</span>
+                </div>
+                {row.inferredTypes.length > 0 && (
+                  <div className="challenge-learning-card__group">
+                    <strong>推定題型</strong>
+                    <div className="challenge-learning-card__chips challenge-learning-card__chips--types">
+                      {row.inferredTypes.map((item) => (
+                        <span key={item.label}>{item.label} ×{item.count}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {row.subspecialties.length > 0 && (
+                  <div className="challenge-learning-card__group">
+                    <strong>次專科</strong>
+                    <div className="challenge-learning-card__chips">
+                      {row.subspecialties.map((item) => (
+                        <span key={item.label}>{item.label} ×{item.count}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {row.topics.length > 0 && (
+                  <div className="challenge-learning-card__group">
+                    <strong>題目主題</strong>
+                    <div className="challenge-learning-card__chips">
+                      {row.topics.map((item) => (
+                        <span key={item.label}>{item.label} ×{item.count}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {row.mistakeReasons.length > 0 && (
+                  <div className="challenge-learning-card__group">
+                    <strong>錯因標籤</strong>
+                    <div className="challenge-learning-card__chips challenge-learning-card__chips--reasons">
+                      {row.mistakeReasons.map((item) => (
+                        <span key={item.label}>{item.label} ×{item.count}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="challenge-review">
-        <h2>錯題回顧</h2>
-        {wrongRows.length === 0 ? (
-          <p className="challenge-empty">全對。這回漂亮收工。</p>
+        <h2>複習清單</h2>
+        {reviewRows.length === 0 ? (
+          <p className="challenge-empty">沒有錯題、標記題或低把握題。這回漂亮收工。</p>
         ) : (
           <div className="challenge-review__list">
-            {wrongRows.map((answer, idx) => {
+            {reviewRows.map((answer, idx) => {
               const question = questionsById.get(answer.questionId)
               if (!question) {
                 return (
@@ -229,9 +349,25 @@ export function ChallengeResultPage() {
                   </article>
                 )
               }
+              const isBookmarked = bookmarkedQuestionIds.has(answer.questionId)
               return (
                 <article key={answer.questionId} className="challenge-review-card">
-                  <h3>{idx + 1}. {question.subject}</h3>
+                  <div className="challenge-review-card__head">
+                    <h3>{idx + 1}. {question.subject}</h3>
+                    <button
+                      type="button"
+                      className={`challenge-review-card__bookmark${isBookmarked ? ' challenge-review-card__bookmark--on' : ''}`}
+                      onClick={() => { void handleToggleBookmark(answer.questionId) }}
+                      aria-pressed={isBookmarked}
+                    >
+                      {isBookmarked ? '已收藏' : '加入收藏'}
+                    </button>
+                  </div>
+                  <div className="challenge-review-card__badges" aria-label="回顧原因">
+                    {!answer.isCorrect && <span>錯題</span>}
+                    {answer.flagged === true && <span>已標記</span>}
+                    {answer.confidence && <span>{confidenceLabel.get(answer.confidence) ?? answer.confidence}</span>}
+                  </div>
                   <p className="challenge-review-card__stem">{question.stem}</p>
                   {question.imagePath && (
                     <figure className="challenge-question__figure">
@@ -258,10 +394,27 @@ export function ChallengeResultPage() {
                   {answer.userSelection === null && (
                     <p className="challenge-review-card__blank">未作答</p>
                   )}
+                  {!answer.isCorrect && (
+                    <div className="challenge-review-card__reasons" aria-label="錯因標籤">
+                      <span>錯因</span>
+                      {CHALLENGE_MISTAKE_REASON_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={answer.mistakeReason === option.value ? 'challenge-review-card__reason challenge-review-card__reason--active' : 'challenge-review-card__reason'}
+                          onClick={() => { void updateMistakeReason(answer.questionId, option.value) }}
+                          aria-pressed={answer.mistakeReason === option.value}
+                          title={mistakeReasonLabel.get(option.value) ?? option.label}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {question.explanation && (
                     <div className="challenge-review-card__explanation">
                       <strong>詳解</strong>
-                      <p>{question.explanation}</p>
+                      <ExplanationMarkdown text={question.explanation} />
                     </div>
                   )}
                 </article>

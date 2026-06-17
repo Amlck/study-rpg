@@ -4,8 +4,9 @@ import type { Question, SubjectId } from '@study-rpg/core'
 import { getContentPack } from '@study-rpg/content-medexam2-tw'
 import { EmojiIcon } from '../components/EmojiIcon'
 import { ExplanationMarkdown } from '../components/ExplanationMarkdown'
-import { getHospitalDB, type ChallengeAttemptRow } from '../db/schema'
+import { getHospitalDB, type ChallengeAttemptRow, type ChallengeConfidence } from '../db/schema'
 import {
+  CHALLENGE_CONFIDENCE_OPTIONS,
   computeChallengeEconomyReward,
   formatElapsed,
   paperLabel,
@@ -45,6 +46,7 @@ export function ChallengeRunnerPage() {
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selections, setSelections] = useState<Record<string, string>>({})
   const [flags, setFlags] = useState<Set<string>>(new Set())
+  const [confidenceByQuestion, setConfidenceByQuestion] = useState<Record<string, ChallengeConfidence>>({})
   const [elapsedSec, setElapsedSec] = useState(0)
   const [paused, setPaused] = useState(false)
   const [confirmSubmit, setConfirmSubmit] = useState(false)
@@ -85,6 +87,8 @@ export function ChallengeRunnerPage() {
         if (inProgress && inProgress.paperId === paperId) {
           setCurrentIdx(inProgress.currentQuestionIndex)
           setSelections(inProgress.selections)
+          setFlags(new Set(inProgress.flags ?? []))
+          setConfidenceByQuestion(inProgress.confidenceByQuestion ?? {})
           setElapsedSec(inProgress.elapsedSecAtPause)
           startedAtRef.current = inProgress.startedAt
           setPaused(inProgress.lastResumedAt === null)
@@ -115,6 +119,8 @@ export function ChallengeRunnerPage() {
         startedAt: startedAtRef.current,
         currentQuestionIndex: currentIdx,
         selections,
+        flags: Array.from(flags),
+        confidenceByQuestion,
         elapsedSecAtPause: elapsedSecRef.current,
         lastResumedAt: paused ? null : Date.now(),
       })
@@ -122,7 +128,7 @@ export function ChallengeRunnerPage() {
     const timer = window.setInterval(save, 5000)
     save()
     return () => window.clearInterval(timer)
-  }, [hydrated, paperId, currentIdx, selections, paused])
+  }, [confidenceByQuestion, flags, hydrated, paperId, currentIdx, selections, paused])
 
   useEffect(() => {
     const onVisibility = () => {
@@ -176,6 +182,11 @@ export function ChallengeRunnerPage() {
     if (!paperId || questions.length === 0) return
     const now = Date.now()
     const score = scoreChallenge(questions, selections)
+    const perQuestionAnswers = score.perQuestionAnswers.map((answer) => ({
+      ...answer,
+      confidence: confidenceByQuestion[answer.questionId],
+      flagged: flags.has(answer.questionId) || undefined,
+    }))
     let attempt: ChallengeAttemptRow = {
       id: uuid(),
       paperId,
@@ -183,7 +194,7 @@ export function ChallengeRunnerPage() {
       finishedAt: now,
       elapsedSec,
       totalScore: score.totalScore,
-      perQuestionAnswers: score.perQuestionAnswers,
+      perQuestionAnswers,
     }
     const byId = new Map(questions.map((q) => [q.id, q]))
 
@@ -203,12 +214,12 @@ export function ChallengeRunnerPage() {
         const priorAttempts = await db.challengeAttempts.where('paperId').equals(paperId).toArray()
         const economyReward = computeChallengeEconomyReward(
           score.totalScore,
-          score.perQuestionAnswers.length,
+          perQuestionAnswers.length,
           priorAttempts,
         )
         attempt = { ...attempt, economyReward }
         await db.challengeAttempts.put(attempt)
-        for (const answer of score.perQuestionAnswers) {
+        for (const answer of perQuestionAnswers) {
           const question = byId.get(answer.questionId)
           if (!question) continue
           const subjectId = question.subject as SubjectId
@@ -238,7 +249,7 @@ export function ChallengeRunnerPage() {
     )
 
     navigate(`/challenge/result/${attempt.id}`)
-  }, [db, elapsedSec, navigate, paperId, questions, selections])
+  }, [confidenceByQuestion, db, elapsedSec, flags, navigate, paperId, questions, selections])
 
   const answeredCount = Object.keys(selections).length
   const unansweredCount = questions.length - answeredCount
@@ -256,6 +267,29 @@ export function ChallengeRunnerPage() {
   const handleNextIntent = useCallback(() => {
     setCurrentIdx((idx) => Math.min(idx + 1, Math.max(questions.length - 1, 0)))
   }, [questions.length])
+
+  const toggleCurrentFlag = useCallback(() => {
+    if (!current) return
+    setFlags((prev) => {
+      const next = new Set(prev)
+      next.has(current.id) ? next.delete(current.id) : next.add(current.id)
+      return next
+    })
+  }, [current])
+
+  const toggleCurrentExplanation = useCallback(() => {
+    if (!current) return
+    setShownExplanations((prev) => {
+      const next = new Set(prev)
+      next.has(current.id) ? next.delete(current.id) : next.add(current.id)
+      return next
+    })
+  }, [current])
+
+  const setCurrentConfidence = useCallback((value: ChallengeConfidence) => {
+    if (!current) return
+    setConfidenceByQuestion((prev) => ({ ...prev, [current.id]: value }))
+  }, [current])
 
   useEffect(() => {
     if (!hydrated || !paperId || questions.length === 0) return
@@ -281,6 +315,19 @@ export function ChallengeRunnerPage() {
 
       if (confirmSubmit || !current) return
 
+      const shortcut = event.key.toLowerCase()
+      if (shortcut === 'f') {
+        event.preventDefault()
+        toggleCurrentFlag()
+        return
+      }
+
+      if (shortcut === 'e') {
+        event.preventDefault()
+        toggleCurrentExplanation()
+        return
+      }
+
       const optionIndex = ['1', '2', '3', '4'].indexOf(event.key)
       if (optionIndex === -1) return
 
@@ -302,6 +349,8 @@ export function ChallengeRunnerPage() {
     hydrated,
     paperId,
     questions.length,
+    toggleCurrentExplanation,
+    toggleCurrentFlag,
   ])
 
   if (!paperId) {
@@ -387,24 +436,18 @@ export function ChallengeRunnerPage() {
               <button
                 type="button"
                 className={`challenge-explanation-btn${shownExplanations.has(current.id) ? ' challenge-explanation-btn--active' : ''}`}
-                onClick={() => setShownExplanations((prev) => {
-                  const next = new Set(prev)
-                  next.has(current.id) ? next.delete(current.id) : next.add(current.id)
-                  return next
-                })}
+                onClick={toggleCurrentExplanation}
                 aria-expanded={shownExplanations.has(current.id)}
+                aria-keyshortcuts="E"
               >
                 {shownExplanations.has(current.id) ? '隱藏詳解' : '詳解'}
               </button>
               <button
                 type="button"
                 className={`challenge-flag-btn${flags.has(current.id) ? ' challenge-flag-btn--active' : ''}`}
-                onClick={() => setFlags((prev) => {
-                  const next = new Set(prev)
-                  next.has(current.id) ? next.delete(current.id) : next.add(current.id)
-                  return next
-                })}
+                onClick={toggleCurrentFlag}
                 aria-label={flags.has(current.id) ? '取消標記' : '標記此題'}
+                aria-keyshortcuts="F"
               >
                 {flags.has(current.id) ? '🚩 已標記' : '⚑ 標記'}
               </button>
@@ -432,6 +475,23 @@ export function ChallengeRunnerPage() {
                 <span>{text}</span>
               </button>
             ))}
+          </div>
+          <div className="challenge-confidence" aria-label="本題把握度">
+            <span>把握度</span>
+            <div className="challenge-confidence__buttons">
+              {CHALLENGE_CONFIDENCE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={confidenceByQuestion[current.id] === option.value ? 'challenge-confidence__btn challenge-confidence__btn--active' : 'challenge-confidence__btn'}
+                  onClick={() => setCurrentConfidence(option.value)}
+                  aria-pressed={confidenceByQuestion[current.id] === option.value}
+                  title={option.label}
+                >
+                  {option.shortLabel}
+                </button>
+              ))}
+            </div>
           </div>
           {shownExplanations.has(current.id) && (
             <section className="challenge-question__explanation">

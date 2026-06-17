@@ -202,10 +202,17 @@ export interface StudyTimeBucketRow {
   updatedAt: number
 }
 
+export type ChallengeConfidence = 'guess' | 'unsure' | 'solid'
+
+export type ChallengeMistakeReason = 'knowledge' | 'misread' | 'trap' | 'memory' | 'calculation'
+
 export interface ChallengePerQuestionAnswer {
   questionId: string
   userSelection: string | null
   isCorrect: boolean
+  confidence?: ChallengeConfidence
+  flagged?: boolean
+  mistakeReason?: ChallengeMistakeReason
 }
 
 export interface ChallengeAttemptRow {
@@ -235,6 +242,8 @@ export interface ChallengeInProgressRow {
   startedAt: number
   currentQuestionIndex: number
   selections: Record<string, string>
+  flags?: string[]
+  confidenceByQuestion?: Record<string, ChallengeConfidence>
   elapsedSecAtPause: number
   lastResumedAt: number | null
 }
