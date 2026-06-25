@@ -237,7 +237,7 @@ export interface MockPerQuestionAnswer {
 /** A completed mock-exam submission, persisted to Dexie for result rendering + progress curve. */
 export interface MockAttempt {
   id: string                                // UUID v4, generated at submit
-  paperId: string                           // "<year>-<session>-<paper>" e.g. "114-1-medexam-1"
+  paperId: string                           // real paper id or synthetic random session id
   startedAt: number                         // epoch ms
   finishedAt: number                        // epoch ms
   elapsedSec: number                        // net active seconds (paused intervals excluded)
@@ -248,6 +248,7 @@ export interface MockAttempt {
 /** Volatile state of a mock currently in progress; persisted as a Dexie singleton. */
 export interface MockInProgress {
   paperId: string
+  questionIds?: QuestionId[]                // present for synthetic random sessions
   startedAt: number
   currentQuestionIndex: number              // 0-based
   selections: Record<QuestionId, string>    // missing keys = unanswered

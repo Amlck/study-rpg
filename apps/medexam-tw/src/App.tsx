@@ -140,7 +140,7 @@ export default function App() {
   }, [])
   // Reading-loop must NOT double-count while user is in mock runner (spec mock-exam R3)
   // or in dorm view (spec dorm-view "no game mechanics").
-  const isInMockRunner = location.pathname.startsWith('/mock/run/')
+  const isInMockRunner = location.pathname.startsWith('/mock/run/') || location.pathname === '/mock/random'
   const isInDorm = location.pathname.startsWith('/dorm')
   const shouldPauseReading = isInMockRunner || isInDorm
   const [player, setPlayer] = useState<Player>(() =>
@@ -932,6 +932,20 @@ export default function App() {
         />
         {content && (
           <Route path="/mock" element={<MockPickerRoute content={content} />} />
+        )}
+        {content && (
+          <Route
+            path="/mock/random"
+            element={
+              <MockRunnerRoute
+                content={content}
+                mode="random"
+                player={player}
+                setPlayer={setPlayer}
+                onGuaranteedSRRoll={() => doRoll('mock')}
+              />
+            }
+          />
         )}
         {content && (
           <Route

@@ -16,10 +16,15 @@ function fmtElapsed(sec: number): string {
 }
 
 function paperLabel(paperId: string): string {
+  if (paperId.startsWith('random-')) return '隨機題組'
   const d = decodePaperId(paperId)
   if (!d) return paperId
   const kind = d.paper === 'medexam-1' ? '醫一' : '醫二'
   return `${d.year} 第 ${d.session} 次 ${kind}`
+}
+
+function isRandomPaperId(paperId: string): boolean {
+  return paperId.startsWith('random-')
 }
 
 const EXPLANATION_FALLBACK = (
@@ -47,7 +52,7 @@ export function MockResultRoute({ content }: Props) {
         const a = await getAttemptById(attemptId)
         if (cancelled) return
         setAttempt(a)
-        if (a) {
+        if (a && !isRandomPaperId(a.paperId)) {
           const all = await listAttemptsByPaper(a.paperId)
           if (!cancelled) setPriorAttempts(all.filter((x) => x.id !== a.id))
         }
@@ -102,6 +107,7 @@ export function MockResultRoute({ content }: Props) {
 
   const progress = computeProgressDelta(attempt.totalScore, priorAttempts)
   const total = attempt.perQuestionAnswers.length
+  const showProgress = !isRandomPaperId(attempt.paperId)
 
   return (
     <div className="mock-result-page">
@@ -116,9 +122,10 @@ export function MockResultRoute({ content }: Props) {
           <strong>{attempt.totalScore}</strong> / {total}
         </div>
         <div className="mock-result-meta">
-          ⏱ {fmtElapsed(attempt.elapsedSec)} · 第 {progress.attemptCount} 次嘗試
+          ⏱ {fmtElapsed(attempt.elapsedSec)}
+          {showProgress ? ` · 第 ${progress.attemptCount} 次嘗試` : ''}
         </div>
-        {progress.previousScore === null ? (
+        {showProgress && (progress.previousScore === null ? (
           <div className="mock-progress-curve mock-progress-first">首次嘗試 — 之後可看進步曲線</div>
         ) : (
           <div className={`mock-progress-curve mock-progress-${
@@ -132,7 +139,7 @@ export function MockResultRoute({ content }: Props) {
             )}
             {progress.delta === 0 && <span className="mock-progress-delta"> 與上次相同</span>}
           </div>
-        )}
+        ))}
       </section>
 
       <section className="mock-result-srs">

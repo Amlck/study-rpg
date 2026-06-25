@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { ContentPack, MockAttempt, Question } from '@study-rpg/core'
 import { paperIdOf } from '@study-rpg/core'
 import { listLatestAttemptByPaperMap } from '../db/mock-attempts'
+import { useGamepadPreference } from '../lib/gamepad'
 
 interface PaperCell {
   paperId: string
@@ -61,6 +62,7 @@ function fmtAttempt(a: MockAttempt): string {
 export function MockPickerRoute({ content }: Props) {
   const navigate = useNavigate()
   const [latestMap, setLatestMap] = useState<Map<string, MockAttempt>>(new Map())
+  const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
 
   useEffect(() => {
     listLatestAttemptByPaperMap()
@@ -70,26 +72,34 @@ export function MockPickerRoute({ content }: Props) {
 
   const cells = useMemo(() => buildCells(content.questions, latestMap), [content.questions, latestMap])
 
-  if (cells.length === 0) {
-    return (
-      <div className="mock-picker-page">
-        <header className="mock-picker-header">
-          <Link to="/" className="mock-back">← 回家</Link>
-          <h2>模擬考</h2>
-        </header>
-        <p className="mock-empty">尚無歷年原卷可挑選</p>
-      </div>
-    )
-  }
-
   return (
     <div className="mock-picker-page">
       <header className="mock-picker-header">
         <Link to="/" className="mock-back">← 回家</Link>
         <h2>模擬考</h2>
         <span className="mock-picker-hint">挑一份歷年原卷重做 · 一階國考每份 ≈100 題 · 共 {cells.length} 份</span>
+        <label className="mock-gamepad-toggle">
+          <input
+            type="checkbox"
+            checked={gamepadEnabled}
+            onChange={(event) => setGamepadEnabled(event.target.checked)}
+          />
+          <span>控制器</span>
+        </label>
       </header>
       <div className="mock-picker-grid">
+        <button
+          className="mock-paper-cell mock-paper-cell-random"
+          onClick={() => navigate('/mock/random')}
+        >
+          <div className="mock-paper-year">隨機</div>
+          <div className="mock-paper-meta">
+            <span className="mock-paper-session">全題庫</span>
+            <span className="mock-paper-kind kind-random">20 題</span>
+          </div>
+          <div className="mock-paper-count">{content.questions.length} 題可抽</div>
+          <div className="mock-paper-attempt mock-paper-attempt-empty">即抽即答</div>
+        </button>
         {cells.map((c) => (
           <button
             key={c.paperId}
@@ -110,6 +120,7 @@ export function MockPickerRoute({ content }: Props) {
           </button>
         ))}
       </div>
+      {cells.length === 0 && <p className="mock-empty">尚無歷年原卷可挑選</p>}
     </div>
   )
 }

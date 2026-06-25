@@ -3,9 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { ContentPack, MockAttempt, MockInProgress, Player, Question, QuestionId } from '@study-rpg/core'
 import { applyMockPassReward, decodePaperId, scoreMock } from '@study-rpg/core'
 import { clearInProgress, getInProgress, saveAttempt, saveInProgress } from '../db/mock-attempts'
+import { useGamepadControls, useGamepadPreference } from '../lib/gamepad'
 
 const IDLE_THRESHOLD_MS = 180_000        // 180s for mock (vs 90s for reading)
 const IN_PROGRESS_SAVE_DEBOUNCE_MS = 5_000
+const RANDOM_QUESTION_COUNT = 20
 
 function uuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
@@ -22,6 +24,31 @@ function selectPaperQuestions(content: ContentPack, paperId: string): Question[]
   })
 }
 
+function isRandomPaperId(paperId: string): boolean {
+  return paperId.startsWith('random-')
+}
+
+function randomPaperId(): string {
+  return `random-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function pickRandomQuestionIds(questions: Question[], count: number): QuestionId[] {
+  const ids = questions.map((q) => q.id)
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+  }
+  return ids.slice(0, Math.min(count, ids.length))
+}
+
+function selectQuestionsById(content: ContentPack, questionIds: QuestionId[]): Question[] {
+  const byId = new Map(content.questions.map((q) => [q.id, q]))
+  return questionIds.flatMap((id) => {
+    const q = byId.get(id)
+    return q ? [q] : []
+  })
+}
+
 function fmtElapsed(sec: number): string {
   const m = Math.floor(sec / 60)
   const s = sec % 60
@@ -29,6 +56,7 @@ function fmtElapsed(sec: number): string {
 }
 
 function paperLabel(paperId: string): string {
+  if (isRandomPaperId(paperId)) return '隨機題組'
   const d = decodePaperId(paperId)
   if (!d) return paperId
   const kind = d.paper === 'medexam-1' ? '醫一' : '醫二'
@@ -55,21 +83,20 @@ function isTextEntryTarget(target: EventTarget | null): boolean {
 
 interface Props {
   content: ContentPack
+  mode?: 'paper' | 'random'
   player: Player
   setPlayer: (p: Player) => void
   /** Existing roll-loot hook from App.tsx so mock submit can grant guaranteed SR. */
   onGuaranteedSRRoll?: () => void
 }
 
-export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll }: Props) {
-  const { paperId } = useParams<{ paperId: string }>()
+export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, onGuaranteedSRRoll }: Props) {
+  const { paperId: routePaperId } = useParams<{ paperId: string }>()
   const navigate = useNavigate()
+  const isRandomMode = mode === 'random'
 
-  const questions = useMemo(
-    () => (paperId ? selectPaperQuestions(content, paperId) : []),
-    [content, paperId],
-  )
-
+  const [paperId, setPaperId] = useState<string | null>(isRandomMode ? null : routePaperId ?? null)
+  const [randomQuestionIds, setRandomQuestionIds] = useState<QuestionId[] | null>(null)
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selections, setSelections] = useState<Record<QuestionId, string>>({})
   const [elapsedSec, setElapsedSec] = useState(0)
@@ -78,6 +105,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
   const [confirmSubmit, setConfirmSubmit] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const [resumedToast, setResumedToast] = useState(false)
+  const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
 
   const startedAtRef = useRef<number>(0)
   const lastResumedAtRef = useRef<number | null>(null)
@@ -85,6 +113,11 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
   const inProgressSaveTimer = useRef<number | null>(null)
   const elapsedSecRef = useRef<number>(0)
   useEffect(() => { elapsedSecRef.current = elapsedSec }, [elapsedSec])
+
+  const questions = useMemo(() => {
+    if (isRandomMode) return randomQuestionIds ? selectQuestionsById(content, randomQuestionIds) : []
+    return paperId ? selectPaperQuestions(content, paperId) : []
+  }, [content, isRandomMode, paperId, randomQuestionIds])
 
   const current = questions[currentIdx] ?? null
   const answeredCount = Object.keys(selections).length
@@ -94,6 +127,15 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
     [current],
   )
 
+  const registerActivity = useCallback(() => {
+    lastActivityRef.current = Date.now()
+    if (paused && pauseReason === 'idle') {
+      setPaused(false)
+      setPauseReason(null)
+      lastResumedAtRef.current = Date.now()
+    }
+  }, [paused, pauseReason])
+
   // ─── Hydration: load mockInProgress on mount ────────────────────────────────
   useEffect(() => {
     let cancelled = false
@@ -101,7 +143,33 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
       try {
         const ip = await getInProgress()
         if (cancelled) return
-        if (ip && ip.paperId === paperId) {
+
+        if (isRandomMode) {
+          if (ip && isRandomPaperId(ip.paperId) && ip.questionIds && ip.questionIds.length > 0) {
+            setPaperId(ip.paperId)
+            setRandomQuestionIds(ip.questionIds)
+            setCurrentIdx(ip.currentQuestionIndex)
+            setSelections(ip.selections)
+            setElapsedSec(ip.elapsedSecAtPause)
+            startedAtRef.current = ip.startedAt
+            lastResumedAtRef.current = ip.lastResumedAt
+            if (ip.lastResumedAt === null) {
+              setPaused(true)
+              setPauseReason('visibility')
+            }
+            setResumedToast(true)
+          } else {
+            if (ip) await clearInProgress()
+            setPaperId(randomPaperId())
+            setRandomQuestionIds(pickRandomQuestionIds(content.questions, RANDOM_QUESTION_COUNT))
+            startedAtRef.current = Date.now()
+            lastResumedAtRef.current = Date.now()
+          }
+          return
+        }
+
+        if (ip && ip.paperId === routePaperId) {
+          setPaperId(ip.paperId)
           setCurrentIdx(ip.currentQuestionIndex)
           setSelections(ip.selections)
           setElapsedSec(ip.elapsedSecAtPause)
@@ -112,12 +180,14 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
             setPauseReason('visibility')
           }
           setResumedToast(true)
-        } else if (ip && ip.paperId !== paperId) {
+        } else if (ip && ip.paperId !== routePaperId) {
           // Different paper in progress — clear to avoid confusion
           await clearInProgress()
+          setPaperId(routePaperId ?? null)
           startedAtRef.current = Date.now()
           lastResumedAtRef.current = Date.now()
         } else {
+          setPaperId(routePaperId ?? null)
           startedAtRef.current = Date.now()
           lastResumedAtRef.current = Date.now()
         }
@@ -130,7 +200,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
       }
     })()
     return () => { cancelled = true }
-  }, [paperId])
+  }, [content.questions, isRandomMode, routePaperId])
 
   // ─── Stopwatch ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -163,17 +233,9 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
   // ─── Idle-based pause + activity tracking ───────────────────────────────────
   useEffect(() => {
     if (!hydrated) return
-    const onActivity = () => {
-      lastActivityRef.current = Date.now()
-      if (paused && pauseReason === 'idle') {
-        setPaused(false)
-        setPauseReason(null)
-        lastResumedAtRef.current = Date.now()
-      }
-    }
-    window.addEventListener('pointerdown', onActivity)
-    window.addEventListener('keydown', onActivity)
-    window.addEventListener('scroll', onActivity, { passive: true })
+    window.addEventListener('pointerdown', registerActivity)
+    window.addEventListener('keydown', registerActivity)
+    window.addEventListener('scroll', registerActivity, { passive: true })
     const idleCheck = window.setInterval(() => {
       if (paused) return
       if (Date.now() - lastActivityRef.current > IDLE_THRESHOLD_MS) {
@@ -183,12 +245,12 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
       }
     }, 5_000)
     return () => {
-      window.removeEventListener('pointerdown', onActivity)
-      window.removeEventListener('keydown', onActivity)
-      window.removeEventListener('scroll', onActivity)
+      window.removeEventListener('pointerdown', registerActivity)
+      window.removeEventListener('keydown', registerActivity)
+      window.removeEventListener('scroll', registerActivity)
       window.clearInterval(idleCheck)
     }
-  }, [hydrated, paused, pauseReason])
+  }, [hydrated, paused, registerActivity])
 
   // ─── Persist in-progress ──────────────────────────────────────────────────
   // Two cadences:
@@ -201,6 +263,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
     inProgressSaveTimer.current = window.setTimeout(() => {
       const ip: MockInProgress = {
         paperId,
+        ...(isRandomMode ? { questionIds: questions.map((q) => q.id) } : {}),
         startedAt: startedAtRef.current,
         currentQuestionIndex: currentIdx,
         selections,
@@ -212,7 +275,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
     return () => {
       if (inProgressSaveTimer.current) window.clearTimeout(inProgressSaveTimer.current)
     }
-  }, [hydrated, paperId, currentIdx, selections, paused])
+  }, [hydrated, isRandomMode, paperId, currentIdx, questions, selections, paused])
 
   // Safety: periodic 5s save independent of state changes (catches paused / idle drift)
   useEffect(() => {
@@ -220,6 +283,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
     const tick = window.setInterval(() => {
       const ip: MockInProgress = {
         paperId,
+        ...(isRandomMode ? { questionIds: questions.map((q) => q.id) } : {}),
         startedAt: startedAtRef.current,
         currentQuestionIndex: currentIdx,
         selections,
@@ -229,7 +293,7 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
       saveInProgress(ip).catch((err) => console.error('[mock-runner] periodic save failed:', err))
     }, IN_PROGRESS_SAVE_DEBOUNCE_MS)
     return () => window.clearInterval(tick)
-  }, [hydrated, paperId, currentIdx, selections, paused])
+  }, [hydrated, isRandomMode, paperId, currentIdx, questions, selections, paused])
 
   // ─── Auto-dismiss resume toast after 4s ─────────────────────────────────────
   useEffect(() => {
@@ -282,6 +346,45 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
     setCurrentIdx((idx) => Math.min(idx + 1, Math.max(questions.length - 1, 0)))
   }, [questions.length])
 
+  const handlePreviousIntent = useCallback(() => {
+    setCurrentIdx((idx) => Math.max(idx - 1, 0))
+  }, [])
+
+  const handleOptionIntent = useCallback((optionIndex: number) => {
+    if (confirmSubmit || !current) return
+
+    const optionKey = currentOptionKeys[optionIndex]
+    if (!optionKey) return
+
+    setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
+  }, [confirmSubmit, current, currentOptionKeys])
+
+  useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, {
+    onActivity: registerActivity,
+    onOption: (optionIndex) => {
+      if (confirmSubmit) {
+        if (optionIndex === 0) {
+          setConfirmSubmit(false)
+          void doSubmit()
+        } else if (optionIndex === 1) {
+          setConfirmSubmit(false)
+        }
+        return
+      }
+      handleOptionIntent(optionIndex)
+    },
+    onPrevious: () => {
+      if (!confirmSubmit) handlePreviousIntent()
+    },
+    onNext: () => {
+      if (!confirmSubmit) handleNextIntent()
+    },
+    onSubmit: handleSubmitIntent,
+    onCancel: () => {
+      if (confirmSubmit) setConfirmSubmit(false)
+    },
+  })
+
   // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!hydrated || !paperId || questions.length === 0) return
@@ -305,22 +408,20 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
         return
       }
 
-      if (confirmSubmit || !current) return
-
       const optionIndex = ['1', '2', '3', '4'].indexOf(event.key)
       if (optionIndex === -1) return
 
-      const optionKey = currentOptionKeys[optionIndex]
-      if (!optionKey) return
-
       event.preventDefault()
-      setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
+      handleOptionIntent(optionIndex)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [confirmSubmit, current, currentOptionKeys, handleNextIntent, handleSubmitIntent, hydrated, paperId, questions.length])
+  }, [confirmSubmit, handleNextIntent, handleSubmitIntent, handleOptionIntent, hydrated, paperId, questions.length])
 
+  if (!hydrated) {
+    return <div className="mock-runner-page"><p className="mock-loading">載入中...</p></div>
+  }
   if (!paperId) {
     return (
       <div className="mock-runner-page">
@@ -332,13 +433,10 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
   if (questions.length === 0) {
     return (
       <div className="mock-runner-page">
-        <p className="mock-empty">查無此原卷 ({paperId})</p>
+        <p className="mock-empty">查無此題組 ({paperId})</p>
         <Link to="/mock" className="mock-back">← 回挑卷</Link>
       </div>
     )
-  }
-  if (!hydrated) {
-    return <div className="mock-runner-page"><p className="mock-loading">載入中...</p></div>
   }
 
   return (
@@ -346,6 +444,14 @@ export function MockRunnerRoute({ content, player, setPlayer, onGuaranteedSRRoll
       <header className="mock-runner-header">
         <Link to="/mock" className="mock-back">← 放棄回挑卷</Link>
         <h2>{paperLabel(paperId)}</h2>
+        <label className="mock-gamepad-toggle">
+          <input
+            type="checkbox"
+            checked={gamepadEnabled}
+            onChange={(event) => setGamepadEnabled(event.target.checked)}
+          />
+          <span>控制器</span>
+        </label>
         <div className="mock-stopwatch" aria-label="elapsed time">
           ⏱ {fmtElapsed(elapsedSec)}{paused ? ' (已暫停)' : ''}
         </div>
