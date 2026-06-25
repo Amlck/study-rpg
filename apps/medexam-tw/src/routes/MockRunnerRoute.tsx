@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { ContentPack, MockAttempt, MockInProgress, Player, Question, QuestionId } from '@study-rpg/core'
 import { applyMockPassReward, decodePaperId, scoreMock } from '@study-rpg/core'
 import { clearInProgress, getInProgress, saveAttempt, saveInProgress } from '../db/mock-attempts'
-import { useGamepadControls, useGamepadPreference } from '../lib/gamepad'
+import { useGamepadBindings, useGamepadControls, useGamepadPreference } from '../lib/gamepad'
+import { GamepadSettings } from '../components/GamepadSettings'
 
 const IDLE_THRESHOLD_MS = 180_000        // 180s for mock (vs 90s for reading)
 const IN_PROGRESS_SAVE_DEBOUNCE_MS = 5_000
@@ -106,6 +107,8 @@ export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, on
   const [hydrated, setHydrated] = useState(false)
   const [resumedToast, setResumedToast] = useState(false)
   const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
+  const [gamepadBindings, setGamepadBinding, resetGamepadBindings] = useGamepadBindings()
+  const [focusedOptionIdx, setFocusedOptionIdx] = useState(0)
 
   const startedAtRef = useRef<number>(0)
   const lastResumedAtRef = useRef<number | null>(null)
@@ -126,6 +129,13 @@ export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, on
     () => (current ? Object.keys(current.options) : []),
     [current],
   )
+
+  useEffect(() => {
+    if (!current) return
+    const selectedKey = selections[current.id]
+    const selectedIdx = selectedKey ? currentOptionKeys.indexOf(selectedKey) : -1
+    setFocusedOptionIdx(selectedIdx >= 0 ? selectedIdx : 0)
+  }, [current, currentOptionKeys, selections])
 
   const registerActivity = useCallback(() => {
     lastActivityRef.current = Date.now()
@@ -359,24 +369,34 @@ export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, on
     setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
   }, [confirmSubmit, current, currentOptionKeys])
 
-  useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, {
+  const moveFocusedOption = useCallback((delta: -1 | 1) => {
+    setFocusedOptionIdx((idx) => {
+      const count = currentOptionKeys.length
+      if (count === 0) return 0
+      return (idx + delta + count) % count
+    })
+  }, [currentOptionKeys.length])
+
+  useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, gamepadBindings, {
     onActivity: registerActivity,
-    onOption: (optionIndex) => {
+    onOptionUp: () => {
+      if (!confirmSubmit) moveFocusedOption(-1)
+    },
+    onOptionDown: () => {
+      if (!confirmSubmit) moveFocusedOption(1)
+    },
+    onSelectOption: () => {
       if (confirmSubmit) {
-        if (optionIndex === 0) {
-          setConfirmSubmit(false)
-          void doSubmit()
-        } else if (optionIndex === 1) {
-          setConfirmSubmit(false)
-        }
+        setConfirmSubmit(false)
+        void doSubmit()
         return
       }
-      handleOptionIntent(optionIndex)
+      handleOptionIntent(focusedOptionIdx)
     },
-    onPrevious: () => {
+    onPreviousQuestion: () => {
       if (!confirmSubmit) handlePreviousIntent()
     },
-    onNext: () => {
+    onNextQuestion: () => {
       if (!confirmSubmit) handleNextIntent()
     },
     onSubmit: handleSubmitIntent,
@@ -457,6 +477,14 @@ export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, on
         </div>
       </header>
 
+      {gamepadEnabled && (
+        <GamepadSettings
+          bindings={gamepadBindings}
+          onBind={setGamepadBinding}
+          onReset={resetGamepadBindings}
+        />
+      )}
+
       {resumedToast && (
         <div className="mock-toast">已從上次中斷處恢復</div>
       )}
@@ -501,11 +529,15 @@ export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, on
         <div className="mock-question-options">
           {Object.entries(current.options).map(([key, text], optionIndex) => {
             const selected = selections[current.id] === key
+            const focused = gamepadEnabled && focusedOptionIdx === optionIndex
             return (
               <button
                 key={key}
-                className={`mock-option ${selected ? 'mock-option-selected' : ''}`}
-                onClick={() => setSelections({ ...selections, [current.id]: key })}
+                className={`mock-option ${selected ? 'mock-option-selected' : ''} ${focused ? 'mock-option-focused' : ''}`}
+                onClick={() => {
+                  setFocusedOptionIdx(optionIndex)
+                  setSelections({ ...selections, [current.id]: key })
+                }}
                 aria-keyshortcuts={String(optionIndex + 1)}
               >
                 <span className="mock-option-key">({key})</span>

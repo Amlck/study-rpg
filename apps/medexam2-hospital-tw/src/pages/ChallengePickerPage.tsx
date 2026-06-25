@@ -13,7 +13,8 @@ import {
   paperShortLabel,
 } from '../lib/challenge'
 import { getChallengeInProgress } from '../services/challenge-attempts'
-import { useGamepadPreference } from '../lib/gamepad'
+import { useGamepadBindings, useGamepadPreference } from '../lib/gamepad'
+import { GamepadSettings } from '../components/GamepadSettings'
 
 function formatAttempt(score: number, total: number, finishedAt: number): string {
   const d = new Date(finishedAt)
@@ -50,6 +51,7 @@ export function ChallengePickerPage() {
   const [inProgressAnswered, setInProgressAnswered] = useState(0)
   const [inProgressTotal, setInProgressTotal] = useState(0)
   const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
+  const [gamepadBindings, setGamepadBinding, resetGamepadBindings] = useGamepadBindings()
 
   useEffect(() => {
     const base = import.meta.env.BASE_URL.replace(/\/$/, '')
@@ -119,6 +121,13 @@ export function ChallengePickerPage() {
           <span>控制器</span>
         </label>
       </header>
+      {gamepadEnabled && (
+        <GamepadSettings
+          bindings={gamepadBindings}
+          onBind={setGamepadBinding}
+          onReset={resetGamepadBindings}
+        />
+      )}
 
       <section className="challenge-random-panel" aria-label="隨機題組">
         <button

@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { ContentPack, MockAttempt, Question } from '@study-rpg/core'
 import { paperIdOf } from '@study-rpg/core'
 import { listLatestAttemptByPaperMap } from '../db/mock-attempts'
-import { useGamepadPreference } from '../lib/gamepad'
+import { useGamepadBindings, useGamepadPreference } from '../lib/gamepad'
+import { GamepadSettings } from '../components/GamepadSettings'
 
 interface PaperCell {
   paperId: string
@@ -63,6 +64,7 @@ export function MockPickerRoute({ content }: Props) {
   const navigate = useNavigate()
   const [latestMap, setLatestMap] = useState<Map<string, MockAttempt>>(new Map())
   const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
+  const [gamepadBindings, setGamepadBinding, resetGamepadBindings] = useGamepadBindings()
 
   useEffect(() => {
     listLatestAttemptByPaperMap()
@@ -87,6 +89,13 @@ export function MockPickerRoute({ content }: Props) {
           <span>控制器</span>
         </label>
       </header>
+      {gamepadEnabled && (
+        <GamepadSettings
+          bindings={gamepadBindings}
+          onBind={setGamepadBinding}
+          onReset={resetGamepadBindings}
+        />
+      )}
       <div className="mock-picker-grid">
         <button
           className="mock-paper-cell mock-paper-cell-random"

@@ -26,7 +26,8 @@ import {
   saveChallengeInProgress,
 } from '../services/challenge-attempts'
 import { addStudyTimeBuckets } from '../lib/study-time'
-import { useGamepadControls, useGamepadPreference } from '../lib/gamepad'
+import { useGamepadBindings, useGamepadControls, useGamepadPreference } from '../lib/gamepad'
+import { GamepadSettings } from '../components/GamepadSettings'
 
 const STUDY_TIME_FLUSH_MS = 15_000
 
@@ -66,6 +67,8 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
   const [resumeNotice, setResumeNotice] = useState(false)
   const [shownExplanations, setShownExplanations] = useState<Set<string>>(new Set())
   const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
+  const [gamepadBindings, setGamepadBinding, resetGamepadBindings] = useGamepadBindings()
+  const [focusedOptionIdx, setFocusedOptionIdx] = useState(0)
   const startedAtRef = useRef(Date.now())
   const elapsedSecRef = useRef(0)
   const studyTimeRecordedAtRef = useRef<number | null>(null)
@@ -92,6 +95,13 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
     () => (current ? Object.keys(current.options) : []),
     [current],
   )
+
+  useEffect(() => {
+    if (!current) return
+    const selectedKey = selections[current.id]
+    const selectedIdx = selectedKey ? currentOptionKeys.indexOf(selectedKey) : -1
+    setFocusedOptionIdx(selectedIdx >= 0 ? selectedIdx : 0)
+  }, [current, currentOptionKeys, selections])
 
   useEffect(() => {
     if (isRandomMode && allQuestions.length === 0) return
@@ -353,24 +363,40 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
     setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
   }, [confirmSubmit, current, currentOptionKeys])
 
-  useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, {
-    onOption: (optionIndex) => {
+  const moveFocusedOption = useCallback((delta: -1 | 1) => {
+    setFocusedOptionIdx((idx) => {
+      const count = currentOptionKeys.length
+      if (count === 0) return 0
+      return (idx + delta + count) % count
+    })
+  }, [currentOptionKeys.length])
+
+  useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, gamepadBindings, {
+    onOptionUp: () => {
+      if (!confirmSubmit) moveFocusedOption(-1)
+    },
+    onOptionDown: () => {
+      if (!confirmSubmit) moveFocusedOption(1)
+    },
+    onSelectOption: () => {
       if (confirmSubmit) {
-        if (optionIndex === 0) {
-          setConfirmSubmit(false)
-          void submit()
-        } else if (optionIndex === 1) {
-          setConfirmSubmit(false)
-        }
+        setConfirmSubmit(false)
+        void submit()
         return
       }
-      handleOptionIntent(optionIndex)
+      handleOptionIntent(focusedOptionIdx)
     },
-    onPrevious: () => {
+    onPreviousQuestion: () => {
       if (!confirmSubmit) handlePreviousIntent()
     },
-    onNext: () => {
+    onNextQuestion: () => {
       if (!confirmSubmit) handleNextIntent()
+    },
+    onToggleExplanation: () => {
+      if (!confirmSubmit) toggleCurrentExplanation()
+    },
+    onToggleFlag: () => {
+      if (!confirmSubmit) toggleCurrentFlag()
     },
     onSubmit: handleSubmitIntent,
     onCancel: () => {
@@ -495,6 +521,14 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
         </div>
       </header>
 
+      {gamepadEnabled && (
+        <GamepadSettings
+          bindings={gamepadBindings}
+          onBind={setGamepadBinding}
+          onReset={resetGamepadBindings}
+        />
+      )}
+
       {resumeNotice && <div className="challenge-toast">已從上次中斷處恢復</div>}
 
       <section className="challenge-runner__layout">
@@ -552,18 +586,24 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
             <p className="challenge-question__missing-image">此題原始題本含圖片，目前題庫尚未提供圖檔。</p>
           )}
           <div className="challenge-options">
-            {Object.entries(current.options).map(([key, text], optionIndex) => (
-              <button
-                key={key}
-                type="button"
-                className={`challenge-option${selections[current.id] === key ? ' challenge-option--selected' : ''}`}
-                onClick={() => setSelections((prev) => ({ ...prev, [current.id]: key }))}
-                aria-keyshortcuts={String(optionIndex + 1)}
-              >
-                <span className="challenge-option__key">({key})</span>
-                <span>{text}</span>
-              </button>
-            ))}
+            {Object.entries(current.options).map(([key, text], optionIndex) => {
+              const focused = gamepadEnabled && focusedOptionIdx === optionIndex
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`challenge-option${selections[current.id] === key ? ' challenge-option--selected' : ''}${focused ? ' challenge-option--focused' : ''}`}
+                  onClick={() => {
+                    setFocusedOptionIdx(optionIndex)
+                    setSelections((prev) => ({ ...prev, [current.id]: key }))
+                  }}
+                  aria-keyshortcuts={String(optionIndex + 1)}
+                >
+                  <span className="challenge-option__key">({key})</span>
+                  <span>{text}</span>
+                </button>
+              )
+            })}
           </div>
           <div className="challenge-confidence" aria-label="本題把握度">
             <span>把握度</span>

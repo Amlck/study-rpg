@@ -1353,6 +1353,56 @@
   accent-color: var(--accent-leaf);
 }
 
+.gamepad-settings {
+  margin: 0 0 14px;
+  padding: 10px;
+  background: var(--bg-cream);
+  border: 2px dashed var(--frame-wood-light);
+  font-family: var(--font-body-cjk);
+}
+
+.gamepad-settings summary {
+  font-family: var(--font-pixel-cjk);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.gamepad-settings__grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.gamepad-settings__row {
+  display: grid;
+  grid-template-columns: minmax(88px, 1fr) minmax(76px, auto) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.gamepad-settings__row code {
+  padding: 3px 6px;
+  color: var(--frame-wood-dark);
+  background: rgba(255,255,255,0.6);
+  border: 1px solid var(--frame-wood-light);
+}
+
+.gamepad-settings__row button,
+.gamepad-settings__reset {
+  padding: 5px 8px;
+  color: var(--ink);
+  background: var(--bg-cream);
+  border: 2px solid var(--frame-wood-dark);
+  box-shadow: 2px 2px 0 var(--frame-wood-dark);
+  font-family: var(--font-pixel-cjk);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.gamepad-settings__reset {
+  margin-top: 10px;
+}
+
 .mock-empty,
 .mock-loading {
   font-family: var(--font-body-cjk);
@@ -1535,6 +1585,11 @@
   color: var(--bg-cream);
   border-color: var(--frame-wood-dark);
   box-shadow: 2px 2px 0 var(--frame-wood-dark);
+}
+
+.mock-option-focused {
+  outline: 3px solid var(--accent-gold);
+  outline-offset: 2px;
 }
 
 .mock-option-key {
