@@ -6,7 +6,10 @@ import {
   challengePaperIdOf,
   computeChallengeEconomyReward,
   decodeChallengePaperId,
+  isRandomChallengePaperId,
+  pickRandomChallengeQuestionIds,
   scoreChallenge,
+  selectChallengeQuestionsById,
   selectChallengePaperQuestions,
 } from '../src/lib/challenge'
 
@@ -54,6 +57,16 @@ describe('challenge helpers', () => {
     ]
 
     expect(selectChallengePaperQuestions(questions, '115-1-醫學三').map((q) => q.id)).toEqual(['q1', 'q2'])
+  })
+
+  it('selects random challenge questions by persisted ids and skips option-image questions', () => {
+    const q1 = question('q1', '內科', '醫學三', 1)
+    const q2 = { ...question('q2', '外科', '醫學五', 2), hasOptionImages: true }
+    const q3 = question('q3', '小兒科', '醫學四', 3)
+
+    expect(isRandomChallengePaperId('random-123')).toBe(true)
+    expect(pickRandomChallengeQuestionIds([q1, q2, q3], 5).sort()).toEqual(['q1', 'q3'])
+    expect(selectChallengeQuestionsById([q1, q2, q3], ['q3', 'missing', 'q1']).map((q) => q.id)).toEqual(['q3', 'q1'])
   })
 
   it('scores unanswered as wrong and disputed selected answers as correct', () => {

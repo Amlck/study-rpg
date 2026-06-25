@@ -9,8 +9,12 @@ import {
   CHALLENGE_CONFIDENCE_OPTIONS,
   computeChallengeEconomyReward,
   formatElapsed,
+  isRandomChallengePaperId,
   paperLabel,
+  pickRandomChallengeQuestionIds,
+  randomChallengePaperId,
   scoreChallenge,
+  selectChallengeQuestionsById,
   selectChallengePaperQuestions,
 } from '../lib/challenge'
 import { recordCorrectAnswer, recordWrongAnswer } from '../lib/mastery'
@@ -22,8 +26,13 @@ import {
   saveChallengeInProgress,
 } from '../services/challenge-attempts'
 import { addStudyTimeBuckets } from '../lib/study-time'
+import { useGamepadControls, useGamepadPreference } from '../lib/gamepad'
 
 const STUDY_TIME_FLUSH_MS = 15_000
+
+interface Props {
+  mode?: 'paper' | 'random'
+}
 
 function uuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
@@ -36,13 +45,16 @@ function isTextEntryTarget(target: EventTarget | null): boolean {
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 }
 
-export function ChallengeRunnerPage() {
+export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
   const { paperId: rawPaperId } = useParams<{ paperId: string }>()
-  const paperId = rawPaperId ? decodeURIComponent(rawPaperId) : ''
+  const routePaperId = rawPaperId ? decodeURIComponent(rawPaperId) : ''
+  const isRandomMode = mode === 'random'
   const navigate = useNavigate()
   const db = getHospitalDB()
 
   const [allQuestions, setAllQuestions] = useState<Question[]>([])
+  const [paperId, setPaperId] = useState(isRandomMode ? '' : routePaperId)
+  const [randomQuestionIds, setRandomQuestionIds] = useState<string[] | null>(null)
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selections, setSelections] = useState<Record<string, string>>({})
   const [flags, setFlags] = useState<Set<string>>(new Set())
@@ -53,6 +65,7 @@ export function ChallengeRunnerPage() {
   const [hydrated, setHydrated] = useState(false)
   const [resumeNotice, setResumeNotice] = useState(false)
   const [shownExplanations, setShownExplanations] = useState<Set<string>>(new Set())
+  const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
   const startedAtRef = useRef(Date.now())
   const elapsedSecRef = useRef(0)
   const studyTimeRecordedAtRef = useRef<number | null>(null)
@@ -68,10 +81,12 @@ export function ChallengeRunnerPage() {
       .catch((err) => console.error('[challenge-runner] load content failed:', err))
   }, [])
 
-  const questions = useMemo(
-    () => selectChallengePaperQuestions(allQuestions, paperId),
-    [allQuestions, paperId],
-  )
+  const questions = useMemo(() => {
+    if (isRandomMode) {
+      return randomQuestionIds ? selectChallengeQuestionsById(allQuestions, randomQuestionIds) : []
+    }
+    return selectChallengePaperQuestions(allQuestions, paperId)
+  }, [allQuestions, isRandomMode, paperId, randomQuestionIds])
   const current = questions.length > 0 ? questions[Math.min(currentIdx, questions.length - 1)] : null
   const currentOptionKeys = useMemo(
     () => (current ? Object.keys(current.options) : []),
@@ -79,12 +94,42 @@ export function ChallengeRunnerPage() {
   )
 
   useEffect(() => {
+    if (isRandomMode && allQuestions.length === 0) return
     let cancelled = false
     ;(async () => {
       try {
         const inProgress = await getChallengeInProgress()
         if (cancelled) return
-        if (inProgress && inProgress.paperId === paperId) {
+
+        if (isRandomMode) {
+          if (
+            inProgress &&
+            isRandomChallengePaperId(inProgress.paperId) &&
+            inProgress.questionIds &&
+            inProgress.questionIds.length > 0
+          ) {
+            setPaperId(inProgress.paperId)
+            setRandomQuestionIds(inProgress.questionIds)
+            setCurrentIdx(inProgress.currentQuestionIndex)
+            setSelections(inProgress.selections)
+            setFlags(new Set(inProgress.flags ?? []))
+            setConfidenceByQuestion(inProgress.confidenceByQuestion ?? {})
+            setElapsedSec(inProgress.elapsedSecAtPause)
+            startedAtRef.current = inProgress.startedAt
+            setPaused(inProgress.lastResumedAt === null)
+            setResumeNotice(true)
+          } else {
+            if (inProgress) await clearChallengeInProgress()
+            setPaperId(randomChallengePaperId())
+            setRandomQuestionIds(pickRandomChallengeQuestionIds(allQuestions))
+            startedAtRef.current = Date.now()
+            setPaused(false)
+          }
+          return
+        }
+
+        if (inProgress && inProgress.paperId === routePaperId) {
+          setPaperId(inProgress.paperId)
           setCurrentIdx(inProgress.currentQuestionIndex)
           setSelections(inProgress.selections)
           setFlags(new Set(inProgress.flags ?? []))
@@ -95,6 +140,7 @@ export function ChallengeRunnerPage() {
           setResumeNotice(true)
         } else {
           if (inProgress) await clearChallengeInProgress()
+          setPaperId(routePaperId)
           startedAtRef.current = Date.now()
           setPaused(false)
         }
@@ -103,7 +149,7 @@ export function ChallengeRunnerPage() {
       }
     })()
     return () => { cancelled = true }
-  }, [paperId])
+  }, [allQuestions, isRandomMode, routePaperId])
 
   useEffect(() => {
     if (!hydrated || paused) return
@@ -116,6 +162,7 @@ export function ChallengeRunnerPage() {
     const save = () => {
       void saveChallengeInProgress({
         paperId,
+        ...(isRandomMode ? { questionIds: questions.map((q) => q.id) } : {}),
         startedAt: startedAtRef.current,
         currentQuestionIndex: currentIdx,
         selections,
@@ -128,7 +175,7 @@ export function ChallengeRunnerPage() {
     const timer = window.setInterval(save, 5000)
     save()
     return () => window.clearInterval(timer)
-  }, [confidenceByQuestion, flags, hydrated, paperId, currentIdx, selections, paused])
+  }, [confidenceByQuestion, flags, hydrated, isRandomMode, paperId, questions, currentIdx, selections, paused])
 
   useEffect(() => {
     const onVisibility = () => {
@@ -181,6 +228,7 @@ export function ChallengeRunnerPage() {
   const submit = useCallback(async () => {
     if (!paperId || questions.length === 0) return
     const now = Date.now()
+    const isRandomAttempt = isRandomChallengePaperId(paperId)
     const score = scoreChallenge(questions, selections)
     const perQuestionAnswers = score.perQuestionAnswers.map((answer) => ({
       ...answer,
@@ -211,13 +259,14 @@ export function ChallengeRunnerPage() {
         db.bannerUnlockBonusLog,
       ],
       async () => {
-        const priorAttempts = await db.challengeAttempts.where('paperId').equals(paperId).toArray()
-        const economyReward = computeChallengeEconomyReward(
-          score.totalScore,
-          perQuestionAnswers.length,
-          priorAttempts,
-        )
-        attempt = { ...attempt, economyReward }
+        const economyReward = isRandomAttempt
+          ? undefined
+          : computeChallengeEconomyReward(
+            score.totalScore,
+            perQuestionAnswers.length,
+            await db.challengeAttempts.where('paperId').equals(paperId).toArray(),
+          )
+        if (economyReward) attempt = { ...attempt, economyReward }
         await db.challengeAttempts.put(attempt)
         for (const answer of perQuestionAnswers) {
           const question = byId.get(answer.questionId)
@@ -236,13 +285,15 @@ export function ChallengeRunnerPage() {
             isFresh: priorHistory === undefined,
           })
         }
-        const grantedChallengeCredits = await applyChallengeEconomyReward(economyReward)
-        if (grantedChallengeCredits !== economyReward.hospitalCreditDelta) {
-          attempt = {
-            ...attempt,
-            economyReward: { ...economyReward, hospitalCreditDelta: grantedChallengeCredits },
+        if (economyReward) {
+          const grantedChallengeCredits = await applyChallengeEconomyReward(economyReward)
+          if (grantedChallengeCredits !== economyReward.hospitalCreditDelta) {
+            attempt = {
+              ...attempt,
+              economyReward: { ...economyReward, hospitalCreditDelta: grantedChallengeCredits },
+            }
+            await db.challengeAttempts.put(attempt)
           }
-          await db.challengeAttempts.put(attempt)
         }
         await db.challengeInProgress.delete('challengeInProgress')
       },
@@ -291,6 +342,42 @@ export function ChallengeRunnerPage() {
     setConfidenceByQuestion((prev) => ({ ...prev, [current.id]: value }))
   }, [current])
 
+  const handlePreviousIntent = useCallback(() => {
+    setCurrentIdx((idx) => Math.max(idx - 1, 0))
+  }, [])
+
+  const handleOptionIntent = useCallback((optionIndex: number) => {
+    if (confirmSubmit || !current) return
+    const optionKey = currentOptionKeys[optionIndex]
+    if (!optionKey) return
+    setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
+  }, [confirmSubmit, current, currentOptionKeys])
+
+  useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, {
+    onOption: (optionIndex) => {
+      if (confirmSubmit) {
+        if (optionIndex === 0) {
+          setConfirmSubmit(false)
+          void submit()
+        } else if (optionIndex === 1) {
+          setConfirmSubmit(false)
+        }
+        return
+      }
+      handleOptionIntent(optionIndex)
+    },
+    onPrevious: () => {
+      if (!confirmSubmit) handlePreviousIntent()
+    },
+    onNext: () => {
+      if (!confirmSubmit) handleNextIntent()
+    },
+    onSubmit: handleSubmitIntent,
+    onCancel: () => {
+      if (confirmSubmit) setConfirmSubmit(false)
+    },
+  })
+
   useEffect(() => {
     if (!hydrated || !paperId || questions.length === 0) return
 
@@ -313,16 +400,14 @@ export function ChallengeRunnerPage() {
         return
       }
 
-      if (confirmSubmit || !current) return
-
       const shortcut = event.key.toLowerCase()
-      if (shortcut === 'f') {
+      if (!confirmSubmit && current && shortcut === 'f') {
         event.preventDefault()
         toggleCurrentFlag()
         return
       }
 
-      if (shortcut === 'e') {
+      if (!confirmSubmit && current && shortcut === 'e') {
         event.preventDefault()
         toggleCurrentExplanation()
         return
@@ -331,20 +416,16 @@ export function ChallengeRunnerPage() {
       const optionIndex = ['1', '2', '3', '4'].indexOf(event.key)
       if (optionIndex === -1) return
 
-      const optionKey = currentOptionKeys[optionIndex]
-      if (!optionKey) return
-
       event.preventDefault()
-      setSelections((prev) => ({ ...prev, [current.id]: optionKey }))
+      handleOptionIntent(optionIndex)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     confirmSubmit,
-    current,
-    currentOptionKeys,
     handleNextIntent,
+    handleOptionIntent,
     handleSubmitIntent,
     hydrated,
     paperId,
@@ -353,6 +434,10 @@ export function ChallengeRunnerPage() {
     toggleCurrentFlag,
   ])
 
+  if (!hydrated || allQuestions.length === 0) {
+    return <main className="app-shell challenge-page"><p className="challenge-empty">載入整回卷...</p></main>
+  }
+
   if (!paperId) {
     return (
       <main className="app-shell challenge-page">
@@ -360,10 +445,6 @@ export function ChallengeRunnerPage() {
         <Link to="/challenge" className="nav-link">← 回整回挑戰</Link>
       </main>
     )
-  }
-
-  if (!hydrated || allQuestions.length === 0) {
-    return <main className="app-shell challenge-page"><p className="challenge-empty">載入整回卷...</p></main>
   }
 
   if (questions.length === 0) {
@@ -387,6 +468,14 @@ export function ChallengeRunnerPage() {
           <p>{answeredCount}/{questions.length} 題 · {formatElapsed(elapsedSec)}{paused ? ' · 已暫停' : ''}</p>
         </div>
         <div className="challenge-runner__actions">
+          <label className="challenge-gamepad-toggle">
+            <input
+              type="checkbox"
+              checked={gamepadEnabled}
+              onChange={(event) => setGamepadEnabled(event.target.checked)}
+            />
+            <span>控制器</span>
+          </label>
           <button
             type="button"
             className="challenge-pause-btn"

@@ -8,10 +8,12 @@ import { getHospitalDB } from '../db/schema'
 import {
   SUBJECT_TO_CHALLENGE_PAPER,
   buildChallengePaperSummaries,
+  isRandomChallengePaperId,
   latestAttemptByPaperMap,
   paperShortLabel,
 } from '../lib/challenge'
 import { getChallengeInProgress } from '../services/challenge-attempts'
+import { useGamepadPreference } from '../lib/gamepad'
 
 function formatAttempt(score: number, total: number, finishedAt: number): string {
   const d = new Date(finishedAt)
@@ -46,6 +48,8 @@ export function ChallengePickerPage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [inProgressPaperId, setInProgressPaperId] = useState<string | null>(null)
   const [inProgressAnswered, setInProgressAnswered] = useState(0)
+  const [inProgressTotal, setInProgressTotal] = useState(0)
+  const [gamepadEnabled, setGamepadEnabled] = useGamepadPreference()
 
   useEffect(() => {
     const base = import.meta.env.BASE_URL.replace(/\/$/, '')
@@ -60,6 +64,7 @@ export function ChallengePickerPage() {
         if (row) {
           setInProgressPaperId(row.paperId)
           setInProgressAnswered(Object.keys(row.selections).length)
+          setInProgressTotal(row.questionIds?.length ?? 0)
         }
       })
       .catch(() => { /* ignore */ })
@@ -95,6 +100,7 @@ export function ChallengePickerPage() {
       papers,
     }))
   }, [sorted])
+  const hasRandomInProgress = inProgressPaperId !== null && isRandomChallengePaperId(inProgressPaperId)
 
   return (
     <main className="app-shell challenge-page challenge-picker">
@@ -104,7 +110,41 @@ export function ChallengePickerPage() {
           <h1><EmojiIcon char="📝" size={28} /> 整回挑戰</h1>
           <p>{subjectHint(focusSubject)}</p>
         </div>
+        <label className="challenge-gamepad-toggle">
+          <input
+            type="checkbox"
+            checked={gamepadEnabled}
+            onChange={(event) => setGamepadEnabled(event.target.checked)}
+          />
+          <span>控制器</span>
+        </label>
       </header>
+
+      <section className="challenge-random-panel" aria-label="隨機題組">
+        <button
+          type="button"
+          className={[
+            'challenge-paper-card',
+            'challenge-paper-card--random',
+            hasRandomInProgress ? 'challenge-paper-card--inprogress' : '',
+          ].filter(Boolean).join(' ')}
+          onClick={() => navigate('/challenge/random')}
+        >
+          <span className="challenge-paper-card__year">隨機</span>
+          <span className="challenge-paper-card__meta">全題庫 · 20 題</span>
+          <span className="challenge-paper-card__count">{questions.filter((q) => q.hasOptionImages !== true).length} 題可抽</span>
+          <span className="challenge-paper-card__subjects">跨科混合，即抽即答</span>
+          {hasRandomInProgress ? (
+            <span className="challenge-paper-card__attempt challenge-paper-card__attempt--inprogress">
+              繼續（已答 {inProgressAnswered}/{inProgressTotal || 20} 題）
+            </span>
+          ) : (
+            <span className="challenge-paper-card__attempt challenge-paper-card__attempt--empty">
+              新隨機題組
+            </span>
+          )}
+        </button>
+      </section>
 
       {summaries.length === 0 ? (
         <p className="challenge-empty">正在整理歷屆卷...</p>

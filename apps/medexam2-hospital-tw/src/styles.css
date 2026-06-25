@@ -7857,6 +7857,30 @@ body:has(.modal-backdrop) {
   font-size: 13px;
 }
 
+.challenge-gamepad-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--frame-dark);
+  background: var(--bg-paper);
+  border: 2px solid var(--frame-dark);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 var(--frame-light);
+  font-family: var(--font-pixel-cjk);
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.challenge-gamepad-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-sky);
+}
+
 .challenge-empty,
 .challenge-toast {
   padding: 12px;
@@ -7874,6 +7898,10 @@ body:has(.modal-backdrop) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.challenge-random-panel {
+  margin-bottom: 18px;
 }
 
 .challenge-paper-card {
@@ -7933,6 +7961,12 @@ body:has(.modal-backdrop) {
 .challenge-paper-card--inprogress {
   border-color: var(--accent-gold);
   box-shadow: 4px 4px 0 var(--accent-gold);
+}
+
+.challenge-paper-card--random {
+  width: min(100%, 360px);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent-sky) 8%, var(--bg-paper));
 }
 
 /* ── Sitting group ──────────────────── */

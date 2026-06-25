@@ -239,6 +239,7 @@ export interface ChallengeAttemptRow {
 export interface ChallengeInProgressRow {
   key: 'challengeInProgress'
   paperId: string
+  questionIds?: string[]
   startedAt: number
   currentQuestionIndex: number
   selections: Record<string, string>

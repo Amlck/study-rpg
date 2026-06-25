@@ -61,6 +61,7 @@ export const CHALLENGE_PAPERS: ChallengePaper[] = ['醫學三', '醫學四', '�
 export const CHALLENGE_PASS_RATE = 0.6
 export const CHALLENGE_HONORS_RATE = 0.8
 export const CHALLENGE_BEST_SCORE_REWARD_MULTIPLIER = 0.5
+export const RANDOM_CHALLENGE_QUESTION_COUNT = 20
 
 export const CHALLENGE_CONFIDENCE_OPTIONS: Array<{
   value: ChallengeConfidence
@@ -173,9 +174,18 @@ export function decodeChallengePaperId(
 }
 
 export function paperLabel(paperId: string): string {
+  if (isRandomChallengePaperId(paperId)) return '隨機題組'
   const d = decodeChallengePaperId(paperId)
   if (!d) return paperId
   return `${d.year} 第 ${d.session} 次 ${d.paper}`
+}
+
+export function isRandomChallengePaperId(paperId: string): boolean {
+  return paperId.startsWith('random-')
+}
+
+export function randomChallengePaperId(): string {
+  return `random-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 export function paperShortLabel(paper: string): string {
@@ -205,6 +215,28 @@ export function selectChallengePaperQuestions(questions: Question[], paperId: st
       const bNo = Number((b.meta as Record<string, unknown> | undefined)?.qNumber ?? 0)
       return aNo - bNo
     })
+}
+
+export function pickRandomChallengeQuestionIds(
+  questions: Question[],
+  count = RANDOM_CHALLENGE_QUESTION_COUNT,
+): string[] {
+  const ids = questions
+    .filter((q) => q.hasOptionImages !== true)
+    .map((q) => q.id)
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+  }
+  return ids.slice(0, Math.min(count, ids.length))
+}
+
+export function selectChallengeQuestionsById(questions: Question[], questionIds: string[]): Question[] {
+  const byId = new Map(questions.map((q) => [q.id, q]))
+  return questionIds.flatMap((id) => {
+    const question = byId.get(id)
+    return question ? [question] : []
+  })
 }
 
 export function buildChallengePaperSummaries(

@@ -11,6 +11,7 @@ import {
   buildLearningBreakdown,
   buildSubjectBreakdown,
   formatElapsed,
+  isRandomChallengePaperId,
   paperLabel,
 } from '../lib/challenge'
 import { toggleBookmark, useAllBookmarks } from '../services/bookmarks'
@@ -56,7 +57,7 @@ export function ChallengeResultPage() {
         const row = await getChallengeAttemptById(attemptId)
         if (cancelled) return
         setAttempt(row)
-        if (row) {
+        if (row && !isRandomChallengePaperId(row.paperId)) {
           const rows = await listChallengeAttemptsByPaper(row.paperId)
           if (!cancelled) setPriorAttempts(rows.filter((a) => a.id !== row.id))
         }
@@ -145,6 +146,7 @@ export function ChallengeResultPage() {
   ))
   const delta = latestPrior ? attempt.totalScore - latestPrior.totalScore : null
   const reward = attempt.economyReward
+  const showPaperProgress = !isRandomChallengePaperId(attempt.paperId)
 
   return (
     <main className="app-shell challenge-page challenge-result">
@@ -164,10 +166,10 @@ export function ChallengeResultPage() {
         <div className="challenge-result__facts">
           <span>正答率 {pct(attempt.totalScore, total)}</span>
           <span>耗時 {formatElapsed(attempt.elapsedSec)}</span>
-          <span>第 {priorAttempts.length + 1} 次</span>
+          {showPaperProgress && <span>第 {priorAttempts.length + 1} 次</span>}
           <span>複習 {reviewRows.length} 題</span>
         </div>
-        {delta === null ? (
+        {showPaperProgress && (delta === null ? (
           <p className="challenge-result__delta">首次挑戰此卷，下一次會顯示進步幅度。</p>
         ) : (
           <p className={`challenge-result__delta ${delta >= 0 ? 'challenge-result__delta--up' : 'challenge-result__delta--down'}`}>
@@ -175,7 +177,7 @@ export function ChallengeResultPage() {
             {delta !== 0 && <strong>{delta > 0 ? ` +${delta}` : ` ${delta}`}</strong>}
             {delta === 0 && <strong> 持平</strong>}
           </p>
-        )}
+        ))}
         {reward && (
           <div className="challenge-result__reward" aria-label="整回經濟獎勵">
             <h2>整回獎勵</h2>
@@ -217,7 +219,7 @@ export function ChallengeResultPage() {
         </p>
       </section>
 
-      {priorAttempts.length > 0 && (
+      {showPaperProgress && priorAttempts.length > 0 && (
         <section className="challenge-history" aria-label="歷次成績">
           <h2>歷次成績</h2>
           <div className="challenge-history__list">

@@ -300,6 +300,7 @@ function App() {
         <Route path="/equipment" element={<EquipmentPage />} />
         <Route path="/bookmarks" element={<BookmarksPage />} />
         <Route path="/challenge" element={<ChallengePickerPage />} />
+        <Route path="/challenge/random" element={<ChallengeRunnerPage mode="random" />} />
         <Route path="/challenge/run/:paperId" element={<ChallengeRunnerPage />} />
         <Route path="/challenge/result/:attemptId" element={<ChallengeResultPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
