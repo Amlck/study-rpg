@@ -220,9 +220,10 @@ export function selectChallengePaperQuestions(questions: Question[], paperId: st
 export function pickRandomChallengeQuestionIds(
   questions: Question[],
   count = RANDOM_CHALLENGE_QUESTION_COUNT,
+  seenQuestionIds: ReadonlySet<string> = new Set(),
 ): string[] {
   const ids = questions
-    .filter((q) => q.hasOptionImages !== true)
+    .filter((q) => q.hasOptionImages !== true && !seenQuestionIds.has(q.id))
     .map((q) => q.id)
   for (let i = ids.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))

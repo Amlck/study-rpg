@@ -130,8 +130,10 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
             setResumeNotice(true)
           } else {
             if (inProgress) await clearChallengeInProgress()
+            const historyRows = await db.questionHistory.toArray()
+            const seenQuestionIds = new Set(historyRows.map((row) => row.questionId))
             setPaperId(randomChallengePaperId())
-            setRandomQuestionIds(pickRandomChallengeQuestionIds(allQuestions))
+            setRandomQuestionIds(pickRandomChallengeQuestionIds(allQuestions, undefined, seenQuestionIds))
             startedAtRef.current = Date.now()
             setPaused(false)
           }
@@ -159,7 +161,7 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
       }
     })()
     return () => { cancelled = true }
-  }, [allQuestions, isRandomMode, routePaperId])
+  }, [allQuestions, db, isRandomMode, routePaperId])
 
   useEffect(() => {
     if (!hydrated || paused) return
@@ -371,6 +373,10 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
     })
   }, [currentOptionKeys.length])
 
+  const scrollWithGamepad = useCallback((direction: -1 | 1) => {
+    window.scrollBy({ top: direction * 22, behavior: 'auto' })
+  }, [])
+
   useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, gamepadBindings, {
     onOptionUp: () => {
       if (!confirmSubmit) moveFocusedOption(-1)
@@ -392,6 +398,8 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
     onNextQuestion: () => {
       if (!confirmSubmit) handleNextIntent()
     },
+    onScrollUp: () => scrollWithGamepad(-1),
+    onScrollDown: () => scrollWithGamepad(1),
     onToggleExplanation: () => {
       if (!confirmSubmit) toggleCurrentExplanation()
     },
@@ -476,7 +484,9 @@ export function ChallengeRunnerPage({ mode = 'paper' }: Props) {
   if (questions.length === 0) {
     return (
       <main className="app-shell challenge-page">
-        <p className="challenge-empty">查無此整回卷：{paperId}</p>
+        <p className="challenge-empty">
+          {isRandomMode ? '目前沒有未看過的隨機題可抽。' : `查無此整回卷：${paperId}`}
+        </p>
         <Link to="/challenge" className="nav-link">← 回整回挑戰</Link>
       </main>
     )

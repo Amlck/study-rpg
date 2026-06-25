@@ -69,6 +69,15 @@ describe('challenge helpers', () => {
     expect(selectChallengeQuestionsById([q1, q2, q3], ['q3', 'missing', 'q1']).map((q) => q.id)).toEqual(['q3', 'q1'])
   })
 
+  it('selects only unseen questions for random challenge mode', () => {
+    const q1 = question('q1', '內科', '醫學三', 1)
+    const q2 = question('q2', '外科', '醫學五', 2)
+    const q3 = question('q3', '小兒科', '醫學四', 3)
+
+    expect(pickRandomChallengeQuestionIds([q1, q2, q3], 20, new Set(['q1'])).sort()).toEqual(['q2', 'q3'])
+    expect(pickRandomChallengeQuestionIds([q1, q2], 20, new Set(['q1', 'q2']))).toEqual([])
+  })
+
   it('scores unanswered as wrong and disputed selected answers as correct', () => {
     const q1 = question('q1', '內科', '醫學三', 1, 'A')
     const q2 = { ...question('q2', '內科', '醫學三', 2, 'B'), disputed: true }

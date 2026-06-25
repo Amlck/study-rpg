@@ -6,6 +6,8 @@ export type GamepadAction =
   | 'selectOption'
   | 'previousQuestion'
   | 'nextQuestion'
+  | 'scrollUp'
+  | 'scrollDown'
   | 'submit'
   | 'cancel'
 
@@ -22,6 +24,8 @@ export interface GamepadControlHandlers {
   onSelectOption?: () => void
   onPreviousQuestion?: () => void
   onNextQuestion?: () => void
+  onScrollUp?: () => void
+  onScrollDown?: () => void
   onSubmit?: () => void
   onCancel?: () => void
 }
@@ -32,6 +36,8 @@ export const GAMEPAD_ACTION_LABELS: Record<GamepadAction, string> = {
   selectOption: '選取選項',
   previousQuestion: '上一題',
   nextQuestion: '下一題',
+  scrollUp: '向上捲動',
+  scrollDown: '向下捲動',
   submit: '交卷',
   cancel: '取消',
 }
@@ -42,6 +48,8 @@ export const GAMEPAD_ACTIONS: GamepadAction[] = [
   'selectOption',
   'previousQuestion',
   'nextQuestion',
+  'scrollUp',
+  'scrollDown',
   'submit',
   'cancel',
 ]
@@ -81,6 +89,8 @@ export const DEFAULT_GAMEPAD_BINDINGS: GamepadBindings = {
   selectOption: { kind: 'button', index: 0 },
   previousQuestion: { kind: 'button', index: 4 },
   nextQuestion: { kind: 'button', index: 5 },
+  scrollUp: { kind: 'axis', index: 3, direction: -1 },
+  scrollDown: { kind: 'axis', index: 3, direction: 1 },
   submit: { kind: 'button', index: 9 },
   cancel: { kind: 'button', index: 1 },
 }
@@ -174,19 +184,26 @@ function bindingEquals(a: GamepadBinding, b: GamepadBinding): boolean {
   return a.direction === (b as Extract<GamepadBinding, { kind: 'axis' }>).direction
 }
 
-function dispatchBinding(
-  binding: GamepadBinding,
-  bindings: GamepadBindings,
+function actionForBinding(binding: GamepadBinding, bindings: GamepadBindings): GamepadAction | undefined {
+  return GAMEPAD_ACTIONS.find((candidate) => bindingEquals(bindings[candidate], binding))
+}
+
+function isRepeatingAction(action: GamepadAction): boolean {
+  return action === 'scrollUp' || action === 'scrollDown'
+}
+
+function dispatchAction(
+  action: GamepadAction,
   handlers: GamepadControlHandlers,
 ): void {
-  const action = GAMEPAD_ACTIONS.find((candidate) => bindingEquals(bindings[candidate], binding))
-  if (!action) return
   handlers.onActivity?.()
   if (action === 'optionUp') handlers.onOptionUp?.()
   else if (action === 'optionDown') handlers.onOptionDown?.()
   else if (action === 'selectOption') handlers.onSelectOption?.()
   else if (action === 'previousQuestion') handlers.onPreviousQuestion?.()
   else if (action === 'nextQuestion') handlers.onNextQuestion?.()
+  else if (action === 'scrollUp') handlers.onScrollUp?.()
+  else if (action === 'scrollDown') handlers.onScrollDown?.()
   else if (action === 'submit') handlers.onSubmit?.()
   else if (action === 'cancel') handlers.onCancel?.()
 }
@@ -259,20 +276,24 @@ export function useGamepadControls(
       if (pad) {
         pad.buttons.forEach((button, index) => {
           const pressed = button.pressed || button.value > 0.5
-          if (pressed && !previousButtons[index]) {
-            dispatchBinding({ kind: 'button', index }, bindingsRef.current, handlersRef.current)
+          if (pressed) {
+            const binding: GamepadBinding = { kind: 'button', index }
+            const action = actionForBinding(binding, bindingsRef.current)
+            if (action && (!previousButtons[index] || isRepeatingAction(action))) {
+              dispatchAction(action, handlersRef.current)
+            }
           }
           previousButtons[index] = pressed
         })
 
         pad.axes.forEach((value, index) => {
           const direction = value < -AXIS_THRESHOLD ? -1 : value > AXIS_THRESHOLD ? 1 : 0
-          if (direction !== 0 && direction !== previousAxisDirections[index]) {
-            dispatchBinding(
-              { kind: 'axis', index, direction: direction as -1 | 1 },
-              bindingsRef.current,
-              handlersRef.current,
-            )
+          if (direction !== 0) {
+            const binding: GamepadBinding = { kind: 'axis', index, direction: direction as -1 | 1 }
+            const action = actionForBinding(binding, bindingsRef.current)
+            if (action && (direction !== previousAxisDirections[index] || isRepeatingAction(action))) {
+              dispatchAction(action, handlersRef.current)
+            }
           }
           previousAxisDirections[index] = direction
         })

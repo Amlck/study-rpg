@@ -377,6 +377,10 @@ export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, on
     })
   }, [currentOptionKeys.length])
 
+  const scrollWithGamepad = useCallback((direction: -1 | 1) => {
+    window.scrollBy({ top: direction * 22, behavior: 'auto' })
+  }, [])
+
   useGamepadControls(gamepadEnabled && hydrated && !!paperId && questions.length > 0, gamepadBindings, {
     onActivity: registerActivity,
     onOptionUp: () => {
@@ -399,6 +403,8 @@ export function MockRunnerRoute({ content, mode = 'paper', player, setPlayer, on
     onNextQuestion: () => {
       if (!confirmSubmit) handleNextIntent()
     },
+    onScrollUp: () => scrollWithGamepad(-1),
+    onScrollDown: () => scrollWithGamepad(1),
     onSubmit: handleSubmitIntent,
     onCancel: () => {
       if (confirmSubmit) setConfirmSubmit(false)
